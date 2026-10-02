@@ -78,6 +78,12 @@
     table.t tr.sum td { font-weight: bold; background: #fafafa; }
     table.t td.na { color: #bbb; }
     table.t td.prov { background: #fffaf0; }
+    table.t.rep th.key { background: #2c5aa0; color: #fff; }
+    table.t.rep td.key { background: #e8f0fb; font-weight: bold; color: #1d3f73; }
+    table.t.rep tr.sum td.key { background: #d3e2f7; }
+    table.t.rep tr.subrow td { color: #666; font-size: 11.5px; }
+    table.t.rep tr.subrow td.key { font-weight: normal; color: #1d3f73; }
+    @media print { table.t.rep td.key, table.t.rep th.key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
     /* 일일검침 */
     table.daily { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; background: #fff; }
@@ -1095,47 +1101,71 @@
     let reportYm = null, reportRows = [];
     function shiftReportMonth(d) { reportYm = d > 0 ? UT.nextYm(reportYm) : UT.prevYm(reportYm); renderReport(); }
 
+    // 전기: 전기요금계(부가세 제외) / 부가세 / 전력기금 / 연체료 나누기
+    function elecParts(s) {
+      const e = s.elec.calc;
+      const raw = MONTHLY[s.ym] || {};
+      const late = Number((s.m || {}).elec_late_fee) || 0;
+      if (s.elec.status !== '확정') {
+        if (!e) return null;
+        return { sub: e.subtotal, vat: e.vat, fund: e.fund, late: e.late, total: e.total };
+      }
+      // 확정(고지서 금액 입력): 청구액에서 거꾸로 나눔 (전력기금 = 전기요금계 × 2.7% 10원 미만 절사)
+      const T = Number(raw.elec_bill_total);
+      let sub = Math.round((T - late) / 1.127);
+      let fund = Math.trunc(sub * 0.027 / 10) * 10;
+      if (raw.elec_bill_exvat !== undefined && raw.elec_bill_exvat !== null && raw.elec_bill_exvat !== '') {
+        sub = Number(raw.elec_bill_exvat) - late - fund;
+        fund = Math.trunc(sub * 0.027 / 10) * 10;
+        sub = Number(raw.elec_bill_exvat) - late - fund;
+      }
+      return { sub, vat: Math.round(sub * 0.1), fund, late, total: T };
+    }
+
+    // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
     function renderReport() {
       if (!reportYm) reportYm = UT.prevYm(thisYm);
       document.getElementById('report-month').textContent = ymLabel(reportYm);
       const s = S(reportYm);
-      const g = s.gas.calc;
+      const g = s.gas.calc, ep = elecParts(s);
+      const gasConf = s.gas.status === '확정';
       reportRows = [
-        ['전기', '', s.elec.usage, 'kWh', s.elec.cost, s.elec.exvat, s.elec.status],
-        ['가스', '', s.gas.m3, '㎥', s.gas.cost, s.gas.exvat, s.gas.status],
-        ...(g && g.boiler ? [['', '보일러', g.boiler.m3, '㎥', s.gas.status === '확정' ? null : g.boiler.total, s.gas.status === '확정' ? null : g.boiler.cost + g.boiler.fee, '']] : []),
-        ...(g && g.rest ? [['', '식당', g.rest.m3, '㎥', s.gas.status === '확정' ? null : g.rest.total, s.gas.status === '확정' ? null : g.rest.cost + g.rest.fee, '']] : []),
-        ['용수', '', s.water.usage, '㎥', s.water.cost, s.water.exvat, s.water.status],
+        ['전기', '', s.elec.usage, 'kWh', s.elec.exvat, s.elec.cost, s.elec.status],
+        ...(ep ? [
+          ['', '전기요금계 (부가세 제외)', null, '', ep.sub, ep.sub + ep.vat, ''],
+          ['', '전력기금', null, '', ep.fund, ep.fund, ''],
+          ...(ep.late ? [['', '연체료', null, '', ep.late, ep.late, '']] : [])
+        ] : []),
+        ['가스', '', s.gas.m3, '㎥', s.gas.exvat, s.gas.cost, s.gas.status],
+        ...(g && g.boiler ? [['', '보일러', g.boiler.m3, '㎥', gasConf ? null : g.boiler.cost + g.boiler.fee, gasConf ? null : g.boiler.total, '']] : []),
+        ...(g && g.rest ? [['', '식당', g.rest.m3, '㎥', gasConf ? null : g.rest.cost + g.rest.fee, gasConf ? null : g.rest.total, '']] : []),
+        ['용수', '', s.water.usage, '㎥', s.water.exvat, s.water.cost, s.water.status],
         ['', '40A', s.water.w40 ? s.water.w40.usage : null, '㎥', s.water.w40cost, s.water.w40cost, ''],
         ['', '50A', s.water.w50 ? s.water.w50.usage : null, '㎥', s.water.w50cost, s.water.w50cost, ''],
-        ['폐수', '', s.ww.usage, '㎥', s.ww.cost, s.ww.exvat, s.ww.status],
-        ['합계', '', null, '', s.total, s.exvat, s.status]
+        ['폐수', '', s.ww.usage, '㎥', s.ww.exvat, s.ww.cost, s.ww.status],
+        ['합계', '', null, '', s.exvat, s.total, s.status]
       ];
-      const other = [['폐수 위탁처리비', s.ww.outsource], ['슬러지처리비', s.ww.sludge]];
       let h = `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성일 ${todayStr}</span></h3>`;
-      h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th>금액 (VAT 포함)</th><th>공급가액 (VAT 별도)</th><th>상태</th></tr>`;
+      h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
       reportRows.forEach(r => {
-        const isSum = r[0] === '합계';
-        h += `<tr class="${isSum ? 'sum' : ''}"><td class="l">${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
-          <td class="${r[6] === '가마감' ? 'prov' : ''}">${r[4] === null ? '' : f0(r[4])}</td><td>${r[5] === null ? '' : f0(r[5])}</td>
+        const isSum = r[0] === '합계', isSub = !r[0] && !isSum;
+        h += `<tr class="${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''}"><td class="l">${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
+          <td class="key">${r[4] === null ? '' : f0(r[4])}</td><td>${r[5] === null ? '' : f0(r[5])}</td>
           <td>${r[6] ? `<span class="st st-${r[6]}">${r[6]}</span>` : ''}</td></tr>`;
       });
       h += '</table></div>';
-      h += `<div style="margin-top:14px;" class="hint">합계에 포함되지 않는 비용: ${other.map(([a, b]) => `${a} ${b === null ? '-' : won(b)}`).join(' · ')}</div>`;
-      h += `<div style="margin-top:6px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가).</div>`;
+      h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
       document.getElementById('report-body').innerHTML = h;
     }
 
     async function downloadReport() {
       try {
         await ensureXLSX();
-        const aoa = [[`${ymLabel(reportYm)} 유틸리티 비용`], [], ['구분', '세부', '사용량', '단위', '금액(VAT포함)', '공급가액(VAT별도)', '상태']];
+        const aoa = [[`${ymLabel(reportYm)} 유틸리티 비용`], [], ['구분', '세부', '사용량', '단위', '공급가액(VAT별도)', '금액(VAT포함)', '상태']];
         reportRows.forEach(r => aoa.push(r.map(v => typeof v === 'number' ? Math.round(v * 10) / 10 : (v ?? ''))));
-        const s = S(reportYm);
-        aoa.push([], ['합계 제외 비용'], ['폐수 위탁처리비', '', '', '', s.ww.outsource ?? ''], ['슬러지처리비', '', '', '', s.ww.sludge ?? '']);
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet(aoa);
-        ws['!cols'] = [{ wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 6 }, { wch: 16 }, { wch: 16 }, { wch: 8 }];
+        ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 6 }, { wch: 18 }, { wch: 16 }, { wch: 8 }];
         XLSX.utils.book_append_sheet(wb, ws, reportYm);
         XLSX.writeFile(wb, `유틸리티비용_${reportYm.replace('-', '')}.xlsx`);
       } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
