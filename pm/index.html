@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>순수본 2공장 설비 예방정비 점검 일정관리</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+      margin: 0;
+      background: #f4f6f8;
+      color: #222;
+      font-size: 14px;
+    }
+    [hidden] { display: none !important; }
+    header {
+      background: #2c5aa0;
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    header h1 { font-size: 18px; margin: 0; }
+    nav { display: flex; gap: 6px; flex-wrap: wrap; }
+    nav button {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    nav button.active { background: #fff; color: #2c5aa0; font-weight: bold; }
+
+    .container { padding: 16px; max-width: 1200px; margin: 0 auto; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+
+    .summary-cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .card {
+      flex: 1; min-width: 120px; background: #fff; border-radius: 10px;
+      padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-left: 5px solid #ccc;
+    }
+    .card.overdue { border-left-color: #d93025; }
+    .card.soon { border-left-color: #f29900; }
+    .card.ok { border-left-color: #1e8e3e; }
+    .card .num { font-size: 26px; font-weight: bold; }
+    .card .label { font-size: 12px; color: #666; }
+    .card.selected { box-shadow: 0 0 0 2px #2c5aa0 inset, 0 1px 3px rgba(0,0,0,0.1); background: #eef3fb; }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .filters select, .filters input {
+      padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px;
+    }
+
+    .multiselect { position: relative; display: inline-block; }
+    .multiselect-panel {
+      display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 50;
+      background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 8px;
+      min-width: 160px; max-height: 240px; overflow-y: auto; box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    }
+    .multiselect-panel.open { display: block; }
+    .ms-option {
+      display: flex; align-items: center; gap: 6px; padding: 5px 6px; font-size: 13px;
+      cursor: pointer; border-radius: 4px; white-space: nowrap;
+    }
+    .ms-option:hover { background: #f0f4fa; }
+
+    .item-list { display: flex; flex-direction: column; gap: 8px; }
+    .item-row {
+      background: #fff; border-radius: 8px; padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      border-left: 5px solid #ccc;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .item-row.status-지연 { border-left-color: #d93025; background: #fdeceb; }
+    .item-row.status-임박 { border-left-color: #f29900; background: #fff8e8; }
+    .item-row.status-정상 { border-left-color: #1e8e3e; }
+
+    .item-main { flex: 1; min-width: 220px; }
+    .item-main .equip { font-weight: bold; font-size: 14px; }
+    .item-meta { font-size: 12px; color: #777; margin-top: 2px; }
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #fff;
+    }
+    .badge-지연 { background: #d93025; }
+    .badge-임박 { background: #f29900; }
+    .badge-정상 { background: #1e8e3e; }
+    .badge-admin { background: #2c5aa0; }
+    .badge-user { background: #888; }
+    .badge-off { background: #bbb; }
+
+    .btn {
+      background: #2c5aa0; color: #fff; border: none; padding: 8px 14px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .btn.secondary { background: #666; }
+    .btn.danger { background: #d93025; }
+    .btn.small { padding: 5px 10px; font-size: 12px; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #fff; border-radius: 10px; padding: 20px; width: 92%; max-width: 440px;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal h2 { margin-top: 0; font-size: 16px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    .matrix-wrap { overflow-x: auto; }
+    table.matrix { table-layout: fixed; width: 100%; min-width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+    table.matrix col.col-name { width: 110px; }
+    table.matrix col.col-task { width: 150px; }
+    table.matrix th, table.matrix td { border: 1px solid #e0e0e0; padding: 6px 4px; text-align: center; overflow: hidden; }
+    table.matrix th { background: #2c5aa0; color: #fff; }
+    table.matrix td.eq-name { text-align: left; font-weight: bold; }
+    table.matrix td.mark { color: #1e8e3e; font-weight: bold; }
+
+    .history-row { background: #fff; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; font-size: 13px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .history-photo { max-width: 90px; max-height: 90px; border-radius: 6px; margin-top: 6px; cursor: pointer; display: block; border: 1px solid #ddd; }
+    .history-photo.enlarged { max-width: 100%; max-height: none; }
+    .photo-toggle { color: #2c5aa0; cursor: pointer; display: inline-block; margin-top: 4px; }
+    .photo-toggle:hover { text-decoration: underline; }
+
+    .empty-state { text-align: center; color: #888; padding: 40px 0; }
+    .loading { text-align: center; padding: 30px; color: #888; }
+    .hint { font-size: 12px; color: #888; margin: -6px 0 12px; }
+
+    /* ---- 설정 화면 ---- */
+    .admin-section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .admin-section h3 { margin: 0 0 12px; font-size: 15px; color: #2c5aa0; }
+    .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 16px; }
+
+    /* ---- 월간출력 인쇄 서식 ---- */
+    .print-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+    .print-title { font-size: 20px; font-weight: bold; color: #000; padding-top: 6px; }
+    table.print-approval { border-collapse: collapse; font-size: 12px; }
+    table.print-approval td { border: 1px solid #333; width: 46px; height: 26px; text-align: center; background: #fff; color: #000; }
+    .print-legend { font-size: 13px; margin: 6px 0 10px; color: #000; }
+    table.print-table { font-size: 11px; }
+    table.print-table th, table.print-table td { border: 1px solid #666; color: #000; padding: 3px 2px; }
+    table.print-table th { background: #eee; color: #000; }
+    table.print-table td.eq-name { background: #fafafa; }
+    table.print-table td.mark-o { color: #1e8e3e; font-weight: bold; }
+    table.print-table td.mark-x { color: #d93025; font-weight: bold; }
+
+    @media print {
+      header, nav, .no-print, .tab-btn { display: none !important; }
+      body { background: #fff; }
+      .container { padding: 0; max-width: none; }
+      .tab { display: none !important; }
+      #tab-print { display: block !important; }
+      @page { size: landscape; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app" hidden>
+    <header>
+      <h1>🔧 설비 예방정비 · 점검 일정관리</h1>
+      <nav>
+        <button class="tab-btn active" data-tab="today">오늘 할일</button>
+        <button class="tab-btn" data-tab="dashboard">대시보드</button>
+        <button class="tab-btn" data-tab="annual">연간계획</button>
+        <button class="tab-btn" data-tab="monthcal">월간상세</button>
+        <button class="tab-btn" data-tab="history">점검이력</button>
+        <button class="tab-btn admin-only" data-tab="manage">항목관리</button>
+        <button class="tab-btn" data-tab="print">월간출력</button>
+        <button class="tab-btn admin-only" data-tab="admin">설정</button>
+      </nav>
+    </header>
+
+    <div class="container">
+
+      <!-- 오늘 할일 -->
+      <div id="tab-today" class="tab active">
+        <div id="today-header" style="margin-bottom:12px;"></div>
+        <div class="filters">
+          <input type="text" id="today-search" placeholder="설비명·항목 검색">
+        </div>
+        <div id="today-list" class="item-list">
+          <div class="loading">불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- 대시보드 -->
+      <div id="tab-dashboard" class="tab">
+        <div class="summary-cards">
+          <div class="card overdue" id="card-지연" onclick="toggleStatusFilter('지연')" style="cursor:pointer;"><div class="num" id="sum-지연">-</div><div class="label">⚠️ 지연</div></div>
+          <div class="card soon" id="card-임박" onclick="toggleStatusFilter('임박')" style="cursor:pointer;"><div class="num" id="sum-임박">-</div><div class="label">🔔 임박</div></div>
+          <div class="card ok" id="card-정상" onclick="toggleStatusFilter('정상')" style="cursor:pointer;"><div class="num" id="sum-정상">-</div><div class="label">✅ 정상</div></div>
+        </div>
+
+        <div class="filters">
+          <input type="text" id="dashboard-search" placeholder="설비명·항목 검색">
+          <select id="filter-status">
+            <option value="">전체 상태</option>
+            <option value="지연">지연만</option>
+            <option value="임박">임박만</option>
+            <option value="정상">정상만</option>
+          </select>
+          <select id="filter-cycle">
+            <option value="">전체 주기</option>
+            <option value="연간">연간</option>
+            <option value="월간">월간</option>
+            <option value="주간">주간</option>
+            <option value="일일">일일</option>
+          </select>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="filter-category-toggle">전체 분류 ▾</button>
+            <div class="multiselect-panel" id="filter-category-panel"></div>
+          </div>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="filter-assignee-toggle">전체 담당자 ▾</button>
+            <div class="multiselect-panel" id="filter-assignee-panel"></div>
+          </div>
+          <button class="btn secondary" onclick="loadDashboard(true)">🔄 새로고침</button>
+        </div>
+
+        <div id="item-list" class="item-list">
+          <div class="loading">불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- 연간계획 -->
+      <div id="tab-annual" class="tab">
+        <div class="filters">
+          <label style="font-size:13px;">연도:</label>
+          <select id="annual-year"></select>
+          <select id="annual-month">
+            <option value="">전체 월</option>
+            <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
+            <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
+            <option value="7">7월</option><option value="8">8월</option><option value="9">9월</option>
+            <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+          </select>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="annual-category-toggle">전체 분류 ▾</button>
+            <div class="multiselect-panel" id="annual-category-panel"></div>
+          </div>
+          <button class="btn secondary" onclick="loadAnnual(true)">🔄 새로고침</button>
+        </div>
+        <div id="annual-matrix"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+      <!-- 월간상세 -->
+      <div id="tab-monthcal" class="tab">
+        <div class="filters">
+          <select id="cal-year"></select>
+          <select id="cal-month"></select>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="cal-category-toggle">전체 분류 ▾</button>
+            <div class="multiselect-panel" id="cal-category-panel"></div>
+          </div>
+          <button class="btn secondary" onclick="loadMonthCal(true)">🔄 새로고침</button>
+        </div>
+        <div id="monthcal-list"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+      <!-- 점검이력 -->
+      <div id="tab-history" class="tab">
+        <div class="filters">
+          <input type="text" id="hist-search" placeholder="설비명·항목 검색">
+          <select id="hist-equipment"><option value="">전체 설비</option></select>
+          <input type="date" id="hist-from">
+          <input type="date" id="hist-to">
+          <button class="btn" onclick="loadHistory()">조회</button>
+        </div>
+        <div class="hint">기본으로는 최근 이력 500건을 보여드려요. 예전 기록을 찾으실 땐 위에서 설비·기간을 지정해서 조회해 주세요.</div>
+        <div id="history-list"></div>
+      </div>
+
+      <!-- 항목관리 (관리자) -->
+      <div id="tab-manage" class="tab">
+        <button class="btn" onclick="openAddItemModal()">+ 새 점검·정비 항목 추가</button>
+        <div class="filters" style="margin-top:14px;">
+          <input type="text" id="manage-search" placeholder="설비명·항목 검색">
+          <select id="manage-filter-cycle">
+            <option value="">전체 주기</option>
+            <option value="연간">연간</option>
+            <option value="월간">월간</option>
+            <option value="주간">주간</option>
+            <option value="일일">일일</option>
+          </select>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="manage-category-toggle">전체 분류 ▾</button>
+            <div class="multiselect-panel" id="manage-category-panel"></div>
+          </div>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="manage-assignee-toggle">전체 담당자 ▾</button>
+            <div class="multiselect-panel" id="manage-assignee-panel"></div>
+          </div>
+        </div>
+        <div id="manage-list" class="item-list"></div>
+      </div>
+
+      <!-- 월간출력 -->
+      <div id="tab-print" class="tab">
+        <div class="filters no-print">
+          <input type="text" id="print-plant" style="width:140px;">
+          <select id="print-year"></select>
+          <select id="print-month"></select>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="print-category-toggle">전체 분류 ▾</button>
+            <div class="multiselect-panel" id="print-category-panel"></div>
+          </div>
+          <div class="multiselect">
+            <button type="button" class="btn secondary" id="print-assignee-toggle">전체 담당자 ▾</button>
+            <div class="multiselect-panel" id="print-assignee-panel"></div>
+          </div>
+          <button class="btn secondary" onclick="loadPrint(true)">🔄 불러오기</button>
+          <button class="btn" onclick="window.print()">🖨 인쇄하기</button>
+        </div>
+        <div id="print-sheet"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+      <!-- 관리자 -->
+      <div id="tab-admin" class="tab">
+        <div class="admin-section">
+          <h3>⚙️ 설정</h3>
+          <div class="settings-grid">
+            <div class="field"><label>연간 임박 기준일 (일)</label><input type="number" min="0" id="s-연간임박기준일"></div>
+            <div class="field"><label>월간 임박 기준일 (일)</label><input type="number" min="0" id="s-월간임박기준일"></div>
+            <div class="field"><label>주간 임박 기준일 (일)</label><input type="number" min="0" id="s-주간임박기준일"></div>
+            <div class="field"><label>일일 임박 기준일 (일)</label><input type="number" min="0" id="s-일일임박기준일"></div>
+            <div class="field">
+              <label>다음예정일 하루빼기 (전체 기본값)</label>
+              <select id="s-다음예정일 하루빼기 적용">
+                <option value="Y">적용 (5/22완료·4개월 → 9/21)</option>
+                <option value="N">미적용 (5/22완료·4개월 → 9/22)</option>
+              </select>
+            </div>
+          </div>
+          <div class="hint" style="margin:0 0 10px;">다음예정일까지 남은 일수가 기준일 이하가 되면 "임박"으로 표시됩니다. 항목별 하루빼기 설정이 있으면 그게 우선입니다.</div>
+          <button class="btn" onclick="saveSettings()">설정 저장</button>
+        </div>
+
+        <div class="admin-section">
+          <h3>💾 백업</h3>
+          <div class="hint" style="margin:0 0 10px;">무료 요금제는 자동 백업이 없어서, 한 달에 한 번 정도 엑셀로 내려받아 보관해 두세요. (항목 + 이력, 사진 제외)</div>
+          <button class="btn" id="backup-btn" onclick="downloadBackup()">📥 엑셀 백업 받기</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 완료 처리 모달 -->
+  <div class="modal-overlay" id="complete-modal">
+    <div class="modal">
+      <h2 id="complete-title">점검 완료 처리</h2>
+      <div class="field"><label>완료일</label><input type="date" id="c-date"></div>
+      <div class="field">
+        <label>담당자</label>
+        <input type="text" id="c-assignee" placeholder="이름 입력" list="people-list">
+      </div>
+      <div class="field">
+        <label>결과</label>
+        <select id="c-result">
+          <option value="정상">정상</option>
+          <option value="이상">이상 발견</option>
+          <option value="조치필요">조치 필요</option>
+        </select>
+      </div>
+      <div class="field"><label>메모</label><textarea id="c-memo" rows="2" placeholder="특이사항 입력"></textarea></div>
+      <div class="field"><label>사진 첨부</label><input type="file" id="c-photo" accept="image/*"></div>
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="closeModal('complete-modal')">취소</button>
+        <button class="btn" id="complete-submit-btn" onclick="submitComplete()">완료 처리</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 항목 추가/수정 모달 -->
+  <div class="modal-overlay" id="item-modal">
+    <div class="modal">
+      <h2 id="item-modal-title">새 항목 추가</h2>
+      <div class="field">
+        <label>카테고리</label>
+        <input type="text" id="i-category" list="category-list" placeholder="예: 전기, 냉동, 레토르트, 폐수처리">
+        <datalist id="category-list"></datalist>
+      </div>
+      <div class="field"><label>설비명</label><input type="text" id="i-equipment"></div>
+      <div class="field"><label>점검·정비 항목</label><input type="text" id="i-task"></div>
+      <div class="field">
+        <label>주기 구분</label>
+        <select id="i-cycletype">
+          <option value="연간">연간</option>
+          <option value="월간">월간</option>
+          <option value="주간">주간</option>
+          <option value="일일">일일</option>
+        </select>
+      </div>
+      <div class="field"><label>주기값 (예: 2개월마다 → 2)</label><input type="number" id="i-cyclevalue" value="1" min="1"></div>
+      <div class="field">
+        <label>다음예정일 하루빼기 (연간/월간/주간 계산 방식)</label>
+        <select id="i-minus1">
+          <option value="">전체 설정값 따름</option>
+          <option value="Y">이 항목만 적용 (예: 5/22완료·4개월주기 → 9/21)</option>
+          <option value="N">이 항목만 미적용 (예: 5/22완료·4개월주기 → 9/22)</option>
+        </select>
+      </div>
+      <div class="field"><label>담당자</label><input type="text" id="i-assignee" list="people-list"></div>
+      <div class="field"><label>시작 기준일</label><input type="date" id="i-startdate"></div>
+      <div class="field"><label>비고</label><input type="text" id="i-note"></div>
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="closeModal('item-modal')">취소</button>
+        <button class="btn" id="item-submit-btn" onclick="submitItem()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="people-list"></datalist>
+
+  <script>
+    // =====================================================================
+    // 공통
+    // =====================================================================
+    let sb = null;  // Supabase 연결 (공통 로그인 후 채워짐)
+    let me = null;  // 로그인한 사람 { id, username, name, role, active }
+    const PLANT_NAME = Portal.config.PLANT_NAME;
+    const isAdmin = () => !!(me && me.role === 'admin');
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const toYMD = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    const parseYMD = s => { if (!s) return null; const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
+    const todayYMD = () => toYMD(new Date());
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function showLoadError(containerId, err) {
+      document.getElementById(containerId).innerHTML =
+        '<div class="empty-state">불러오기 실패: ' + esc(errMsg(err)) + '<br>새로고침 버튼을 다시 눌러보세요.</div>';
+    }
+    function safeRender(containerId, fn) {
+      try { fn(); } catch (e) { console.error(e); showLoadError(containerId, e); }
+    }
+    function fillYearSelect(id) {
+      const sel = document.getElementById(id);
+      if (sel.options.length) return;
+      const thisYear = new Date().getFullYear();
+      for (let y = thisYear - 1; y <= thisYear + 1; y++) sel.add(new Option(y + '년', y, false, y === thisYear));
+    }
+    function fillMonthSelect(id) {
+      const sel = document.getElementById(id);
+      if (sel.options.length) return;
+      const thisMonth = new Date().getMonth() + 1;
+      for (let m = 1; m <= 12; m++) sel.add(new Option(m + '월', m, false, m === thisMonth));
+    }
+
+    // =====================================================================
+    // 데이터 불러오기 (항목 + 설정 + 오늘 완료 목록) — 20초 동안은 다시 안 불러옴
+    // =====================================================================
+    let core = null, coreTime = 0;
+    const CORE_CACHE_MS = 20000;
+    function clearCache() { core = null; coreTime = 0; }
+
+    const DEFAULT_SETTINGS = { 연간임박기준일: 30, 월간임박기준일: 7, 주간임박기준일: 2, 일일임박기준일: 0, 하루빼기적용: true };
+
+    function mapItem(r) {
+      return {
+        id: r.id, category: r.category || '', equipment: r.equipment || '', task: r.task || '',
+        cycleType: r.cycle_type, cycleValue: r.cycle_value, assignee: r.assignee || '',
+        startDate: r.start_date, nextDueRaw: r.next_due, lastDoneDate: r.last_done_date,
+        active: r.status !== '중지', note: r.note || '', minusOneDay: r.minus_one || ''
+      };
+    }
+
+    async function getCore(force) {
+      if (!force && core && Date.now() - coreTime < CORE_CACHE_MS) return core;
+      const [itemsRes, setRes, todayRes, peopleRes] = await Promise.all([
+        sb.from('pm_items').select('*').order('id').limit(5000),
+        sb.from('pm_settings').select('key, value'),
+        sb.from('pm_logs').select('item_id').eq('done_date', todayYMD()).limit(5000),
+        sb.from('profiles').select('name').eq('active', true)
+      ]);
+      for (const r of [itemsRes, setRes, todayRes]) if (r.error) throw r.error;
+
+      const map = {}; (setRes.data || []).forEach(s => map[s.key] = s.value);
+      const num = (k, def) => { const v = map[k]; return (v === undefined || v === '' || isNaN(Number(v))) ? def : Number(v); };
+      const raw = map['다음예정일 하루빼기 적용'];
+      const settings = {
+        연간임박기준일: num('연간임박기준일', 30), 월간임박기준일: num('월간임박기준일', 7),
+        주간임박기준일: num('주간임박기준일', 2), 일일임박기준일: num('일일임박기준일', 0),
+        하루빼기적용: String(raw === undefined || raw === '' ? 'Y' : raw).trim().toUpperCase() !== 'N',
+        raw: map
+      };
+
+      const items = (itemsRes.data || []).map(mapItem);
+      core = {
+        items,
+        itemById: Object.fromEntries(items.map(i => [i.id, i])),
+        settings,
+        doneTodaySet: new Set((todayRes.data || []).map(r => r.item_id))
+      };
+      coreTime = Date.now();
+
+      // 담당자 자동완성 목록 (등록된 사용자 이름 + 항목에 적힌 담당자)
+      const people = new Set(items.map(i => i.assignee).filter(Boolean));
+      (peopleRes.data || []).forEach(p => p.name && people.add(p.name));
+      document.getElementById('people-list').innerHTML = [...people].sort().map(n => `<option value="${esc(n)}">`).join('');
+      return core;
+    }
+
+    // =====================================================================
+    // 주기 계산 (구글시트 버전과 동일한 규칙)
+    // =====================================================================
+    function resolveMinusOneDay_(항목별설정값, settings) {
+      const v = String(항목별설정값 || '').trim().toUpperCase();
+      if (v === 'Y') return true;
+      if (v === 'N') return false;
+      return settings.하루빼기적용;
+    }
+
+    function 임박기준일_(주기구분, settings) {
+      switch (주기구분) {
+        case '연간': return settings.연간임박기준일;
+        case '월간': return settings.월간임박기준일;
+        case '주간': return settings.주간임박기준일;
+        case '일일': return settings.일일임박기준일;
+        default: return 7;
+      }
+    }
+
+    function stripTime_(date) { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
+
+    function calcNextDue_(기준일, 주기구분, 주기값, 하루빼기적용) {
+      const d = stripTime_(기준일);
+      const n = Number(주기값) || 1;
+      switch (주기구분) {
+        case '연간': d.setFullYear(d.getFullYear() + n); break;
+        case '월간': d.setMonth(d.getMonth() + n); break;
+        case '주간': d.setDate(d.getDate() + 7 * n); break;
+        case '일일': d.setDate(d.getDate() + n); return d; // 일일 주기는 하루빼기 적용 안 함
+        default: d.setDate(d.getDate() + n); return d;
+      }
+      if (하루빼기적용 !== false) d.setDate(d.getDate() - 1);
+      return d;
+    }
+
+    function daysBetween_(from, to) {
+      const MS = 24 * 60 * 60 * 1000;
+      const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+      const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+      return Math.round((b - a) / MS);
+    }
+
+    function getStatus_(다음예정일, 주기구분, settings) {
+      const diff = daysBetween_(new Date(), 다음예정일);
+      if (diff < 0) return { status: '지연', daysLeft: diff };
+      if (diff <= 임박기준일_(주기구분, settings)) return { status: '임박', daysLeft: diff };
+      return { status: '정상', daysLeft: diff };
+    }
+
+    function cycleLabel_(주기구분, 주기값) {
+      const n = Number(주기값) || 1;
+      switch (주기구분) {
+        case '연간': return n === 1 ? '1회/년' : n + '년마다';
+        case '월간': return n === 1 ? '1회/월' : n + '개월마다';
+        case '주간': return n === 1 ? '1회/주' : n + '주마다';
+        case '일일': return n === 1 ? '매일' : n + '일마다';
+        default: return 주기구분;
+      }
+    }
+
+    // 대시보드용 상태 계산
+    function computeDashboard(c) {
+      const items = [], summary = { 지연: 0, 임박: 0, 정상: 0 };
+      c.items.forEach(it => {
+        if (!it.active) return;
+        const start = parseYMD(it.startDate);
+        let next = parseYMD(it.nextDueRaw);
+        if (!next && start) next = calcNextDue_(start, it.cycleType, it.cycleValue, resolveMinusOneDay_(it.minusOneDay, c.settings));
+
+        // 한 번도 완료한 적 없는 항목은 시작기준일 기준, 시작기준일이 오늘/미래인 항목도 시작기준일 기준
+        // (단, 오늘 이미 완료한 항목은 제외) — 구글시트 버전과 같은 규칙
+        let 기준일 = next;
+        if (start && !it.lastDoneDate) 기준일 = start;
+        else if (start && !c.doneTodaySet.has(it.id) && daysBetween_(start, new Date()) <= 0) 기준일 = start;
+
+        const st = 기준일 ? getStatus_(기준일, it.cycleType, c.settings) : { status: '정상', daysLeft: null };
+        summary[st.status]++;
+        items.push({
+          ...it,
+          lastDate: it.startDate || '',
+          nextDue: 기준일 ? toYMD(기준일) : '',
+          status: st.status,
+          daysLeft: st.daysLeft
+        });
+      });
+      items.sort((a, b) => (a.daysLeft ?? 999999) - (b.daysLeft ?? 999999));
+      return { items, summary };
+    }
+
+    // =====================================================================
+    // 탭 전환
+    // =====================================================================
+    const tabLoaders = {
+      today: () => loadToday(), dashboard: () => loadDashboard(), annual: () => loadAnnual(),
+      monthcal: () => loadMonthCal(), history: () => loadHistory(), manage: () => loadManage(),
+      print: () => loadPrint(), admin: () => loadAdmin()
+    };
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + tab));
+      tabLoaders[tab] && tabLoaders[tab]();
+    }
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+    // =====================================================================
+    // 분류/담당자 복수 선택 드롭다운
+    // =====================================================================
+    const selections = {};
+    function sel(prefix) { return selections[prefix] || (selections[prefix] = new Set()); }
+
+    function initMultiSelectToggle(prefix) {
+      const toggle = document.getElementById(prefix + '-toggle');
+      const panel = document.getElementById(prefix + '-panel');
+      toggle.addEventListener('click', e => {
+        e.stopPropagation();
+        const willOpen = !panel.classList.contains('open');
+        closeAllMultiSelects();
+        if (willOpen) panel.classList.add('open');
+      });
+      panel.addEventListener('click', e => e.stopPropagation());
+    }
+    function closeAllMultiSelects() { document.querySelectorAll('.multiselect-panel').forEach(p => p.classList.remove('open')); }
+    document.addEventListener('click', closeAllMultiSelects);
+
+    function updateMultiSelectLabel(prefix) {
+      const s = sel(prefix);
+      const noun = prefix.includes('assignee') ? '담당자' : '분류';
+      const toggle = document.getElementById(prefix + '-toggle');
+      if (s.size === 0) toggle.textContent = '전체 ' + noun + ' ▾';
+      else if (s.size === 1) toggle.textContent = [...s][0] + ' ▾';
+      else toggle.textContent = s.size + '개 ' + noun + ' ▾';
+    }
+
+    function renderMultiSelectOptions(prefix, values, onChange) {
+      const s = sel(prefix);
+      [...s].forEach(c => { if (!values.includes(c)) s.delete(c); });
+      const panel = document.getElementById(prefix + '-panel');
+      panel.innerHTML = values.length
+        ? values.map((c, idx) => `<label class="ms-option"><input type="checkbox" data-idx="${idx}" ${s.has(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')
+        : '<div style="padding:8px;color:#888;font-size:12px;">항목 없음</div>';
+      panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const v = values[Number(cb.dataset.idx)];
+          if (cb.checked) s.add(v); else s.delete(v);
+          updateMultiSelectLabel(prefix);
+          onChange();
+        });
+      });
+      updateMultiSelectLabel(prefix);
+    }
+    const inSel = (prefix, v) => sel(prefix).size === 0 || sel(prefix).has(v);
+    const uniqSorted = arr => [...new Set(arr.filter(Boolean))].sort();
+
+    function renderGroupedItems_(items, rowFn) {
+      if (!items.length) return '';
+      const groups = {};
+      items.forEach(i => { const cat = i.category || '미분류'; (groups[cat] = groups[cat] || []).push(i); });
+      return Object.keys(groups).sort().map(cat => `
+        <h3 style="margin:18px 0 6px;font-size:14px;color:#2c5aa0;">${esc(cat)}</h3>
+        ${groups[cat].map(rowFn).join('')}
+      `).join('');
+    }
+
+    // =====================================================================
+    // 오늘 할일
+    // =====================================================================
+    let dash = null; // computeDashboard 결과
+
+    async function refreshDash(force) {
+      const c = await getCore(force);
+      dash = computeDashboard(c);
+      return dash;
+    }
+
+    async function loadToday(force) {
+      if (!dash || force || Date.now() - coreTime >= CORE_CACHE_MS) document.getElementById('today-list').innerHTML = '<div class="loading">불러오는 중...</div>';
+      try { await refreshDash(force); safeRender('today-list', renderTodayList); }
+      catch (e) { showLoadError('today-list', e); }
+    }
+
+    function todayRow_(i) {
+      return `
+        <div class="item-row status-${i.status}">
+          <div class="item-main">
+            <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
+            <div class="item-meta">${esc(i.cycleType)} 주기 · 담당: ${esc(i.assignee || '미지정')} · 예정일: ${i.nextDue}
+              ${i.daysLeft < 0 ? ` · <b style="color:#d93025;">${Math.abs(i.daysLeft)}일 밀림</b>`
+                : i.daysLeft === 0 ? ' · 오늘 마감' : ` · D-${i.daysLeft}`}
+            </div>
+          </div>
+          <span class="badge badge-${i.status}">${i.status}</span>
+          <button class="btn" onclick="openCompleteModal('${esc(i.id)}')">✅ 완료 처리</button>
+        </div>`;
+    }
+
+    function renderTodayList() {
+      if (!dash) return;
+      const searchF = document.getElementById('today-search').value.trim().toLowerCase();
+      const matches = i => !searchF || (i.equipment + ' ' + i.task).toLowerCase().includes(searchF);
+
+      const items = dash.items.filter(i => i.daysLeft !== null && i.daysLeft <= 0 && matches(i)).sort((a, b) => a.daysLeft - b.daysLeft);
+      const upcoming = dash.items.filter(i => i.status === '임박' && i.daysLeft !== null && i.daysLeft > 0 && matches(i)).sort((a, b) => a.daysLeft - b.daysLeft);
+
+      const overdueCount = items.filter(i => i.daysLeft < 0).length;
+      document.getElementById('today-header').innerHTML = items.length ? `
+        <div class="card overdue" style="max-width:320px;">
+          <div class="num">${items.length}</div>
+          <div class="label">🎯 오늘의 할일${overdueCount ? ` (밀린 항목 ${overdueCount}개 포함)` : ''}</div>
+        </div>` : '';
+
+      const mainHtml = items.length
+        ? renderGroupedItems_(items, todayRow_)
+        : `<div class="empty-state">${searchF ? '검색 결과가 없습니다.' : '🎉 오늘 할 일을 모두 끝냈습니다!'}</div>`;
+      const upcomingHtml = upcoming.length ? `
+        <details style="margin-top:20px;">
+          <summary style="cursor:pointer;font-size:13px;color:#666;padding:6px 0;">
+            🔜 곧 다가오는 항목 ${upcoming.length}개 (미리 했으면 여기서 바로 완료 처리하세요)
+          </summary>
+          <div class="item-list" style="margin-top:8px;">${renderGroupedItems_(upcoming, todayRow_)}</div>
+        </details>` : '';
+      document.getElementById('today-list').innerHTML = mainHtml + upcomingHtml;
+    }
+    document.getElementById('today-search').addEventListener('input', renderTodayList);
+
+    // =====================================================================
+    // 대시보드
+    // =====================================================================
+    async function loadDashboard(force) {
+      if (force) document.getElementById('item-list').innerHTML = '<div class="loading">불러오는 중...</div>';
+      try { await refreshDash(force); safeRender('item-list', renderDashboard); }
+      catch (e) { showLoadError('item-list', e); }
+    }
+
+    function renderDashboard() {
+      document.getElementById('sum-지연').textContent = dash.summary.지연;
+      document.getElementById('sum-임박').textContent = dash.summary.임박;
+      document.getElementById('sum-정상').textContent = dash.summary.정상;
+      renderMultiSelectOptions('filter-category', uniqSorted(dash.items.map(i => i.category)), renderItemList);
+      renderMultiSelectOptions('filter-assignee', uniqSorted(dash.items.map(i => i.assignee)), renderItemList);
+      renderItemList();
+    }
+
+    function renderItemList() {
+      if (!dash) return;
+      const statusF = document.getElementById('filter-status').value;
+      const cycleF = document.getElementById('filter-cycle').value;
+      const searchF = document.getElementById('dashboard-search').value.trim().toLowerCase();
+      const filtered = dash.items.filter(i =>
+        (!statusF || i.status === statusF) && (!cycleF || i.cycleType === cycleF) &&
+        inSel('filter-category', i.category) && inSel('filter-assignee', i.assignee) &&
+        (!searchF || (i.equipment + ' ' + i.task).toLowerCase().includes(searchF)));
+
+      const list = document.getElementById('item-list');
+      if (!filtered.length) { list.innerHTML = '<div class="empty-state">해당하는 항목이 없습니다.</div>'; return; }
+      list.innerHTML = renderGroupedItems_(filtered, i => `
+        <div class="item-row status-${i.status}">
+          <div class="item-main">
+            <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
+            <div class="item-meta">${esc(i.cycleType)} 주기 · 담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
+              ${i.daysLeft === null ? '' : (i.daysLeft >= 0 ? `(D-${i.daysLeft})` : `(${Math.abs(i.daysLeft)}일 지남)`)}
+            </div>
+          </div>
+          <span class="badge badge-${i.status}">${i.status}</span>
+          <button class="btn" onclick="openCompleteModal('${esc(i.id)}')">완료 처리</button>
+        </div>`);
+    }
+
+    ['filter-status', 'filter-cycle'].forEach(id => document.getElementById(id).addEventListener('change', () => { updateStatusCardHighlight(); renderItemList(); }));
+    document.getElementById('dashboard-search').addEventListener('input', renderItemList);
+
+    function toggleStatusFilter(status) {
+      const s = document.getElementById('filter-status');
+      s.value = (s.value === status) ? '' : status;
+      updateStatusCardHighlight();
+      renderItemList();
+    }
+    function updateStatusCardHighlight() {
+      const cur = document.getElementById('filter-status').value;
+      ['지연', '임박', '정상'].forEach(s => document.getElementById('card-' + s).classList.toggle('selected', cur === s));
+    }
+
+    // =====================================================================
+    // 완료 처리 (사진은 저장소에 올리고, 이력 기록 + 다음예정일 갱신은 한 번에)
+    // =====================================================================
+    let completingItem = null;
+
+    function openCompleteModal(id) {
+      const item = (dash && dash.items.find(i => i.id === id)) || (core && core.itemById[id]);
+      if (!item) return alert('항목을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+      completingItem = item;
+      document.getElementById('complete-title').textContent = `${item.equipment} — ${item.task}`;
+      document.getElementById('c-date').value = todayYMD();
+      document.getElementById('c-assignee').value = (me && me.name) || item.assignee || '';
+      document.getElementById('c-result').value = '정상';
+      document.getElementById('c-memo').value = '';
+      document.getElementById('c-photo').value = '';
+      openModal('complete-modal');
+    }
+
+    async function submitComplete() {
+      const btn = document.getElementById('complete-submit-btn');
+      const doneDate = document.getElementById('c-date').value || todayYMD();
+      btn.disabled = true;
+      try {
+        let photoPath = null;
+        const file = document.getElementById('c-photo').files[0];
+        if (file) {
+          btn.textContent = '사진 올리는 중...';
+          const blob = await compressImage(file);
+          const now = new Date();
+          photoPath = `logs/${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${completingItem.id}_${Date.now()}.jpg`;
+          const up = await sb.storage.from('pm-photos').upload(photoPath, blob, { contentType: 'image/jpeg', upsert: false });
+          if (up.error) throw new Error('사진 업로드 실패: ' + up.error.message);
+        }
+        btn.textContent = '처리 중...';
+        const c = await getCore();
+        const nextDue = calcNextDue_(parseYMD(doneDate), completingItem.cycleType, completingItem.cycleValue,
+          resolveMinusOneDay_(completingItem.minusOneDay, c.settings));
+        const { error } = await sb.rpc('pm_complete_item', {
+          p_item_id: completingItem.id,
+          p_done_date: doneDate,
+          p_next_due: toYMD(nextDue),
+          p_assignee: document.getElementById('c-assignee').value.trim(),
+          p_result: document.getElementById('c-result').value,
+          p_memo: document.getElementById('c-memo').value.trim(),
+          p_photo_path: photoPath
+        });
+        if (error) throw error;
+
+        closeModal('complete-modal');
+        await refreshDash(true);
+        safeRender('today-list', renderTodayList);
+        safeRender('item-list', renderDashboard);
+      } catch (e) {
+        alert('완료 처리 실패: ' + errMsg(e));
+      } finally {
+        btn.disabled = false; btn.textContent = '완료 처리';
+      }
+    }
+
+    // 휴대폰 사진은 원본이 매우 커서 그대로 올리면 느리고 저장공간도 금방 차므로, 긴 변 1280px로 줄여 JPEG로 압축
+    // (createImageBitmap의 resize 옵션을 쓰면 원본을 통째로 메모리에 올리지 않아 휴대폰에서도 안전)
+    async function compressImage(file) {
+      const MAX = 1280, QUALITY = 0.72;
+      const toBlob = (canvas) => new Promise((res, rej) => canvas.toBlob(b => b ? res(b) : rej('사진 변환 실패'), 'image/jpeg', QUALITY));
+      const draw = (src, w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(src, 0, 0, w, h); return cv; };
+
+      if (window.createImageBitmap) {
+        try {
+          const bmp = await createImageBitmap(file, { resizeWidth: MAX, resizeQuality: 'medium' });
+          let w = bmp.width, h = bmp.height;
+          // 세로 사진이면 높이 기준으로 한 번 더 줄임
+          if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          const blob = await toBlob(draw(bmp, w, h));
+          bmp.close && bmp.close();
+          return blob;
+        } catch (e) { /* 아래 예전 방식으로 재시도 */ }
+      }
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej('사진 파일을 읽을 수 없습니다.'); im.src = url; });
+        let w = img.width, h = img.height;
+        const scale = Math.min(1, MAX / Math.max(w, h));
+        return await toBlob(draw(img, Math.round(w * scale), Math.round(h * scale)));
+      } finally { URL.revokeObjectURL(url); }
+    }
+
+    // =====================================================================
+    // 연간계획
+    // =====================================================================
+    let annualRows = [];
+
+    function buildAnnualMatrix(c, year) {
+      const rows = [];
+      c.items.forEach(it => {
+        if (!it.active) return;
+        if (it.cycleType !== '연간' && it.cycleType !== '월간') return;
+        const baseDate = parseYMD(it.startDate || it.nextDueRaw);
+        if (!baseDate) return;
+        const n = Number(it.cycleValue) || 1;
+        const months = new Array(12).fill(false);
+        if (it.cycleType === '월간') {
+          const startAbsMonth = baseDate.getFullYear() * 12 + baseDate.getMonth();
+          for (let m = 0; m < 12; m++) {
+            const diff = (year * 12 + m) - startAbsMonth;
+            if (((diff % n) + n) % n === 0) months[m] = true;
+          }
+        } else {
+          const diff = year - baseDate.getFullYear();
+          if (((diff % n) + n) % n === 0) months[baseDate.getMonth()] = true;
+        }
+        rows.push({ ...it, months });
+      });
+      return rows;
+    }
+
+    async function loadAnnual(force) {
+      fillYearSelect('annual-year');
+      document.getElementById('annual-matrix').innerHTML = '<div class="loading">불러오는 중...</div>';
+      try {
+        const c = await getCore(force);
+        safeRender('annual-matrix', () => {
+          annualRows = buildAnnualMatrix(c, Number(document.getElementById('annual-year').value));
+          renderMultiSelectOptions('annual-category', uniqSorted(annualRows.map(r => r.category)), renderAnnual);
+          renderAnnual();
+        });
+      } catch (e) { showLoadError('annual-matrix', e); }
+    }
+    document.getElementById('annual-year').addEventListener('change', () => loadAnnual());
+    document.getElementById('annual-month').addEventListener('change', () => renderAnnual());
+
+    function matrixRowAttrs(id) {
+      return isAdmin() ? `style="cursor:pointer;" onclick="openEditItemModal('${esc(id)}')" title="클릭하면 이 항목의 일정(시작기준일)을 옮길 수 있어요"` : '';
+    }
+
+    function renderAnnual() {
+      const container = document.getElementById('annual-matrix');
+      const monthF = document.getElementById('annual-month').value;
+      const rows = annualRows.filter(r => inSel('annual-category', r.category) && (!monthF || r.months[Number(monthF) - 1]));
+      if (!rows.length) { container.innerHTML = '<div class="empty-state">해당하는 연간/월간 주기 항목이 없습니다.</div>'; return; }
+
+      const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+      const groups = {};
+      rows.forEach(r => { const cat = r.category || '미분류'; (groups[cat] = groups[cat] || []).push(r); });
+      const colgroup = '<colgroup><col class="col-name"><col class="col-task">' + months.map(() => '<col class="col-cell">').join('') + '</colgroup>';
+      const minWidth = 260 + months.length * 40;
+
+      let html = '';
+      Object.keys(groups).sort().forEach(cat => {
+        html += `<h3 style="margin:18px 0 6px;font-size:14px;color:#2c5aa0;">${esc(cat)}</h3>`;
+        html += `<div class="matrix-wrap"><table class="matrix" style="min-width:${minWidth}px;">${colgroup}<tr><th>설비</th><th>항목</th>${months.map(m => `<th>${m}</th>`).join('')}</tr>`;
+        groups[cat].forEach(r => {
+          html += `<tr ${matrixRowAttrs(r.id)}><td class="eq-name">${esc(r.equipment)}</td><td>${esc(r.task)}</td>`;
+          r.months.forEach(m => { html += `<td class="${m ? 'mark' : ''}">${m ? '●' : ''}</td>`; });
+          html += '</tr>';
+        });
+        html += '</table></div>';
+      });
+      container.innerHTML = html;
+    }
+
+    // =====================================================================
+    // 월간상세
+    // =====================================================================
+    let monthcalData = null;
+
+    function buildMonthlyCalendar(c, year, month) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const rows = [];
+      c.items.forEach(it => {
+        if (!it.active) return;
+        const baseDate = parseYMD(it.startDate || it.nextDueRaw);
+        if (!baseDate) return;
+        const n = Number(it.cycleValue) || 1;
+        const days = new Array(daysInMonth).fill(false);
+        if (it.cycleType === '월간') {
+          const diff = (year * 12 + (month - 1)) - (baseDate.getFullYear() * 12 + baseDate.getMonth());
+          if (((diff % n) + n) % n === 0) days[Math.min(baseDate.getDate(), daysInMonth) - 1] = true;
+        } else if (it.cycleType === '연간') {
+          if (baseDate.getMonth() === month - 1) {
+            const diffY = year - baseDate.getFullYear();
+            if (((diffY % n) + n) % n === 0) days[Math.min(baseDate.getDate(), daysInMonth) - 1] = true;
+          }
+        } else if (it.cycleType === '주간' || it.cycleType === '일일') {
+          const interval = it.cycleType === '주간' ? 7 * n : n;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const diffDays = daysBetween_(baseDate, new Date(year, month - 1, d));
+            if (((diffDays % interval) + interval) % interval === 0) days[d - 1] = true;
+          }
+        }
+        if (days.some(Boolean)) rows.push({ ...it, category: it.category || '미분류', days });
+      });
+      return { daysInMonth, rows };
+    }
+
+    async function loadMonthCal(force) {
+      fillYearSelect('cal-year'); fillMonthSelect('cal-month');
+      document.getElementById('monthcal-list').innerHTML = '<div class="loading">불러오는 중...</div>';
+      try {
+        const c = await getCore(force);
+        safeRender('monthcal-list', () => {
+          monthcalData = buildMonthlyCalendar(c, Number(document.getElementById('cal-year').value), Number(document.getElementById('cal-month').value));
+          renderMultiSelectOptions('cal-category', uniqSorted(monthcalData.rows.map(r => r.category)), renderMonthCal);
+          renderMonthCal();
+        });
+      } catch (e) { showLoadError('monthcal-list', e); }
+    }
+    document.getElementById('cal-year').addEventListener('change', () => loadMonthCal());
+    document.getElementById('cal-month').addEventListener('change', () => loadMonthCal());
+
+    function renderMonthCal() {
+      const container = document.getElementById('monthcal-list');
+      if (!monthcalData) return;
+      const daysInMonth = monthcalData.daysInMonth;
+      const rows = monthcalData.rows.filter(r => inSel('cal-category', r.category));
+      if (!rows.length) { container.innerHTML = '<div class="empty-state">해당 월에 예정된 점검이 없습니다.</div>'; return; }
+
+      const dayLabels = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+      const groups = {};
+      rows.forEach(r => (groups[r.category] = groups[r.category] || []).push(r));
+      const colgroup = '<colgroup><col class="col-name"><col class="col-task">' + dayLabels.map(() => '<col class="col-cell">').join('') + '</colgroup>';
+      const minWidth = 260 + dayLabels.length * 24;
+
+      let html = '';
+      Object.keys(groups).sort().forEach(cat => {
+        html += `<h3 style="margin:18px 0 6px;font-size:14px;color:#2c5aa0;">${esc(cat)}</h3>`;
+        html += `<div class="matrix-wrap"><table class="matrix" style="font-size:11px;min-width:${minWidth}px;">${colgroup}<tr><th>설비</th><th>항목</th>${dayLabels.map(d => `<th>${d}</th>`).join('')}</tr>`;
+        groups[cat].forEach(r => {
+          html += `<tr ${matrixRowAttrs(r.id)}><td class="eq-name">${esc(r.equipment)}</td><td>${esc(r.task)}</td>`;
+          r.days.forEach(m => { html += `<td class="${m ? 'mark' : ''}">${m ? '●' : ''}</td>`; });
+          html += '</tr>';
+        });
+        html += '</table></div>';
+      });
+      container.innerHTML = html;
+    }
+
+    // =====================================================================
+    // 점검이력
+    // =====================================================================
+    let historyRows = [];
+
+    async function loadHistory() {
+      const container = document.getElementById('history-list');
+      container.innerHTML = '<div class="loading">불러오는 중...</div>';
+      try {
+        const c = await getCore();
+        const eqSel = document.getElementById('hist-equipment');
+        const curEq = eqSel.value;
+        eqSel.innerHTML = '<option value="">전체 설비</option>' + uniqSorted(c.items.map(i => i.equipment)).map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+        eqSel.value = curEq;
+
+        const equipment = eqSel.value;
+        const from = document.getElementById('hist-from').value;
+        const to = document.getElementById('hist-to').value;
+        const explicit = !!(equipment || from || to);
+
+        let q = sb.from('pm_logs')
+          .select('id, item_id, equipment, task, done_date, assignee, result, memo, photo_path, has_photo, created_at, creator:profiles(name)')
+          .order('done_date', { ascending: false })
+          .order('created_at', { ascending: false });
+        if (equipment) q = q.eq('equipment', equipment);
+        if (from) q = q.gte('done_date', from);
+        if (to) q = q.lte('done_date', to);
+        q = q.limit(explicit ? 5000 : 500);
+        const { data, error } = await q;
+        if (error) throw error;
+
+        historyRows = data.map(r => ({ ...r, category: (c.itemById[r.item_id] || {}).category || '' }));
+        safeRender('history-list', renderHistoryList);
+      } catch (e) { showLoadError('history-list', e); }
+    }
+
+    function renderHistoryList() {
+      const searchF = document.getElementById('hist-search').value.trim().toLowerCase();
+      const rows = historyRows.filter(r => !searchF || (r.equipment + ' ' + r.task).toLowerCase().includes(searchF));
+      const container = document.getElementById('history-list');
+      if (!rows.length) { container.innerHTML = `<div class="empty-state">${searchF ? '검색 결과가 없습니다.' : '이력이 없습니다.'}</div>`; return; }
+      container.innerHTML = renderGroupedItems_(rows, r => {
+        const by = r.creator && r.creator.name && r.creator.name !== r.assignee ? ` <span style="color:#999;">(입력: ${esc(r.creator.name)})</span>` : '';
+        return `
+        <div class="history-row">
+          <b>${esc(r.equipment)}</b> — ${esc(r.task)} · ${r.done_date} · 담당: ${esc(r.assignee || '-')}${by} · 결과: ${esc(r.result)}
+          ${r.memo ? `<br><span style="color:#666;">메모: ${esc(r.memo)}</span>` : ''}
+          ${r.has_photo ? `<br><span id="photo-${esc(r.id)}" class="photo-toggle" onclick="loadHistoryPhoto('${esc(r.id)}')">📷 사진 보기</span>` : ''}
+        </div>`;
+      });
+    }
+    document.getElementById('hist-search').addEventListener('input', renderHistoryList);
+
+    async function loadHistoryPhoto(logId) {
+      const el = document.getElementById('photo-' + logId);
+      if (!el || el.dataset.loaded === '1') return;
+      el.textContent = '불러오는 중...';
+      try {
+        const row = historyRows.find(r => r.id === logId);
+        let src = '';
+        if (row && row.photo_path) {
+          const { data, error } = await sb.storage.from('pm-photos').createSignedUrl(row.photo_path, 60 * 60);
+          if (error) throw error;
+          src = data.signedUrl;
+        } else {
+          const { data, error } = await sb.from('pm_logs').select('photo_data').eq('id', logId).single();
+          if (error) throw error;
+          src = data.photo_data || '';
+        }
+        if (!src) { el.textContent = '사진을 찾을 수 없습니다.'; return; }
+        el.onclick = null;
+        el.dataset.loaded = '1';
+        el.innerHTML = `<img src="${esc(src)}" class="history-photo" onclick="event.stopPropagation(); this.classList.toggle('enlarged')" title="클릭하면 크게 볼 수 있어요">`;
+      } catch (e) {
+        el.textContent = '사진을 불러오지 못했습니다: ' + errMsg(e);
+      }
+    }
+
+    // =====================================================================
+    // 항목관리 (관리자)
+    // =====================================================================
+    async function loadManage(force) {
+      try {
+        await refreshDash(force);
+        safeRender('manage-list', () => {
+          const categories = uniqSorted(dash.items.map(i => i.category));
+          renderMultiSelectOptions('manage-category', categories, renderManageList);
+          renderMultiSelectOptions('manage-assignee', uniqSorted(dash.items.map(i => i.assignee)), renderManageList);
+          document.getElementById('category-list').innerHTML = categories.map(c => `<option value="${esc(c)}">`).join('');
+          renderManageList();
+        });
+      } catch (e) { showLoadError('manage-list', e); }
+    }
+    document.getElementById('manage-search').addEventListener('input', renderManageList);
+    document.getElementById('manage-filter-cycle').addEventListener('change', renderManageList);
+
+    function renderManageList() {
+      if (!dash) return;
+      const cycleF = document.getElementById('manage-filter-cycle').value;
+      const searchF = document.getElementById('manage-search').value.trim().toLowerCase();
+      const filtered = dash.items.filter(i => (!cycleF || i.cycleType === cycleF) &&
+        inSel('manage-category', i.category) && inSel('manage-assignee', i.assignee) &&
+        (!searchF || (i.equipment + ' ' + i.task).toLowerCase().includes(searchF)));
+      const list = document.getElementById('manage-list');
+      if (!filtered.length) { list.innerHTML = '<div class="empty-state">해당하는 항목이 없습니다.</div>'; return; }
+      list.innerHTML = renderGroupedItems_(filtered, i => `
+        <div class="item-row status-${i.status}">
+          <div class="item-main">
+            <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
+            <div class="item-meta">${esc(i.id)} · ${esc(i.cycleType)}(${i.cycleValue}) · 담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
+              ${i.minusOneDay === 'Y' ? ' · <span style="color:#2c5aa0;">하루빼기 개별적용</span>' : ''}
+              ${i.minusOneDay === 'N' ? ' · <span style="color:#d93025;">하루빼기 개별미적용</span>' : ''}
+            </div>
+          </div>
+          <button class="btn secondary" onclick="openEditItemModal('${esc(i.id)}')">수정</button>
+          <button class="btn danger" onclick="deactivate('${esc(i.id)}')">중지</button>
+        </div>`);
+    }
+
+    let editingItemId = null;
+
+    function openAddItemModal() {
+      editingItemId = null;
+      document.getElementById('item-modal-title').textContent = '새 항목 추가';
+      ['i-category', 'i-equipment', 'i-task', 'i-assignee', 'i-note'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('i-cycletype').value = '월간';
+      document.getElementById('i-cyclevalue').value = 1;
+      document.getElementById('i-minus1').value = '';
+      document.getElementById('i-startdate').value = todayYMD();
+      openModal('item-modal');
+    }
+
+    function openEditItemModal(id) {
+      if (!isAdmin()) return;
+      const item = core && core.itemById[id];
+      if (!item) return alert('항목을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+      editingItemId = id;
+      document.getElementById('item-modal-title').textContent = '항목 수정 (' + id + ')';
+      document.getElementById('i-category').value = item.category;
+      document.getElementById('i-equipment').value = item.equipment;
+      document.getElementById('i-task').value = item.task;
+      document.getElementById('i-cycletype').value = item.cycleType;
+      document.getElementById('i-cyclevalue').value = item.cycleValue;
+      document.getElementById('i-minus1').value = item.minusOneDay;
+      document.getElementById('i-assignee').value = item.assignee;
+      document.getElementById('i-startdate').value = item.startDate || '';
+      document.getElementById('i-note').value = item.note;
+      openModal('item-modal');
+    }
+
+    async function submitItem() {
+      const v = id => document.getElementById(id).value.trim();
+      const row = {
+        category: v('i-category'), equipment: v('i-equipment'), task: v('i-task'),
+        cycle_type: v('i-cycletype'), cycle_value: Math.max(1, parseInt(v('i-cyclevalue'), 10) || 1),
+        minus_one: v('i-minus1'), assignee: v('i-assignee'), note: v('i-note'),
+        start_date: v('i-startdate') || todayYMD()
+      };
+      if (!row.equipment || !row.task) return alert('설비명과 점검 항목은 필수입니다.');
+
+      const btn = document.getElementById('item-submit-btn');
+      btn.disabled = true;
+      try {
+        const c = await getCore();
+        row.next_due = toYMD(calcNextDue_(parseYMD(row.start_date), row.cycle_type, row.cycle_value, resolveMinusOneDay_(row.minus_one, c.settings)));
+        const res = editingItemId
+          ? await sb.from('pm_items').update(row).eq('id', editingItemId).select()
+          : await sb.from('pm_items').insert({ ...row, status: '사용' }).select();
+        if (res.error) throw res.error;
+        if (!res.data || !res.data.length) throw new Error('저장 권한이 없습니다 (관리자만 가능).');
+        closeModal('item-modal');
+        await afterItemChange();
+      } catch (e) {
+        alert('저장 실패: ' + errMsg(e));
+      } finally { btn.disabled = false; }
+    }
+
+    async function deactivate(id) {
+      if (!confirm('이 항목을 중지하시겠습니까? (기록은 남습니다)')) return;
+      const { error } = await sb.from('pm_items').update({ status: '중지' }).eq('id', id);
+      if (error) return alert('중지 처리 실패: ' + error.message);
+      await afterItemChange();
+    }
+
+    async function afterItemChange() {
+      await refreshDash(true);
+      const active = document.querySelector('.tab.active').id.replace('tab-', '');
+      if (active === 'manage') loadManage();
+      else if (active === 'annual') loadAnnual();
+      else if (active === 'monthcal') loadMonthCal();
+    }
+
+    // =====================================================================
+    // 월간출력
+    // =====================================================================
+    let printLastData = null, printLastYear = null, printLastMonth = null;
+
+    async function buildMonthlyPrintData(c, year, month) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const rows = [];
+      c.items.forEach(it => {
+        if (!it.active) return;
+        let include = false;
+        if (it.cycleType === '월간' || it.cycleType === '주간' || it.cycleType === '일일') include = true;
+        else if (it.cycleType === '연간') {
+          let cursor = parseYMD(it.startDate || it.nextDueRaw);
+          for (let i = 0; cursor && i < 60; i++) {
+            if (cursor.getFullYear() > year) break;
+            if (cursor.getFullYear() === year && cursor.getMonth() === month - 1) { include = true; break; }
+            cursor = calcNextDue_(cursor, it.cycleType, it.cycleValue, resolveMinusOneDay_(it.minusOneDay, c.settings));
+          }
+        }
+        if (!include) return;
+        rows.push({ id: it.id, category: it.category || '미분류', equipment: it.equipment, task: it.task,
+          cycleLabel: cycleLabel_(it.cycleType, it.cycleValue), assignee: it.assignee, note: it.note });
+      });
+      rows.sort((a, b) => (a.category + a.equipment).localeCompare(b.category + b.equipment, 'ko'));
+
+      // 이번 달에 이미 완료 처리된 기록을 날짜 칸에 표시 (정상→O, 그 외→X)
+      const first = `${year}-${pad2(month)}-01`, last = `${year}-${pad2(month)}-${pad2(daysInMonth)}`;
+      const { data, error } = await sb.from('pm_logs').select('item_id, done_date, result')
+        .gte('done_date', first).lte('done_date', last).order('created_at').limit(10000);
+      if (error) throw error;
+      const marks = {};
+      data.forEach(l => {
+        const day = Number(l.done_date.slice(8, 10));
+        (marks[l.item_id] = marks[l.item_id] || {})[day] = l.result === '정상' ? 'O' : 'X';
+      });
+      rows.forEach(r => r.marks = marks[r.id] || {});
+      return { rows, daysInMonth };
+    }
+
+    async function loadPrint(force) {
+      fillYearSelect('print-year'); fillMonthSelect('print-month');
+      const plantInput = document.getElementById('print-plant');
+      if (!plantInput.value) plantInput.value = PLANT_NAME;
+      document.getElementById('print-sheet').innerHTML = '<div class="loading">불러오는 중...</div>';
+      try {
+        const c = await getCore(force);
+        printLastYear = Number(document.getElementById('print-year').value);
+        printLastMonth = Number(document.getElementById('print-month').value);
+        printLastData = await buildMonthlyPrintData(c, printLastYear, printLastMonth);
+        safeRender('print-sheet', () => {
+          renderMultiSelectOptions('print-category', uniqSorted(printLastData.rows.map(r => r.category)), renderPrintSheet);
+          renderMultiSelectOptions('print-assignee', uniqSorted(printLastData.rows.map(r => r.assignee)), renderPrintSheet);
+          renderPrintSheet();
+        });
+      } catch (e) { showLoadError('print-sheet', e); }
+    }
+    document.getElementById('print-year').addEventListener('change', () => loadPrint());
+    document.getElementById('print-month').addEventListener('change', () => loadPrint());
+    document.getElementById('print-plant').addEventListener('input', () => printLastData && renderPrintSheet());
+
+    function renderPrintSheet() {
+      const container = document.getElementById('print-sheet');
+      const rows = printLastData.rows.filter(r => inSel('print-category', r.category) && inSel('print-assignee', r.assignee));
+      const year = printLastYear, month = printLastMonth;
+      if (!rows.length) { container.innerHTML = '<div class="empty-state">해당하는 점검 항목이 없습니다.</div>'; return; }
+      const plant = document.getElementById('print-plant').value || PLANT_NAME;
+      const days = Array.from({ length: printLastData.daysInMonth }, (_, i) => i + 1);
+
+      // 공정(카테고리) · 설비명이 같은 연속된 행 병합
+      const catSpan = [], eqSpan = [];
+      for (let i = 0; i < rows.length; i++) {
+        if (i > 0 && rows[i].category === rows[i - 1].category) catSpan.push(0);
+        else { let s = 1; for (let j = i + 1; j < rows.length && rows[j].category === rows[i].category; j++) s++; catSpan.push(s); }
+        if (i > 0 && rows[i].category === rows[i - 1].category && rows[i].equipment === rows[i - 1].equipment) eqSpan.push(0);
+        else { let s = 1; for (let j = i + 1; j < rows.length && rows[j].category === rows[i].category && rows[j].equipment === rows[i].equipment; j++) s++; eqSpan.push(s); }
+      }
+
+      let html = `
+        <div class="print-header">
+          <div class="print-title">${esc(plant)} &nbsp;&nbsp;${year}년&nbsp;&nbsp;${month}월&nbsp;&nbsp;생산설비 점검표</div>
+          <table class="print-approval">
+            <tr><td>결<br>재</td><td>작 성</td><td>검 토</td><td>승 인</td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+          </table>
+        </div>
+        <div class="print-legend">정상 : O, 불량 : X</div>
+        <table class="matrix print-table">
+          <tr><th>공정명</th><th>설비명</th><th>점검내용</th><th>점검주기</th><th colspan="${days.length}">유지 보수 계획</th><th>비고</th></tr>
+          <tr><th></th><th></th><th></th><th></th>${days.map(d => `<th>${d}</th>`).join('')}<th></th></tr>`;
+      rows.forEach((r, i) => {
+        html += '<tr>';
+        if (catSpan[i] > 0) html += `<td rowspan="${catSpan[i]}" class="eq-name">${esc(r.category)}</td>`;
+        if (eqSpan[i] > 0) html += `<td rowspan="${eqSpan[i]}" class="eq-name">${esc(r.equipment)}</td>`;
+        html += `<td>${esc(r.task)}</td><td>${esc(r.cycleLabel)}</td>`;
+        days.forEach(d => {
+          const mark = r.marks[d] || '';
+          html += `<td class="${mark === 'X' ? 'mark-x' : (mark === 'O' ? 'mark-o' : '')}">${mark}</td>`;
+        });
+        html += `<td>${esc(r.note)}</td></tr>`;
+      });
+      container.innerHTML = html + '</table>';
+    }
+
+    // =====================================================================
+    // 설정 / 백업 (관리자)
+    // =====================================================================
+    async function loadAdmin() {
+      if (!isAdmin()) return;
+      try {
+        const c = await getCore(true);
+        ['연간임박기준일', '월간임박기준일', '주간임박기준일', '일일임박기준일'].forEach(k => document.getElementById('s-' + k).value = c.settings[k]);
+        document.getElementById('s-다음예정일 하루빼기 적용').value = c.settings.하루빼기적용 ? 'Y' : 'N';
+      } catch (e) { alert('설정 불러오기 실패: ' + errMsg(e)); }
+    }
+
+    async function saveSettings() {
+      const keys = ['연간임박기준일', '월간임박기준일', '주간임박기준일', '일일임박기준일', '다음예정일 하루빼기 적용'];
+      const rows = keys.map(k => ({ key: k, value: String(document.getElementById('s-' + k).value) }));
+      const { error } = await sb.from('pm_settings').upsert(rows, { onConflict: 'key' });
+      if (error) return alert('저장 실패: ' + error.message);
+      clearCache(); dash = null;
+      alert('설정을 저장했습니다.');
+    }
+
+    async function downloadBackup() {
+      const btn = document.getElementById('backup-btn');
+      btn.disabled = true; btn.textContent = '만드는 중...';
+      try {
+        if (!window.XLSX) {
+          await new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+            s.onload = res; s.onerror = () => rej(new Error('엑셀 변환 도구를 불러오지 못했습니다.'));
+            document.head.appendChild(s);
+          });
+        }
+        const items = await sb.from('pm_items').select('*').order('id').limit(10000);
+        if (items.error) throw items.error;
+        const logs = await sb.from('pm_logs').select('id, item_id, equipment, task, done_date, assignee, result, memo, has_photo, created_at').order('done_date').limit(100000);
+        if (logs.error) throw logs.error;
+
+        const itemSheet = items.data.map(r => ({
+          ID: r.id, 카테고리: r.category, 설비명: r.equipment, 점검정비항목: r.task, 주기구분: r.cycle_type, 주기값: r.cycle_value,
+          담당자: r.assignee, 시작기준일: r.start_date, 다음예정일: r.next_due, 상태: r.status, 비고: r.note, 하루빼기적용: r.minus_one, 마지막완료일: r.last_done_date
+        }));
+        const logSheet = logs.data.map(r => ({
+          이력ID: r.id, 항목ID: r.item_id, 설비명: r.equipment, 점검항목: r.task, 완료일: r.done_date, 담당자: r.assignee,
+          결과: r.result, 메모: r.memo, 사진있음: r.has_photo ? 'Y' : '', 입력시각: new Date(r.created_at).toLocaleString('ko-KR')
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemSheet), '항목마스터');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logSheet), '점검이력');
+        XLSX.writeFile(wb, `설비점검_백업_${todayYMD().replace(/-/g, '')}.xlsx`);
+      } catch (e) {
+        alert('백업 실패: ' + errMsg(e));
+      } finally { btn.disabled = false; btn.textContent = '📥 엑셀 백업 받기'; }
+    }
+
+    // =====================================================================
+    // 시작
+    // =====================================================================
+    ['filter-category', 'filter-assignee', 'annual-category', 'cal-category', 'manage-category', 'manage-assignee', 'print-category', 'print-assignee']
+      .forEach(initMultiSelectToggle);
+    Portal.start({
+      appId: 'pm',
+      title: '예방정비 점검일정관리',
+      onReady: P => {
+        sb = P.sb; me = P.me;
+        document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
+        switchTab('today');
+      }
+    });
+  </script>
+</body>
+</html>
