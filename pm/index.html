@@ -371,7 +371,10 @@
   <div class="modal-overlay" id="complete-modal">
     <div class="modal">
       <h2 id="complete-title">점검 완료 처리</h2>
-      <div class="field"><label>완료일</label><input type="date" id="c-date"></div>
+      <div class="field">
+        <label>완료일</label><input type="date" id="c-date">
+        <div id="c-next-preview" style="font-size:12px;color:#2c5aa0;margin-top:5px;"></div>
+      </div>
       <div class="field">
         <label>담당자</label>
         <input type="text" id="c-assignee" placeholder="이름 입력" list="people-list">
@@ -422,8 +425,15 @@
           <option value="N">이 항목만 미적용 (예: 5/22완료·4개월주기 → 9/22)</option>
         </select>
       </div>
+      <div class="field">
+        <label>일정 기준 (늦게 또는 일찍 완료했을 때)</label>
+        <select id="i-schedmode">
+          <option value="done">완료일 기준 — 다음 일정은 실제 완료한 날부터 계산 (10/2 예정, 10/4 완료, 주간 → 10/11)</option>
+          <option value="fixed">원래 일정 유지 — 늦게 해도 정해진 날짜대로 (10/2 예정, 10/4 완료, 주간 → 10/9)</option>
+        </select>
+      </div>
       <div class="field"><label>담당자</label><input type="text" id="i-assignee" list="people-list"></div>
-      <div class="field"><label>시작 기준일</label><input type="date" id="i-startdate"></div>
+      <div class="field"><label id="i-startdate-label">시작 기준일</label><input type="date" id="i-startdate"></div>
       <div class="field"><label>비고</label><input type="text" id="i-note"></div>
       <div class="modal-actions">
         <button class="btn secondary" onclick="closeModal('item-modal')">취소</button>
@@ -487,7 +497,8 @@
         id: r.id, category: r.category || '', equipment: r.equipment || '', task: r.task || '',
         cycleType: r.cycle_type, cycleValue: r.cycle_value, assignee: r.assignee || '',
         startDate: r.start_date, nextDueRaw: r.next_due, lastDoneDate: r.last_done_date,
-        active: r.status !== '중지', note: r.note || '', minusOneDay: r.minus_one || ''
+        active: r.status !== '중지', note: r.note || '', minusOneDay: r.minus_one || '',
+        scheduleMode: r.schedule_mode === 'fixed' ? 'fixed' : 'done'
       };
     }
 
@@ -824,8 +835,52 @@
       document.getElementById('c-result').value = '정상';
       document.getElementById('c-memo').value = '';
       document.getElementById('c-photo').value = '';
+      updateNextPreview();
       openModal('complete-modal');
     }
+
+    // ---- 원래 일정 유지(fixed)용 날짜 계산 ----
+    // 주기만큼 정확히 더함 (31일에 1개월 더하면 다음 달 말일로 맞춤)
+    function addPeriod_(date, 주기구분, n) {
+      const d = stripTime_(date);
+      if (주기구분 === '연간' || 주기구분 === '월간') {
+        const months = 주기구분 === '연간' ? 12 * n : n;
+        const day = d.getDate();
+        d.setDate(1);
+        d.setMonth(d.getMonth() + months);
+        d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+        return d;
+      }
+      d.setDate(d.getDate() + (주기구분 === '주간' ? 7 * n : n));
+      return d;
+    }
+
+    // 완료 처리 후 { 다음예정일, 시작기준일 } 계산
+    function computeCompletion(item, doneYMD, settings) {
+      const done = parseYMD(doneYMD);
+      const n = Number(item.cycleValue) || 1;
+      if (item.scheduleMode !== 'fixed') {
+        return { next: calcNextDue_(done, item.cycleType, n, resolveMinusOneDay_(item.minusOneDay, settings)), start: done };
+      }
+      // 원래 일정 유지: 지금 예정일에서 주기만큼씩 건너가며, 완료일 이후에 오는 첫 예정일을 다음 예정일로
+      const cur = parseYMD(item.nextDue || item.nextDueRaw || item.startDate) || done;
+      const occ = k => addPeriod_(cur, item.cycleType, k * n);
+      let k = 1;
+      while (occ(k) <= done && k < 1000) k++;
+      // 시작기준일은 완료일 이전의 마지막 예정일 (달력·연간계획의 날짜 패턴이 원래대로 유지되도록)
+      let j = k - 1;
+      while (occ(j) > done && j > -1000) j--;
+      return { next: occ(k), start: occ(j) };
+    }
+
+    function updateNextPreview() {
+      const el = document.getElementById('c-next-preview');
+      if (!completingItem || !core) { el.textContent = ''; return; }
+      const d = document.getElementById('c-date').value || todayYMD();
+      const r = computeCompletion(completingItem, d, core.settings);
+      el.textContent = `→ 다음 예정일: ${toYMD(r.next)} (${completingItem.scheduleMode === 'fixed' ? '원래 일정 유지' : '완료일 기준'})`;
+    }
+    document.getElementById('c-date').addEventListener('change', updateNextPreview);
 
     async function submitComplete() {
       const btn = document.getElementById('complete-submit-btn');
@@ -844,17 +899,18 @@
         }
         btn.textContent = '처리 중...';
         const c = await getCore();
-        const nextDue = calcNextDue_(parseYMD(doneDate), completingItem.cycleType, completingItem.cycleValue,
-          resolveMinusOneDay_(completingItem.minusOneDay, c.settings));
-        const { error } = await sb.rpc('pm_complete_item', {
+        const r = computeCompletion(completingItem, doneDate, c.settings);
+        const args = {
           p_item_id: completingItem.id,
           p_done_date: doneDate,
-          p_next_due: toYMD(nextDue),
+          p_next_due: toYMD(r.next),
           p_assignee: document.getElementById('c-assignee').value.trim(),
           p_result: document.getElementById('c-result').value,
           p_memo: document.getElementById('c-memo').value.trim(),
           p_photo_path: photoPath
-        });
+        };
+        if (completingItem.scheduleMode === 'fixed') args.p_start_date = toYMD(r.start);
+        const { error } = await sb.rpc('pm_complete_item', args);
         if (error) throw error;
 
         closeModal('complete-modal');
@@ -1157,6 +1213,7 @@
             <div class="item-meta">${esc(i.id)} · ${esc(i.cycleType)}(${i.cycleValue}) · 담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
               ${i.minusOneDay === 'Y' ? ' · <span style="color:#2c5aa0;">하루빼기 개별적용</span>' : ''}
               ${i.minusOneDay === 'N' ? ' · <span style="color:#d93025;">하루빼기 개별미적용</span>' : ''}
+              ${i.scheduleMode === 'fixed' ? ' · <span style="color:#1e8e3e;font-weight:bold;">📌 원래 일정 유지</span>' : ''}
             </div>
           </div>
           <button class="btn secondary" onclick="openEditItemModal('${esc(i.id)}')">수정</button>
@@ -1173,6 +1230,7 @@
       document.getElementById('i-cycletype').value = '월간';
       document.getElementById('i-cyclevalue').value = 1;
       document.getElementById('i-minus1').value = '';
+      document.getElementById('i-schedmode').value = 'done';
       document.getElementById('i-startdate').value = todayYMD();
       openModal('item-modal');
     }
@@ -1189,6 +1247,7 @@
       document.getElementById('i-cycletype').value = item.cycleType;
       document.getElementById('i-cyclevalue').value = item.cycleValue;
       document.getElementById('i-minus1').value = item.minusOneDay;
+      document.getElementById('i-schedmode').value = item.scheduleMode;
       document.getElementById('i-assignee').value = item.assignee;
       document.getElementById('i-startdate').value = item.startDate || '';
       document.getElementById('i-note').value = item.note;
@@ -1200,7 +1259,7 @@
       const row = {
         category: v('i-category'), equipment: v('i-equipment'), task: v('i-task'),
         cycle_type: v('i-cycletype'), cycle_value: Math.max(1, parseInt(v('i-cyclevalue'), 10) || 1),
-        minus_one: v('i-minus1'), assignee: v('i-assignee'), note: v('i-note'),
+        minus_one: v('i-minus1'), schedule_mode: v('i-schedmode'), assignee: v('i-assignee'), note: v('i-note'),
         start_date: v('i-startdate') || todayYMD()
       };
       if (!row.equipment || !row.task) return alert('설비명과 점검 항목은 필수입니다.');
@@ -1209,7 +1268,9 @@
       btn.disabled = true;
       try {
         const c = await getCore();
-        row.next_due = toYMD(calcNextDue_(parseYMD(row.start_date), row.cycle_type, row.cycle_value, resolveMinusOneDay_(row.minus_one, c.settings)));
+        row.next_due = toYMD(row.schedule_mode === 'fixed'
+          ? addPeriod_(parseYMD(row.start_date), row.cycle_type, row.cycle_value)
+          : calcNextDue_(parseYMD(row.start_date), row.cycle_type, row.cycle_value, resolveMinusOneDay_(row.minus_one, c.settings)));
         const res = editingItemId
           ? await sb.from('pm_items').update(row).eq('id', editingItemId).select()
           : await sb.from('pm_items').insert({ ...row, status: '사용' }).select();
@@ -1381,7 +1442,7 @@
 
         const itemSheet = items.data.map(r => ({
           ID: r.id, 카테고리: r.category, 설비명: r.equipment, 점검정비항목: r.task, 주기구분: r.cycle_type, 주기값: r.cycle_value,
-          담당자: r.assignee, 시작기준일: r.start_date, 다음예정일: r.next_due, 상태: r.status, 비고: r.note, 하루빼기적용: r.minus_one, 마지막완료일: r.last_done_date
+          담당자: r.assignee, 시작기준일: r.start_date, 다음예정일: r.next_due, 상태: r.status, 비고: r.note, 하루빼기적용: r.minus_one, 일정기준: r.schedule_mode === 'fixed' ? '원래 일정 유지' : '완료일 기준', 마지막완료일: r.last_done_date
         }));
         const logSheet = logs.data.map(r => ({
           이력ID: r.id, 항목ID: r.item_id, 설비명: r.equipment, 점검항목: r.task, 완료일: r.done_date, 담당자: r.assignee,
