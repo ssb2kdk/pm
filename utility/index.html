@@ -2,1191 +2,494 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>유틸리티 사용량·비용 분석</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>설비점검일지 검침</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="../config.js"></script>
   <script src="../common.js"></script>
   <style>
     :root {
-      --c-elec: #2a78d6; --c-gas: #eb6834; --c-water: #1baf7a; --c-ww: #eda100;
-      --c-prev: #a3a29d; --ink: #222; --ink2: #555; --muted: #888; --line: #e3e6ea; --bg: #f4f6f8; --card: #fff;
-      --brand: #2c5aa0; --good: #1e8e3e; --bad: #d93025;
+      --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0;
+      --text: #1a1a1a; --muted: #888; --hint: #bbb;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA;
+      --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB;
+      --radius: 12px; --radius-sm: 8px;
     }
-    * { box-sizing: border-box; }
-    body { font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: var(--ink); font-size: 14px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
     [hidden] { display: none !important; }
-    header { background: var(--brand); color: #fff; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-    header h1 { font-size: 18px; margin: 0; }
-    nav { display: flex; gap: 6px; flex-wrap: wrap; }
-    nav button { background: rgba(255,255,255,0.15); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    nav button.active { background: #fff; color: var(--brand); font-weight: bold; }
-    .container { padding: 16px; max-width: 1280px; margin: 0 auto; }
-    .tab { display: none; } .tab.active { display: block; }
+    .wrap { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
+    .title { font-size: 17px; font-weight: 700; }
+    .btn-admin { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .btn-admin.on { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); }
+    .date-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .date-row button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 14px; cursor: pointer; }
+    .date-row input { flex: 1; font-size: 15px; font-weight: 600; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; text-align: center; background: var(--card); color: var(--text); }
+    .date-row .today { width: auto; padding: 0 10px; font-size: 12px; }
+    .weather { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; display: flex; gap: 8px; align-items: center; }
+    .w-icon { font-size: 20px; }
+    .w-info { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+    .w-info b { font-size: 14px; color: var(--text); }
+    .btn-sm { font-size: 11px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); color: var(--muted); cursor: pointer; white-space: nowrap; }
+    .w-inputs { display: flex; gap: 6px; margin-top: 6px; }
+    .w-inputs select, .w-inputs input { font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; background: var(--card); color: var(--text); }
+    .w-inputs select { flex: 1; } .w-inputs input { width: 72px; text-align: center; }
+    .tabs { background: var(--card); border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; position: sticky; top: 0; z-index: 19; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 11px 14px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; border-bottom: 2.5px solid transparent; flex-shrink: 0; }
+    .tab.active { color: var(--text); border-bottom-color: var(--primary); }
+    .tab .cnt { font-size: 11px; font-weight: normal; margin-left: 3px; }
+    .tab .cnt.done { color: var(--teal); }
+    .content { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 130px; }
+    .sec { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .5px; padding: 10px 2px 2px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; align-items: center; gap: 10px; min-height: 62px; }
+    .card.dirty { border-color: var(--blue); }
+    .info { flex: 1; min-width: 0; }
+    .fname { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .fmeta { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .fmeta .std { color: var(--blue); } .fmeta .use { color: var(--teal); font-weight: 600; } .fmeta .neg { color: #E53935; font-weight: 600; }
+    .val { width: 120px; text-align: right; font-size: 18px; font-weight: 700; border: none; border-bottom: 1.5px solid var(--border); background: transparent; color: var(--text); padding: 4px; outline: none; font-variant-numeric: tabular-nums; }
+    .val:focus { border-bottom-color: var(--primary); }
+    .val.filled { border-bottom-color: var(--teal); }
+    .val.warn { color: #E53935; border-bottom-color: #E53935; }
+    .footer { background: var(--card); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; }
+    .footer-in { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+    .prog { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--teal); transition: width .3s; }
+    .save { width: 100%; padding: 14px; background: var(--primary); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; cursor: pointer; }
+    .save.saving { background: #888; } .save.done { background: var(--teal); } .save.has { background: var(--blue); }
+    .toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 100; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+    .loading { text-align: center; padding: 40px 0; color: var(--muted); }
 
-    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-    .toolbar select, .toolbar input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background: #fff; }
-    .month-nav { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 2px; }
-    .month-nav button { border: none; background: transparent; cursor: pointer; font-size: 15px; padding: 4px 9px; border-radius: 4px; }
-    .month-nav button:hover { background: #eef3fb; }
-    .month-nav span { font-weight: bold; min-width: 92px; text-align: center; }
-    .btn { background: var(--brand); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    .btn.secondary { background: #666; } .btn:disabled { opacity: .5; cursor: default; } .btn:hover { opacity: .9; }
-    .hint { font-size: 12px; color: var(--muted); }
-    .card { background: var(--card); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; }
-    .card h3 { margin: 0 0 12px; font-size: 15px; color: var(--brand); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .card h3 .sub { font-size: 12px; color: var(--muted); font-weight: normal; }
-    .loading, .empty { text-align: center; padding: 30px; color: var(--muted); }
-
-    /* 상태 배지 */
-    .st { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: bold; white-space: nowrap; }
-    .st-확정 { background: #e6f4ea; color: #1e6b33; }
-    .st-가마감 { background: #fff4e0; color: #8a5300; }
-    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-
-    /* KPI */
-    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 12px; }
-    .kpi { background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-top: 4px solid #ccc; }
-    .kpi .lab { font-size: 12px; color: var(--ink2); display: flex; justify-content: space-between; gap: 6px; }
-    .kpi .val { font-size: 22px; font-weight: bold; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
-    .kpi .val small { font-size: 12px; font-weight: normal; color: var(--muted); }
-    .kpi .cmp { font-size: 12px; color: var(--ink2); line-height: 1.6; font-variant-numeric: tabular-nums; }
-    .up { color: var(--bad); } .down { color: var(--good); }
-    .kpi.total { border-top-color: #333; } .kpi.elec { border-top-color: var(--c-elec); } .kpi.gas { border-top-color: var(--c-gas); }
-    .kpi.water { border-top-color: var(--c-water); } .kpi.ww { border-top-color: var(--c-ww); } .kpi.prod { border-top-color: #777; }
-
-    /* 차트 */
-    .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 16px; }
-    .charts .card { min-width: 0; }
-    .chart-box { position: relative; height: 280px; }
-    .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-    .chip { border: 1px solid #ccc; background: #fff; border-radius: 14px; padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--ink2); }
-    .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
-    .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink2); margin: -4px 0 8px; }
-    .legend span { display: inline-flex; align-items: center; }
-    .legend .ln { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 5px; }
-    .legend .ln.dash { border-top-style: dashed; }
-
-    /* 표 */
-    .tbl-wrap { overflow-x: auto; }
-    table.t { border-collapse: collapse; width: 100%; font-size: 12px; background: #fff; font-variant-numeric: tabular-nums; }
-    table.t th, table.t td { border: 1px solid var(--line); padding: 5px 7px; text-align: right; white-space: nowrap; }
-    table.t th { background: #f0f3f8; color: var(--ink2); font-weight: bold; text-align: center; position: sticky; top: 0; }
-    table.t td.l, table.t th.l { text-align: left; }
-    table.t tr.grp td { background: #f7f9fc; font-weight: bold; color: var(--brand); text-align: left; }
-    table.t tr.sum td { font-weight: bold; background: #fafafa; }
-    table.t td.na { color: #bbb; }
-    table.t td.prov { background: #fffaf0; }
-    table.t.rep th.key { background: #2c5aa0; color: #fff; }
-    table.t.rep td.key { background: #e8f0fb; font-weight: bold; color: #1d3f73; }
-    table.t.rep tr.sum td.key { background: #d3e2f7; }
-    table.t.rep tr.subrow td { color: #666; font-size: 11.5px; }
-    table.t.rep tr.subrow td.key { font-weight: normal; color: #1d3f73; }
-    @media print { table.t.rep td.key, table.t.rep th.key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-
-    /* 일일검침 */
-    table.daily { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; background: #fff; }
-    table.daily th, table.daily td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; }
-    table.daily th { background: #f0f3f8; color: var(--ink2); font-size: 12px; position: sticky; top: 0; z-index: 2; }
-    table.daily th .u { font-weight: normal; color: var(--muted); font-size: 11px; }
-    table.daily td:first-child, table.daily th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; text-align: left; white-space: nowrap; font-weight: bold; }
-    table.daily th:first-child { background: #f0f3f8; z-index: 3; }
-    table.daily tr.today td { background: #eef3fb; }
-    table.daily tr.today td:first-child { background: #dde8f7; }
-    table.daily tr.weekend td:first-child { color: var(--bad); }
-    table.daily input { width: 100px; padding: 5px 6px; border: 1px solid #d5d9df; border-radius: 5px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
-    table.daily input.small { width: 76px; }
-    table.daily input:focus { outline: 2px solid var(--brand); border-color: transparent; }
-    table.daily input.saving { background: #fffbe6; }
-    table.daily input.saved { background: #eaf6ec; }
-    table.daily input.err { background: #fdeceb; border-color: var(--bad); }
-    table.daily input.warn { border-color: #f29900; background: #fff8e8; }
-    table.daily .use { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; min-height: 13px; font-variant-numeric: tabular-nums; }
-    table.daily tr.sum td { background: #f7f9fc; font-weight: bold; font-size: 12px; position: sticky; bottom: 0; }
-    .daily-wrap { overflow: auto; max-height: calc(100vh - 220px); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-
-    /* 월간입력 */
-    .mgrid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
-    @media (max-width: 980px) { .mgrid { grid-template-columns: 1fr; } }
-    .fgroup { margin-bottom: 14px; }
-    .fgroup > summary { cursor: pointer; font-weight: bold; color: var(--brand); padding: 6px 0; font-size: 14px; }
-    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px; padding: 6px 0 4px; }
-    .f label { display: block; font-size: 12px; color: var(--ink2); margin-bottom: 3px; }
-    .f label .u { color: var(--muted); }
-    .f input, .f select { width: 100%; padding: 7px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
-    .f select { text-align: left; }
-    .f input.filled { border-color: var(--brand); background: #f6f9fe; }
-    .f input::placeholder { color: #b3b8c0; font-style: italic; }
-    .f .src { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 13px; }
-    .preview { position: sticky; top: 12px; }
-    .preview table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
-    .preview td { padding: 4px 2px; border-bottom: 1px solid #f0f0f0; }
-    .preview td:last-child { text-align: right; }
-    .preview tr.h td { font-weight: bold; color: var(--brand); padding-top: 10px; border-bottom: 1px solid #d8e0ec; }
-    .preview tr.tot td { font-weight: bold; font-size: 14px; border-top: 2px solid #333; }
-
-    @media print {
-      header, nav, .no-print, .pt-bar { display: none !important; }
-      body { background: #fff; }
-      .container { padding: 0; max-width: none; }
-      .tab { display: none !important; } #tab-report { display: block !important; }
-      .card { box-shadow: none; }
-    }
+    /* 관리자 모드 */
+    .adm { background: var(--blue-bg); border: 1px solid var(--blue); border-radius: var(--radius); padding: 10px 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .adm input[type=text], .adm input[type=number] { border: none; border-bottom: 1px dashed var(--blue); background: transparent; font-size: 14px; padding: 3px; outline: none; color: var(--text); }
+    .mini { min-width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); cursor: pointer; font-size: 12px; padding: 0 6px; }
+    .mini.red { color: var(--red); border-color: var(--red); }
+    .mini.blue { color: var(--blue); border-color: var(--blue); }
+    .acard { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+    .acard .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .acard input[type=text], .acard input[type=number] { border: none; border-bottom: 1px dashed var(--border); background: transparent; font-size: 13px; padding: 3px; outline: none; color: var(--text); }
+    .acard .nm { font-size: 14px; font-weight: 600; width: 100%; }
+    .acard select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 3px; max-width: 160px; }
+    .btns { display: flex; flex-direction: column; gap: 4px; }
+    .addrow { display: flex; gap: 6px; }
+    .addrow input { flex: 1; min-width: 0; font-size: 13px; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: transparent; }
+    .addrow input.u { flex: 0 0 64px; }
+    .addrow button { padding: 8px 12px; border: 1px solid var(--blue); border-radius: 8px; background: var(--blue-bg); color: var(--blue); cursor: pointer; font-size: 13px; white-space: nowrap; }
   </style>
 </head>
 <body>
   <div id="app" hidden>
-    <header>
-      <h1>📊 유틸리티 사용량 · 비용 분석</h1>
-      <nav>
-        <button class="tab-btn active" data-tab="dash">분석</button>
-        <button class="tab-btn" data-tab="daily">일일검침</button>
-        <button class="tab-btn" data-tab="monthly">월간입력</button>
-        <button class="tab-btn" data-tab="report">회계보고</button>
-      </nav>
-    </header>
-
-    <div class="container">
-      <!-- ================= 분석 ================= -->
-      <div id="tab-dash" class="tab active">
-        <div class="toolbar">
-          <label class="hint">기준 월</label>
-          <div class="month-nav"><button onclick="shiftDashMonth(-1)">◀</button><span id="dash-month"></span><button onclick="shiftDashMonth(1)">▶</button></div>
-          <span id="dash-status"></span>
-          <span class="hint" id="dash-note"></span>
+    <div class="wrap">
+      <div class="head">
+        <div class="head-row">
+          <span class="title">📋 설비점검일지 · 검침</span>
+          <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목 관리</button>
         </div>
-        <div class="kpis" id="kpis"><div class="loading">불러오는 중...</div></div>
-        <div class="kpis" id="kpis2"></div>
-
-        <div class="charts">
-          <div class="card">
-            <h3>월별 유틸리티 비용 <span class="sub" id="cost-chart-sub"></span></h3>
-            <div class="legend" id="cost-legend"></div>
-            <div class="chart-box"><canvas id="chart-cost"></canvas></div>
-          </div>
-          <div class="card">
-            <h3>생산량당 유틸리티 비용 <span class="sub">원/kg · 올해 vs 전년</span></h3>
-            <div class="legend"><span><i class="ln" style="border-color:#333"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
-            <div class="chart-box"><canvas id="chart-unitcost"></canvas></div>
-            <div class="hint" id="unitcost-note"></div>
-          </div>
-          <div class="card">
-            <h3>항목별 추이
-              <span class="chips" id="util-chips"></span>
-              <span class="chips" id="metric-chips"></span>
-            </h3>
-            <div class="legend" id="util-legend"></div>
-            <div class="chart-box"><canvas id="chart-util"></canvas></div>
-            <div class="hint" id="util-note"></div>
-          </div>
-          <div class="card">
-            <h3>생산량 <span class="sub">kg · 올해 vs 전년</span></h3>
-            <div class="legend"><span><i class="dot" style="background:#777"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
-            <div class="chart-box"><canvas id="chart-prod"></canvas></div>
-          </div>
+        <div class="date-row">
+          <button onclick="shiftDate(-1)">◀</button>
+          <input type="date" id="work-date" onchange="changeDate(this.value)">
+          <button onclick="shiftDate(1)">▶</button>
+          <button class="today" onclick="changeDate(todayStr())">오늘</button>
         </div>
-
-        <div class="card">
-          <h3>월별 상세표 <span class="sub" id="table-year-label"></span>
-            <button class="btn secondary no-print" style="margin-left:auto;padding:5px 10px;font-size:12px;" onclick="downloadYearTable()">📥 엑셀</button>
-          </h3>
-          <div class="hint" style="margin:-6px 0 8px;">노란 칸 = 가마감(고지서 전 자체 계산값). 고지서 금액을 입력하면 확정으로 바뀝니다.</div>
-          <div class="tbl-wrap" id="year-table"></div>
+        <div class="weather">
+          <div class="w-icon" id="w-icon">⏳</div>
+          <div class="w-info"><div>익산시 왕궁면 푸드폴리스</div><b id="w-temps">날씨 불러오는 중...</b> <span id="w-desc"></span></div>
+          <button class="btn-sm" onclick="fetchWeather(true)">↺ 날씨</button>
+        </div>
+        <div class="w-inputs">
+          <select id="w-sel" onchange="markDirty()">
+            <option value="">날씨 선택</option>
+            <option>맑음</option><option>구름 조금</option><option>구름 많음</option><option>흐림</option>
+            <option>비</option><option>눈</option><option>안개</option><option>소나기</option><option>뇌우</option><option>이슬비</option>
+          </select>
+          <input type="number" id="t-min" placeholder="최저°C" step="0.1" inputmode="decimal" oninput="markDirty()">
+          <input type="number" id="t-max" placeholder="최고°C" step="0.1" inputmode="decimal" oninput="markDirty()">
         </div>
       </div>
-
-      <!-- ================= 일일검침 ================= -->
-      <div id="tab-daily" class="tab">
-        <div class="toolbar">
-          <div class="month-nav"><button onclick="shiftDailyMonth(-1)">◀</button><span id="daily-month"></span><button onclick="shiftDailyMonth(1)">▶</button></div>
-          <button class="btn secondary" onclick="jumpToday()">오늘로</button>
-          <span class="hint">칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다.</span>
-        </div>
-        <div class="daily-wrap" id="daily-wrap"><div class="loading">불러오는 중...</div></div>
-      </div>
-
-      <!-- ================= 월간입력 ================= -->
-      <div id="tab-monthly" class="tab">
-        <div class="toolbar">
-          <div class="month-nav"><button onclick="shiftMonthlyMonth(-1)">◀</button><span id="monthly-month"></span><button onclick="shiftMonthlyMonth(1)">▶</button></div>
-          <button class="btn" id="monthly-save" onclick="saveMonthly()">저장</button>
-          <span class="hint" id="monthly-note"></span>
-        </div>
-        <div class="mgrid">
-          <div class="card" id="monthly-form"><div class="loading">불러오는 중...</div></div>
-          <div class="card preview" id="monthly-preview"></div>
-        </div>
-      </div>
-
-      <!-- ================= 회계보고 ================= -->
-      <div id="tab-report" class="tab">
-        <div class="toolbar no-print">
-          <div class="month-nav"><button onclick="shiftReportMonth(-1)">◀</button><span id="report-month"></span><button onclick="shiftReportMonth(1)">▶</button></div>
-          <button class="btn" onclick="downloadReport()">📥 엑셀 다운로드</button>
-          <button class="btn secondary" onclick="window.print()">🖨 인쇄</button>
-        </div>
-        <div class="card" id="report-body"><div class="loading">불러오는 중...</div></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="content" id="content"><div class="loading">불러오는 중...</div></div>
+    </div>
+    <div class="footer" id="footer">
+      <div class="footer-in">
+        <div class="prog"><div class="bar"><div id="prog-fill" style="width:0%"></div></div><span id="prog-text">0 / 0</span></div>
+        <button class="save" id="save-btn" onclick="saveDay()">저장</button>
       </div>
     </div>
   </div>
+  <div class="toast" id="toast"></div>
 
   <script>
-// =====================================================================
-// 유틸리티 요금·사용량 계산 (엑셀 "유틸리티 비용 상세" 파일과 같은 계산식)
-// =====================================================================
-(function (root) {
-  const UT = {};
-
-  // ---------------- 입력 항목 정의 ----------------
-  // carry: 값이 없으면 이전 달 값을 그대로 씀 (단가·계수처럼 자주 안 바뀌는 값)
-  UT.FIELDS = [
-    { g: '생산', k: 'production_kg', label: '생산량', unit: 'kg' },
-
-    { g: '전기', k: 'elec_kwh_light', label: '경부하 사용량', unit: 'kWh', hint: '비우면 일별 사용량 × 전월 비율로 추정' },
-    { g: '전기', k: 'elec_kwh_mid', label: '중간부하 사용량', unit: 'kWh' },
-    { g: '전기', k: 'elec_kwh_peak', label: '최대부하 사용량', unit: 'kWh' },
-    { g: '전기', k: 'elec_max_kw', label: '최대 전력', unit: 'kW', hint: '비우면 일별 최대수요 중 최댓값' },
-    { g: '전기', k: 'elec_contract_kw', label: '요금적용 전력', unit: 'kW', hint: '비우면 max(전월 요금적용전력, 이번 달 최대전력)' },
-    { g: '전기', k: 'elec_pf', label: '지상역률', unit: '', hint: '예: 0.93' },
-    { g: '전기', k: 'elec_pf_lead', label: '진상역률', unit: '', carry: true },
-    { g: '전기', k: 'elec_late_fee', label: '연체료', unit: '원' },
-    { g: '전기', k: 'elec_settlement', label: '정산 요금', unit: '원', hint: '고지서에 있을 때만 (차감은 − 로)' },
-    { g: '전기', k: 'elec_ww_kwh', label: '폐수동 전력량', unit: 'kWh', hint: '설비점검일지 연동 전까지 직접 입력' },
-    { g: '전기', k: 'elec_hvac_kwh', label: '공조냉동 전력량', unit: 'kWh', hint: '설비점검일지 연동 전까지 직접 입력' },
-
-    { g: '전기 단가', k: 'elec_season', label: '계절', unit: '', carry: true, text: true },
-    { g: '전기 단가', k: 'elec_base_rate', label: '기본요금 단가', unit: '원/kW', carry: true },
-    { g: '전기 단가', k: 'elec_rate_light', label: '경부하 단가', unit: '원/kWh', carry: true },
-    { g: '전기 단가', k: 'elec_rate_mid', label: '중간부하 단가', unit: '원/kWh', carry: true },
-    { g: '전기 단가', k: 'elec_rate_peak', label: '최대부하 단가', unit: '원/kWh', carry: true },
-    { g: '전기 단가', k: 'elec_climate_rate', label: '기후환경요금 단가', unit: '원/kWh', carry: true, def: 9 },
-    { g: '전기 단가', k: 'elec_fuel_rate', label: '연료비조정 단가', unit: '원/kWh', carry: true, def: 5 },
-
-    { g: '전기 주말 할인', k: 'elec_wkd_kwh_light', label: '주말 경부하 할인 사용량', unit: 'kWh', hint: '고지서/파워플래너 값 (해당 계절만)' },
-    { g: '전기 주말 할인', k: 'elec_wkd_kwh_mid', label: '주말 중간부하 할인 사용량', unit: 'kWh' },
-    { g: '전기 주말 할인', k: 'elec_wkd_rate_light', label: '주말 경부하 할인 단가', unit: '원/kWh', carry: true },
-    { g: '전기 주말 할인', k: 'elec_wkd_rate_mid', label: '주말 중간부하 할인 단가', unit: '원/kWh', carry: true },
-
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_kwh_light2', label: '경부하 사용량 (변경 후)', unit: 'kWh' },
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_kwh_mid2', label: '중간부하 사용량 (변경 후)', unit: 'kWh' },
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_kwh_peak2', label: '최대부하 사용량 (변경 후)', unit: 'kWh' },
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_rate_light2', label: '경부하 단가 (변경 후)', unit: '원/kWh' },
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_rate_mid2', label: '중간부하 단가 (변경 후)', unit: '원/kWh' },
-    { g: '전기 (요금 바뀐 달만)', k: 'elec_rate_peak2', label: '최대부하 단가 (변경 후)', unit: '원/kWh' },
-
-    { g: '가스', k: 'gas_boiler_cur', label: '보일러 당월지침', unit: '㎥', hint: '비우면 말일 자체검침값' },
-    { g: '가스', k: 'gas_boiler_prev', label: '보일러 전월지침', unit: '㎥', hint: '비우면 전월 당월지침' },
-    { g: '가스', k: 'gas_rest_cur', label: '식당 당월지침', unit: '㎥', hint: '비우면 말일 자체검침값' },
-    { g: '가스', k: 'gas_rest_prev', label: '식당 전월지침', unit: '㎥', hint: '비우면 전월 당월지침' },
-    { g: '가스', k: 'gas_heat', label: '열량계수 (보일러)', unit: 'MJ/㎥', carry: true },
-    { g: '가스', k: 'gas_rest_heat', label: '열량계수 (식당)', unit: 'MJ/㎥', carry: true },
-    { g: '가스', k: 'gas_price', label: '단가', unit: '원/MJ', carry: true },
-    { g: '가스', k: 'gas_boiler_corr', label: '보정계수 (보일러)', unit: '', carry: true, def: 1 },
-    { g: '가스', k: 'gas_rest_corr', label: '보정계수 (식당)', unit: '', carry: true, def: 0.992 },
-    { g: '가스', k: 'gas_corrector_fee', label: '보정기교체비 (보일러)', unit: '원' },
-    { g: '가스', k: 'gas_rest_corrector_fee', label: '보정기교체비 (식당)', unit: '원' },
-
-    { g: '용수', k: 'w_combined', label: '고지서 방식', unit: '', carry: true, text: true, options: ['따로', '합산'], def: '따로', hint: '합산 = 40A 고지서에 50A 사용량까지 포함 (50A는 구경별 요금만)' },
-    { g: '용수', k: 'w40_usage', label: '40A 고지서 사용량', unit: '㎥', hint: '비우면 11일 지침 − 전월 11일 지침' },
-    { g: '용수', k: 'w50_usage', label: '50A 고지서 사용량', unit: '㎥', hint: '비우면 11일 지침 − 전월 11일 지침' },
-    { g: '용수 단가', k: 'w40_base_fee', label: '40A 구경별 요금', unit: '원', carry: true, def: 9000 },
-    { g: '용수 단가', k: 'w50_base_fee', label: '50A 구경별 요금', unit: '원', carry: true, def: 15000 },
-    { g: '용수 단가', k: 'w_rate1', label: '1~50㎥ 단가', unit: '원/㎥', carry: true },
-    { g: '용수 단가', k: 'w_rate2', label: '51~100㎥ 단가', unit: '원/㎥', carry: true },
-    { g: '용수 단가', k: 'w_rate3', label: '101~300㎥ 단가', unit: '원/㎥', carry: true },
-    { g: '용수 단가', k: 'w_rate4', label: '301~1000㎥ 단가', unit: '원/㎥', carry: true },
-    { g: '용수 단가', k: 'w_rate5', label: '1001㎥~ 단가', unit: '원/㎥', carry: true },
-    { g: '용수 단가', k: 'w_use_rate', label: '물이용부담금 단가', unit: '원/㎥', carry: true },
-
-    { g: '폐수', k: 'ww_flow', label: '2공장 폐수 발생량', unit: '㎥', hint: '비우면 말일 유량계 지침 − 전월 말일 지침' },
-    { g: '폐수', k: 'ww_sewage', label: '2공장 오수량', unit: '㎥', hint: '고지서 값' },
-    { g: '폐수', k: 'ww_facility_fee', label: '시설사용료 (기타사용료)', unit: '원', hint: '고지서 오면 입력 → 확정' },
-    { g: '폐수', k: 'ww_improve_fee', label: '개선부담금', unit: '원', hint: '고지서 오면 입력 → 확정' },
-    { g: '폐수', k: 'ww_outsource_fee', label: '위탁처리비', unit: '원' },
-    { g: '폐수', k: 'ww_sludge_fee', label: '슬러지처리비', unit: '원' },
-    { g: '폐수', k: 'cluster_water_reading', label: '클러스터 상수도 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
-    { g: '폐수', k: 'cluster_ww_reading', label: '클러스터 폐수 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
-
-    { g: '고지서 실제 금액', k: 'elec_bill_total', label: '전기 청구액 (부가세 포함)', unit: '원', hint: '입력하면 확정' },
-    { g: '고지서 실제 금액', k: 'elec_bill_exvat', label: '전기 부가세 별도 금액', unit: '원' },
-    { g: '고지서 실제 금액', k: 'gas_bill_total', label: '가스 청구액 (부가세 포함)', unit: '원', hint: '입력하면 확정' },
-    { g: '고지서 실제 금액', k: 'gas_bill_exvat', label: '가스 공급가액', unit: '원' },
-    { g: '고지서 실제 금액', k: 'w40_bill', label: '용수 40A 청구액', unit: '원', hint: '입력하면 확정' },
-    { g: '고지서 실제 금액', k: 'w50_bill', label: '용수 50A 청구액', unit: '원', hint: '입력하면 확정' },
-
-    { g: '계획(목표)', k: 'plan_elec_cost', label: '전기 비용 목표', unit: '원' },
-    { g: '계획(목표)', k: 'plan_elec_usage', label: '전기 사용량 목표', unit: 'kWh' },
-    { g: '계획(목표)', k: 'plan_gas_cost', label: '가스 비용 목표', unit: '원' },
-    { g: '계획(목표)', k: 'plan_gas_usage', label: '가스 사용량 목표', unit: 'MJ' },
-    { g: '계획(목표)', k: 'plan_water_cost', label: '용수 비용 목표', unit: '원' },
-    { g: '계획(목표)', k: 'plan_water_usage', label: '용수 사용량 목표', unit: '㎥' },
-    { g: '계획(목표)', k: 'plan_ww_cost', label: '폐수 비용 목표', unit: '원' },
-    { g: '계획(목표)', k: 'plan_ww_usage', label: '폐수 발생량 목표', unit: '㎥' }
-  ];
-  UT.FIELD = Object.fromEntries(UT.FIELDS.map(f => [f.k, f]));
-
-  UT.UTILS = [
-    { k: 'elec', name: '전기', unit: 'kWh', color: '#2a78d6' },
-    { k: 'gas', name: '가스', unit: 'MJ', color: '#eb6834' },
-    { k: 'water', name: '용수', unit: '㎥', color: '#1baf7a' },
-    { k: 'ww', name: '폐수', unit: '㎥', color: '#eda100' }
-  ];
-
-  // ---------------- 날짜 도우미 ----------------
-  const pad2 = n => String(n).padStart(2, '0');
-  UT.ym = (y, m) => `${y}-${pad2(m)}`;
-  UT.prevYm = ym => { let [y, m] = ym.split('-').map(Number); m--; if (!m) { m = 12; y--; } return UT.ym(y, m); };
-  UT.nextYm = ym => { let [y, m] = ym.split('-').map(Number); m++; if (m > 12) { m = 1; y++; } return UT.ym(y, m); };
-  UT.daysIn = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
-  UT.dateStr = (ym, d) => `${ym}-${pad2(d)}`;
-
-  const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
-  const has = v => num(v) !== null;
-  const trunc10 = x => Math.trunc(x / 10) * 10;            // ROUNDDOWN(x,-1)
-  const rd4 = x => Math.floor(x * 10000 + 1e-7) / 10000;   // ROUNDDOWN(x,4)
-
-  // 일별 검침: 그 날짜(포함) 이전의 가장 가까운 지침 (최대 7일 전까지)
-  UT.readingOnOrBefore = (daily, dateStr, key, maxBack = 7) => {
-    const d0 = new Date(dateStr + 'T00:00:00');
-    for (let i = 0; i <= maxBack; i++) {
-      const d = new Date(d0); d.setDate(d.getDate() - i);
-      const k = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      const r = daily[k];
-      if (r && has(r[key]) && Number(r[key]) > 0) return Number(r[key]);
-    }
-    return null;
-  };
-
-  // 한 달 일별 집계 (사용량 = 다음날 지침 − 당일 지침)
-  UT.dailyStats = (daily, ym) => {
-    const n = UT.daysIn(ym);
-    const out = { elec_kwh: 0, elec_peak: null, elec_days: 0 };
-    for (let d = 1; d <= n; d++) {
-      const r = daily[UT.dateStr(ym, d)];
-      if (!r) continue;
-      if (has(r.elec_kwh)) { out.elec_kwh += Number(r.elec_kwh); out.elec_days++; }
-      if (has(r.elec_peak_kw)) out.elec_peak = Math.max(out.elec_peak ?? 0, Number(r.elec_peak_kw));
-    }
-    for (const key of ['gas_boiler', 'gas_rest', 'water_40a', 'water_50a', 'wastewater']) {
-      const first = UT.readingOnOrBefore(daily, UT.dateStr(ym, 1), key, 0);
-      const next = UT.readingOnOrBefore(daily, UT.dateStr(UT.nextYm(ym), 1), key, 0);
-      out[key] = (first !== null && next !== null) ? next - first : null;
-    }
-    return out;
-  };
-
-  // ---------------- 실제 계산에 쓸 입력값 정리 (빈 칸 → 이전 달 값 / 일별 검침값) ----------------
-  // monthly: { 'YYYY-MM': {..입력..} }, daily: { 'YYYY-MM-DD': {..검침..} }
-  UT.effective = (ym, monthly, daily, _cache = {}) => {
-    if (_cache[ym]) return _cache[ym];
-    const raw = monthly[ym] || {};
-    const m = { ...raw };
-    const src = {}; // 값이 어디서 왔는지 (입력/전월/자동)
-    Object.keys(raw).forEach(k => { if (raw[k] !== null && raw[k] !== '') src[k] = '입력'; });
-
-    // 이전 달 값 이어받기 (최대 24개월 전까지)
-    UT.FIELDS.filter(f => f.carry).forEach(f => {
-      if (m[f.k] !== undefined && m[f.k] !== null && m[f.k] !== '') return;
-      let p = ym;
-      for (let i = 0; i < 24; i++) {
-        p = UT.prevYm(p);
-        const pv = (monthly[p] || {})[f.k];
-        if (pv !== undefined && pv !== null && pv !== '') { m[f.k] = pv; src[f.k] = '전월'; return; }
-      }
-      if (f.def !== undefined) { m[f.k] = f.def; src[f.k] = '기본값'; }
-    });
-
-    const n = UT.daysIn(ym);
-    const lastDay = UT.dateStr(ym, n);
-    const prevYm = UT.prevYm(ym);
-    const prevLast = UT.dateStr(prevYm, UT.daysIn(prevYm));
-    const auto = (k, v) => { if (raw._imported) return; if (!has(m[k]) && v !== null && v !== undefined && !isNaN(v)) { m[k] = v; src[k] = '자동'; } };
-
-    // 가스 지침
-    auto('gas_boiler_cur', UT.readingOnOrBefore(daily, lastDay, 'gas_boiler'));
-    auto('gas_rest_cur', UT.readingOnOrBefore(daily, lastDay, 'gas_rest'));
-    const hasPrevData = Object.keys(monthly).some(k => k < ym) || Object.keys(daily).some(k => k < ym + '-01');
-    if (!has(m.gas_boiler_prev) || !has(m.gas_rest_prev)) {
-      const pe = hasPrevData ? UT.effective(prevYm, monthly, daily, _cache) : {};
-      auto('gas_boiler_prev', num(pe.gas_boiler_cur));
-      auto('gas_rest_prev', num(pe.gas_rest_cur));
-    }
-    // 용수: 11일 지침 차이
-    const r11 = key => {
-      const a = UT.readingOnOrBefore(daily, UT.dateStr(ym, 11), key, 3);
-      const b = UT.readingOnOrBefore(daily, UT.dateStr(prevYm, 11), key, 3);
-      return (a !== null && b !== null) ? Math.max(0, a - b) : null;
-    };
-    if (m.w_combined === '합산') {
-      const a = r11('water_40a'), b = r11('water_50a');
-      if (a !== null || b !== null) {
-        auto('w40_usage', (a || 0) + (b || 0));
-        auto('w50_usage', 0);
-      }
-    } else {
-      auto('w40_usage', r11('water_40a'));
-      auto('w50_usage', r11('water_50a'));
-    }
-    // 폐수: 말일 지침 차이
-    {
-      const a = UT.readingOnOrBefore(daily, lastDay, 'wastewater');
-      const b = UT.readingOnOrBefore(daily, prevLast, 'wastewater');
-      auto('ww_flow', (a !== null && b !== null) ? Math.round((a - b) * 100) / 100 : null);
-    }
-    // 전기
-    const ds = UT.dailyStats(daily, ym);
-    m._daily = ds;
-    auto('elec_max_kw', ds.elec_peak);
-    if (!has(m.elec_contract_kw)) {
-      const pe = hasPrevData ? UT.effective(prevYm, monthly, daily, _cache) : {};
-      const cand = [num(pe.elec_contract_kw), has(m.elec_max_kw) ? Math.round(Number(m.elec_max_kw)) : null].filter(v => v !== null);
-      if (cand.length) auto('elec_contract_kw', Math.max(...cand));
-    }
-    if (!has(m.elec_kwh_light) && !has(m.elec_kwh_mid) && !has(m.elec_kwh_peak) && ds.elec_kwh > 0) {
-      // 시간대별 사용량이 없으면 일별 합계를 전월 비율로 나눔
-      const pr = monthly[prevYm] || {};
-      let l = num(pr.elec_kwh_light), md = num(pr.elec_kwh_mid), p = num(pr.elec_kwh_peak);
-      if (!(l && md && p)) { l = 0.35; md = 0.4; p = 0.25; }
-      const t = l + md + p;
-      auto('elec_kwh_light', Math.round(ds.elec_kwh * l / t * 100) / 100);
-      auto('elec_kwh_mid', Math.round(ds.elec_kwh * md / t * 100) / 100);
-      auto('elec_kwh_peak', Math.round(ds.elec_kwh * p / t * 100) / 100);
-    }
-    m._src = src;
-    _cache[ym] = m;
-    return m;
-  };
-
-  // ---------------- 전기 ----------------
-  UT.calcElec = m => {
-    const v = k => num(m[k]) || 0;
-    const kwh = v('elec_kwh_light') + v('elec_kwh_mid') + v('elec_kwh_peak') + v('elec_kwh_light2') + v('elec_kwh_mid2') + v('elec_kwh_peak2');
-    if (!kwh) return null;
-    const base = v('elec_base_rate') * v('elec_contract_kw');
-    const energy =
-      Math.floor(v('elec_kwh_light') * v('elec_rate_light') + v('elec_kwh_light2') * v('elec_rate_light2')) +
-      Math.floor(v('elec_kwh_mid') * v('elec_rate_mid') + v('elec_kwh_mid2') * v('elec_rate_mid2')) +
-      Math.floor(v('elec_kwh_peak') * v('elec_rate_peak') + v('elec_kwh_peak2') * v('elec_rate_peak2')) -
-      Math.floor(v('elec_wkd_kwh_light') * v('elec_wkd_rate_light') + v('elec_wkd_kwh_mid') * v('elec_wkd_rate_mid'));
-    const climate = kwh * (has(m.elec_climate_rate) ? Number(m.elec_climate_rate) : 9);
-    const fuel = kwh * (has(m.elec_fuel_rate) ? Number(m.elec_fuel_rate) : 5);
-    let pfFee = 0;
-    if (has(m.elec_pf)) {
-      const pf = Number(m.elec_pf);
-      const rate = pf < 0.92 ? Math.min(0.92 - pf, 0.32) : (pf > 0.92 ? -Math.min(pf - 0.92, 5) : 0);
-      pfFee = Math.trunc(base * rate * 0.2);
-    }
-    let leadFee = 0;
-    if (has(m.elec_pf_lead)) {
-      const lp = Number(m.elec_pf_lead);
-      leadFee = Math.trunc(energy * (lp < 0.95 ? 0.95 - lp : 0) * 0.2);
-    }
-    const subtotal = base + energy + climate + fuel + pfFee + leadFee + v('elec_settlement');
-    const vat = Math.round(subtotal * 0.1);
-    const fund = trunc10(subtotal * 0.027);
-    const late = v('elec_late_fee');
-    const total = Math.floor((subtotal + vat + late + fund) / 10) * 10;
-    const exvat = subtotal + late + fund;
-    return { kwh, base, energy, climate, fuel, pfFee, leadFee, settlement: v('elec_settlement'), subtotal, vat, fund, late, total, exvat };
-  };
-
-  // ---------------- 가스 ----------------
-  UT.calcGas = m => {
-    const one = (cur, prev, corr, heat, fee) => {
-      if (!has(cur) || !has(prev)) return null;
-      const m3 = (Number(cur) - Number(prev)) * (has(corr) ? Number(corr) : 1);
-      const mj = rd4(m3 * (num(heat) || 0));
-      const cost = Math.floor(mj * (num(m.gas_price) || 0));
-      const f = num(fee) || 0;
-      const vat = Math.floor((cost + f) * 0.1);
-      return { m3, mj, cost, fee: f, vat, total: cost + vat + f };
-    };
-    const b = one(m.gas_boiler_cur, m.gas_boiler_prev, m.gas_boiler_corr, m.gas_heat, m.gas_corrector_fee);
-    const r = one(m.gas_rest_cur, m.gas_rest_prev, m.gas_rest_corr, has(m.gas_rest_heat) ? m.gas_rest_heat : m.gas_heat, m.gas_rest_corrector_fee);
-    if (!b && !r) return null;
-    const z = { m3: 0, mj: 0, cost: 0, fee: 0, vat: 0, total: 0 };
-    const B = b || z, R = r || z;
-    return {
-      boiler: b, rest: r,
-      m3: B.m3 + R.m3, mj: B.mj + R.mj,
-      total: Math.floor((B.total + R.total) / 10) * 10,
-      exvat: B.cost + B.fee + R.cost + R.fee
-    };
-  };
-
-  // ---------------- 용수 (계량기 1개) ----------------
-  UT.calcWaterMeter = (usage, baseFee, m) => {
-    if (!has(usage)) return null;
-    const u = Number(usage);
-    const t1 = u > 50 ? 50 : u;
-    const t2 = u > 100 ? 50 : Math.max(0, u - t1);
-    const t3 = u > 300 ? 200 : Math.max(0, u - t1 - t2);
-    const t4 = u > 1000 ? 700 : Math.max(0, u - t1 - t2 - t3);
-    const t5 = Math.max(0, u - t1 - t2 - t3 - t4);
-    const r = k => num(m[k]) || 0;
-    const useFee = t1 * r('w_rate1') + t2 * r('w_rate2') + t3 * r('w_rate3') + t4 * r('w_rate4') + t5 * r('w_rate5');
-    const reduce = Math.max(-5000, -trunc10(useFee / 100));
-    const waterUse = u * r('w_use_rate');
-    const reduce2 = -trunc10(waterUse / 100);
-    const total = useFee + reduce + (num(baseFee) || 0) + waterUse + reduce2;
-    return { usage: u, useFee, reduce, baseFee: num(baseFee) || 0, waterUse, reduce2, total };
-  };
-
-  // ---------------- 한 달 요약 ----------------
-  // 반환: { elec:{usage,cost,exvat,status,calc,...}, gas, water, ww, total, exvat, production }
-  UT.summary = (ym, monthly, daily, cache = {}) => {
-    const m = UT.effective(ym, monthly, daily, cache);
-    const raw = monthly[ym] || {};
-    const out = { ym, m, production: num(m.production_kg) };
-
-    // 전기
-    const e = UT.calcElec(m);
-    const eBill = num(raw.elec_bill_total);
-    out.elec = {
-      usage: e ? e.kwh : (m._daily.elec_kwh || null),
-      calc: e,
-      cost: eBill ?? (e ? e.total : null),
-      exvat: has(raw.elec_bill_exvat) ? Number(raw.elec_bill_exvat) : (eBill !== null && e ? Math.round(eBill * e.exvat / e.total) : (e ? e.exvat : null)),
-      status: eBill !== null ? '확정' : (e ? '가마감' : null),
-      maxKw: num(m.elec_max_kw)
-    };
-    // 가스
-    const g = UT.calcGas(m);
-    const gBill = num(raw.gas_bill_total);
-    out.gas = {
-      usage: g ? g.mj : null, m3: g ? g.m3 : null,
-      calc: g,
-      cost: gBill ?? (g ? g.total : null),
-      exvat: has(raw.gas_bill_exvat) ? Number(raw.gas_bill_exvat) : (gBill !== null && g ? Math.round(gBill / 1.1) : (g ? g.exvat : null)),
-      status: gBill !== null ? '확정' : (g ? '가마감' : null)
-    };
-    // 용수 (40A + 50A, 부가세 없음)
-    const w4 = UT.calcWaterMeter(m.w40_usage, m.w40_base_fee, m);
-    const w5 = UT.calcWaterMeter(m.w50_usage, m.w50_base_fee, m);
-    const w4c = has(raw.w40_bill) ? Number(raw.w40_bill) : (w4 ? w4.total : null);
-    const w5c = has(raw.w50_bill) ? Number(raw.w50_bill) : (w5 ? w5.total : null);
-    const wConfirmed = has(raw.w40_bill) || has(raw.w50_bill);
-    out.water = {
-      usage: (w4 || w5) ? (w4 ? w4.usage : 0) + (w5 ? w5.usage : 0) : null,
-      w40: w4, w50: w5, w40cost: w4c, w50cost: w5c,
-      cost: (w4c === null && w5c === null) ? null : (w4c || 0) + (w5c || 0),
-      status: wConfirmed ? '확정' : ((w4 || w5) ? '가마감' : null)
-    };
-    out.water.exvat = out.water.cost;
-    // 폐수 (부가세 없음)
-    const flow = num(m.ww_flow), sew = num(m.ww_sewage);
-    const wwM3 = (flow === null && sew === null) ? null : (flow || 0) + (sew || 0);
-    const fees = has(raw.ww_facility_fee) || has(raw.ww_improve_fee);
-    let wwCost = null, wwStatus = null;
-    if (fees) { wwCost = (num(raw.ww_facility_fee) || 0) + (num(raw.ww_improve_fee) || 0); wwStatus = '확정'; }
-    else if (wwM3) {
-      // 고지서 전: 발생량 × 전월 실행단가
-      const p = UT.summary(UT.prevYm(ym), monthly, daily, cache);
-      if (p.ww && p.ww.cost && p.ww.usage) { wwCost = wwM3 * (p.ww.cost / p.ww.usage); wwStatus = '가마감'; }
-    }
-    out.ww = { usage: wwM3, flow, sewage: sew, cost: wwCost, exvat: wwCost, status: wwStatus,
-      outsource: num(m.ww_outsource_fee), sludge: num(m.ww_sludge_fee) };
-
-    const parts = UT.UTILS.map(u => out[u.k]);
-    out.total = parts.some(p => p.cost !== null) ? parts.reduce((s, p) => s + (p.cost || 0), 0) : null;
-    out.exvat = parts.some(p => p.exvat !== null) ? parts.reduce((s, p) => s + (p.exvat || 0), 0) : null;
-    const withData = parts.filter(p => p.status);
-    out.status = !withData.length ? null : (withData.every(p => p.status === '확정') ? '확정' : '가마감');
-    // 이산화탄소 (전기 0.4594 tCO2/MWh, 가스 38.9 MJ/N㎥ × 15.31 tC/TJ × 44/12)
-    out.co2 = {
-      elec: out.elec.usage ? out.elec.usage * (num(m.co2_elec) || 0.4594) / 1000 : null,
-      gas: out.gas.m3 ? out.gas.m3 * 38.9 * 15.31 / 1e6 * 44 / 12 : null
-    };
-    return out;
-  };
-
-  root.UT = UT;
-})(typeof window !== 'undefined' ? window : globalThis);
-
-  </script>
-  <script>
-    // =====================================================================
-    // 공통
-    // =====================================================================
     let sb = null, me = null;
     const isAdmin = () => !!(me && me.role === 'admin');
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = () => ymd(new Date());
+    const nf = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
     const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
-    const nf0 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
-    const nf1 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 1 });
-    const nf2 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
-    const f0 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v);
-    const f1 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf1.format(v);
-    const f2 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf2.format(v);
-    const won = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v) + '원';
-    const man = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v / 10000) + '만원';
-    const ratio = (a, b) => (a === null || b === null || !b) ? null : a / b;
-    const pctTxt = (cur, prev) => {
-      if (cur === null || prev === null || !prev) return '<span class="hint">비교 없음</span>';
-      const p = (cur / prev - 1) * 100;
-      const cls = p > 0.05 ? 'up' : (p < -0.05 ? 'down' : '');
-      return `<span class="${cls}">${p > 0 ? '▲' : (p < 0 ? '▼' : '')} ${nf1.format(Math.abs(p))}%</span>`;
-    };
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
-    const thisYm = todayStr.slice(0, 7);
-    const ymLabel = ym => `${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월`;
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
 
     // ---------------- 데이터 ----------------
-    let MONTHLY = {}, DAILY = {}, cache = {};
-    function resetCache() { cache = {}; }
+    let FIELDS = [];          // meter_fields (활성 항목)
+    let ALLFIELDS = [];       // 비활성 포함
+    let DAYS = {};            // d -> { weather, temp_min, temp_max, v }
+    let SORTED_DAYS = [];     // 날짜 오름차순
+    let curDate = todayStr();
+    let values = {};          // 화면의 현재 값 (항목ID -> 문자열)
+    let dirty = new Set();    // 바뀐 항목ID
+    let weatherDirty = false;
+    let activeTab = 0;
+    let adminMode = false;
+    let TABS = [];            // [{ name, sections: [{ name, fields: [...] }] }]
 
-    async function fetchAll(table, cols, orderCol) {
-      const out = []; let from = 0; const step = 1000;
+    async function fetchAll(table, cols, order) {
+      const out = []; let from = 0;
       while (true) {
-        const { data, error } = await sb.from(table).select(cols).order(orderCol).range(from, from + step - 1);
+        const { data, error } = await sb.from(table).select(cols).order(order).range(from, from + 999);
         if (error) throw error;
-        out.push(...data);
-        if (data.length < step) break;
-        from += step;
+        out.push(...data); if (data.length < 1000) break; from += 1000;
       }
       return out;
     }
 
     async function loadAll() {
-      const [m, d] = await Promise.all([
-        fetchAll('ut_monthly', 'ym, data', 'ym'),
-        fetchAll('ut_daily', 'd, elec_kwh, elec_peak_kw, gas_boiler, gas_rest, water_40a, water_50a, wastewater', 'd')
+      const [f, d] = await Promise.all([
+        fetchAll('meter_fields', '*', 'sort'),
+        fetchAll('meter_daily', 'd, weather, temp_min, temp_max, v', 'd')
       ]);
-      MONTHLY = Object.fromEntries(m.map(r => [r.ym, r.data || {}]));
-      DAILY = {};
-      d.forEach(r => { const { d: k, ...rest } = r; DAILY[k] = rest; });
-      resetCache();
-    }
-    const S = ym => UT.summary(ym, MONTHLY, DAILY, cache);
-
-    // 데이터가 있는 마지막 달
-    function latestYm() {
-      let best = null;
-      const cands = new Set([...Object.keys(MONTHLY), ...Object.keys(DAILY).map(d => d.slice(0, 7))]);
-      [...cands].sort().forEach(ym => { if (ym <= thisYm) { const s = S(ym); if (s.total !== null) best = ym; } });
-      return best || thisYm;
+      ALLFIELDS = f;
+      FIELDS = f.filter(x => x.active);
+      DAYS = Object.fromEntries(d.map(r => [r.d, r]));
+      SORTED_DAYS = d.map(r => r.d);
+      buildTabs();
     }
 
-    // ---------------- 탭 ----------------
-    const loaders = { dash: renderDash, daily: renderDaily, monthly: renderMonthly, report: renderReport };
-    function switchTab(t) {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
-      loaders[t]();
-    }
-    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-
-    // =====================================================================
-    // 분석
-    // =====================================================================
-    let dashYm = null;
-    let utilSel = 'elec', metricSel = 'unit';
-    const charts = {};
-
-    function shiftDashMonth(d) { dashYm = d > 0 ? UT.nextYm(dashYm) : UT.prevYm(dashYm); renderDash(); }
-
-    function yearMonths(y) { return Array.from({ length: 12 }, (_, i) => UT.ym(y, i + 1)); }
-
-    function kpiTile(cls, label, valHtml, cmpHtml, status) {
-      return `<div class="kpi ${cls}"><div class="lab"><span>${label}</span>${status ? `<span class="st st-${status}">${status}</span>` : ''}</div>
-        <div class="val">${valHtml}</div><div class="cmp">${cmpHtml}</div></div>`;
-    }
-
-    function renderDash() {
-      if (!dashYm) dashYm = latestYm();
-      document.getElementById('dash-month').textContent = ymLabel(dashYm);
-      const cur = S(dashYm), prev = S(UT.prevYm(dashYm));
-      const ly = S(UT.ym(Number(dashYm.slice(0, 4)) - 1, Number(dashYm.slice(5))));
-      document.getElementById('dash-status').innerHTML = cur.status ? `<span class="st st-${cur.status}">${cur.status}</span>` : '';
-      document.getElementById('dash-note').textContent = cur.status === '가마감' ? '고지서가 아직 반영되지 않은 항목은 자체 검침값으로 계산한 예상 금액입니다.' : '';
-
-      const unitCost = s => ratio(s.total, s.production);
-      let html = kpiTile('total', '유틸리티 총비용 (VAT 포함)', `${man(cur.total)}`,
-        `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null);
-      html += kpiTile('prod', '생산량', `${f0(cur.production)}<small> kg</small>`,
-        `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null);
-      html += kpiTile('total', '생산량당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
-        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null);
-      document.getElementById('kpis').innerHTML = html;
-      html = '';
-      UT.UTILS.forEach(u => {
-        const c = cur[u.k], p = prev[u.k];
-        const unitNow = ratio(c.usage, cur.production), unitPrev = ratio(p.usage, prev.production);
-        html += kpiTile(u.k, `${u.name}`,
-          `${man(c.cost)}`,
-          `사용량 ${f0(c.usage)} ${u.unit} (${pctTxt(c.usage, p.usage)})<br>원단위 ${f2(unitNow)} ${u.unit}/kg (${pctTxt(unitNow, unitPrev)})`,
-          c.status);
+    function buildTabs() {
+      TABS = [];
+      FIELDS.slice().sort((a, b) => a.sort - b.sort).forEach(f => {
+        let t = TABS.find(x => x.name === f.tab); if (!t) TABS.push(t = { name: f.tab, sections: [] });
+        let s = t.sections.find(x => x.name === f.section); if (!s) t.sections.push(s = { name: f.section, fields: [] });
+        s.fields.push(f);
       });
-      document.getElementById('kpis2').innerHTML = html;
-      renderCharts();
-      renderYearTable();
+      if (activeTab >= TABS.length) activeTab = 0;
     }
 
-    const baseOpts = (yTitle) => ({
-      responsive: true, maintainAspectRatio: false, animation: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { display: false }, tooltip: { callbacks: {} } },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: '#666' } },
-        y: { beginAtZero: true, grid: { color: '#eef0f3' }, border: { display: false }, ticks: { color: '#666' }, title: { display: !!yTitle, text: yTitle, color: '#888' } }
+    // 이 날짜 이전의 가장 최근 값
+    function prevValue(fid, date) {
+      for (let i = SORTED_DAYS.length - 1; i >= 0; i--) {
+        const d = SORTED_DAYS[i];
+        if (d >= date) continue;
+        const v = (DAYS[d].v || {})[fid];
+        if (v !== undefined && v !== null && v !== '') return { d, v: Number(v) };
       }
-    });
-    // 전년 값이 올해보다 훨씬 커서(공장 가동 초기) 그래프가 납작해지면 축을 올해 기준으로 자름
-    function clipAxis(opts, cur, prev, noteId) {
-      const mx = a => Math.max(0, ...a.filter(v => v !== null && v !== undefined && isFinite(v)));
-      const c = mx(cur), p = mx(prev);
-      const clipped = c > 0 && p > c * 2.5;
-      if (clipped) {
-        const raw = c * 1.5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
-        opts.scales.y.max = Math.ceil(raw / mag * 2) / 2 * mag; // 보기 좋은 숫자로 올림
-      }
-      const el = noteId && document.getElementById(noteId);
-      if (el) el.textContent = clipped ? '※ 전년 일부 값(가동 초기)이 커서 그래프 범위 밖은 잘려 보입니다' : '';
-      return opts;
-    }
-    function mkChart(id, cfg) {
-      if (charts[id]) charts[id].destroy();
-      charts[id] = new Chart(document.getElementById(id), cfg);
-    }
-    const monthLabels = Array.from({ length: 12 }, (_, i) => (i + 1) + '월');
-
-    function renderCharts() {
-      if (!window.Chart) return;
-      const y = Number(dashYm.slice(0, 4));
-      const ms = yearMonths(y), pms = yearMonths(y - 1);
-      const cs = ms.map(S), ps = pms.map(S);
-
-      // 1) 월별 비용 (항목별 누적 막대)
-      document.getElementById('cost-chart-sub').textContent = `${y}년 · 만원 · VAT 포함`;
-      document.getElementById('cost-legend').innerHTML = UT.UTILS.map(u => `<span><i class="dot" style="background:${u.color}"></i>${u.name}</span>`).join('');
-      mkChart('chart-cost', {
-        type: 'bar',
-        data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({
-          label: u.name, data: cs.map(s => s[u.k].cost === null ? null : s[u.k].cost / 10000),
-          backgroundColor: u.color, borderColor: '#fff', borderWidth: { top: 2 }, borderRadius: 0, stack: 'c', maxBarThickness: 34
-        })) },
-        options: (() => { const o = baseOpts('만원'); o.scales.x.stacked = true; o.scales.y.stacked = true;
-          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)}만원`;
-          o.plugins.tooltip.callbacks.footer = items => { const t = items.reduce((a, i) => a + (i.raw || 0), 0); return `합계 ${f0(t)}만원`; };
-          return o; })()
-      });
-
-      // 2) 생산량당 비용
-      const uc = arr => arr.map(s => ratio(s.total, s.production));
-      mkChart('chart-unitcost', {
-        type: 'line',
-        data: { labels: monthLabels, datasets: [
-          { label: `${y}년`, data: uc(cs), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 4, spanGaps: false },
-          { label: `${y - 1}년`, data: uc(ps), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
-        ] },
-        options: (() => { const o = baseOpts('원/kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} 원/kg`; return clipAxis(o, uc(cs), uc(ps), 'unitcost-note'); })()
-      });
-
-      // 3) 항목별 추이
-      document.getElementById('util-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${utilSel === u.k ? 'on' : ''}" onclick="utilSel='${u.k}';renderCharts()">${u.name}</button>`).join('');
-      const metrics = [['usage', '사용량'], ['unit', '원단위'], ['cost', '비용']];
-      document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSel === k ? 'on' : ''}" onclick="metricSel='${k}';renderCharts()">${n}</button>`).join('');
-      const U = UT.UTILS.find(u => u.k === utilSel);
-      const pick = s => metricSel === 'usage' ? s[U.k].usage : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 10000);
-      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'unit' ? `${U.unit}/kg` : '만원';
-      const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 10000 : null; })
-        : metricSel === 'usage' ? ms.map(ym => (MONTHLY[ym] || {})['plan_' + U.k + '_usage'] ?? null) : null;
-      const ds = [
-        { label: `${y}년`, data: cs.map(pick), borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 4 },
-        { label: `${y - 1}년`, data: ps.map(pick), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
-      ];
-      const hasPlan = plan && plan.some(v => v !== null && v !== undefined);
-      if (hasPlan) ds.push({ label: '계획', data: plan, borderColor: '#333', backgroundColor: '#333', borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0, stepped: 'middle' });
-      document.getElementById('util-legend').innerHTML =
-        `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
-        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}</span>`;
-      mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
-        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? f2(c.raw) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, cs.map(pick), ps.map(pick), 'util-note'); })() });
-
-      // 4) 생산량
-      mkChart('chart-prod', { type: 'bar',
-        data: { labels: monthLabels, datasets: [
-          { type: 'bar', label: `${y}년`, data: cs.map(s => s.production), backgroundColor: '#8a8f98', borderRadius: { topLeft: 4, topRight: 4 }, maxBarThickness: 34 },
-          { type: 'line', label: `${y - 1}년`, data: ps.map(s => s.production), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
-        ] },
-        options: (() => { const o = baseOpts('kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} kg`; return o; })() });
+      return null;
     }
 
-    // 월별 상세표 (엑셀 Utility_SSB 요약과 같은 구성)
-    let yearTableRows = [];
-    function renderYearTable() {
-      const y = Number(dashYm.slice(0, 4));
-      document.getElementById('table-year-label').textContent = `${y}년`;
-      const ms = yearMonths(y), cs = ms.map(S);
-      const rows = [];
-      const sumOf = arr => arr.some(v => v !== null) ? arr.reduce((a, v) => a + (v || 0), 0) : null;
-      const avgOf = arr => { const v = arr.filter(x => x !== null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-      const add = (label, vals, fmt, opts = {}) => rows.push({ label, vals, fmt, sum: opts.noSum ? null : sumOf(vals), avg: avgOf(vals), cls: opts.cls, prov: opts.prov });
-      rows.push({ grp: '합계' });
-      add('상태', cs.map(s => s.status), v => v ? `<span class="st st-${v}">${v}</span>` : '-', { noSum: true });
-      add('유틸리티 합계 (원)', cs.map(s => s.total), f0, { cls: 'sum', prov: cs.map(s => s.status === '가마감') });
-      add('VAT 별도 (원)', cs.map(s => s.exvat), f0);
-      add('생산량 (kg)', cs.map(s => s.production), f0);
-      add('생산량당 비용 (원/kg)', cs.map(s => ratio(s.total, s.production)), f0, { noSum: true });
-      UT.UTILS.forEach(u => {
-        rows.push({ grp: u.name });
-        add('비용 (원)', cs.map(s => s[u.k].cost), f0, { prov: cs.map(s => s[u.k].status === '가마감') });
-        add(`사용량 (${u.unit})`, cs.map(s => s[u.k].usage), f0);
-        add(`단가 (원/${u.unit})`, cs.map(s => ratio(s[u.k].cost, s[u.k].usage)), f2, { noSum: true });
-        add(`생산량당 비용 (원/kg)`, cs.map(s => ratio(s[u.k].cost, s.production)), f1, { noSum: true });
-        add(`생산량당 사용량 (${u.unit}/kg)`, cs.map(s => ratio(s[u.k].usage, s.production)), f2, { noSum: true });
-        if (u.k === 'elec') add('최대전력 (kW)', cs.map(s => s.elec.maxKw), f1, { noSum: true });
-        if (u.k === 'ww') {
-          add('위탁처리비 (원, 합계 제외)', cs.map(s => s.ww.outsource), f0);
-          add('슬러지처리비 (원, 합계 제외)', cs.map(s => s.ww.sludge), f0);
-        }
-      });
-      rows.push({ grp: '이산화탄소' });
-      add('전기 (tCO2)', cs.map(s => s.co2.elec), f1);
-      add('가스 (tCO2)', cs.map(s => s.co2.gas), f1);
-      yearTableRows = { y, rows };
-
-      let h = `<table class="t"><tr><th class="l">구분</th>${monthLabels.map(m => `<th>${m}</th>`).join('')}<th>합계</th><th>평균</th></tr>`;
-      rows.forEach(r => {
-        if (r.grp) { h += `<tr class="grp"><td colspan="15">${esc(r.grp)}</td></tr>`; return; }
-        h += `<tr class="${r.cls || ''}"><td class="l">${esc(r.label)}</td>` +
-          r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}</td>`).join('') +
-          `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.label === '상태' ? '' : (r.avg === null ? '' : r.fmt(r.avg))}</td></tr>`;
-      });
-      document.getElementById('year-table').innerHTML = h + '</table>';
+    // ---------------- 날짜 ----------------
+    function confirmLeave() { return !(dirty.size || weatherDirty) || confirm('저장하지 않은 입력이 있습니다. 버리고 이동할까요?'); }
+    function shiftDate(n) { const d = new Date(curDate + 'T00:00:00'); d.setDate(d.getDate() + n); changeDate(ymd(d)); }
+    function changeDate(ds) {
+      if (!ds) return;
+      if (ds !== curDate && !confirmLeave()) { document.getElementById('work-date').value = curDate; return; }
+      curDate = ds; loadDay();
+    }
+    function loadDay() {
+      document.getElementById('work-date').value = curDate;
+      const r = DAYS[curDate] || {};
+      values = {};
+      Object.entries(r.v || {}).forEach(([k, v]) => values[k] = String(v));
+      dirty = new Set(); weatherDirty = false;
+      document.getElementById('w-sel').value = r.weather || '';
+      document.getElementById('t-min').value = r.temp_min ?? '';
+      document.getElementById('t-max').value = r.temp_max ?? '';
+      if (!r.weather && r.temp_min == null) fetchWeather(false);
+      else showWeatherCard(r.weather, r.temp_min, r.temp_max, '저장된 값');
+      renderTabs(); renderContent(); renderFooter();
     }
 
-    async function ensureXLSX() {
-      if (window.XLSX) return;
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = res; s.onerror = () => rej(new Error('엑셀 변환 도구를 불러오지 못했습니다.'));
-        document.head.appendChild(s);
-      });
+    // ---------------- 날씨 (open-meteo, 회사망에서 막히면 직접 입력) ----------------
+    const WCODE = { 0: '맑음', 1: '맑음', 2: '구름 조금', 3: '흐림', 45: '안개', 48: '안개', 51: '이슬비', 53: '이슬비', 55: '이슬비', 61: '비', 63: '비', 65: '비', 71: '눈', 73: '눈', 75: '눈', 80: '소나기', 81: '소나기', 82: '소나기', 95: '뇌우', 96: '뇌우', 99: '뇌우' };
+    const WICON = { '맑음': '☀️', '구름 조금': '🌤️', '구름 많음': '⛅', '흐림': '☁️', '안개': '🌫️', '이슬비': '🌦️', '비': '🌧️', '눈': '🌨️', '소나기': '🌦️', '뇌우': '⛈️' };
+    function showWeatherCard(desc, tmin, tmax, note) {
+      document.getElementById('w-icon').textContent = WICON[desc] || '🌡️';
+      document.getElementById('w-temps').textContent = (tmin != null && tmax != null) ? `${tmin}° / ${tmax}°C` : (desc || '날씨 정보 없음');
+      document.getElementById('w-desc').textContent = [desc, note].filter(Boolean).join(' · ');
     }
-
-    async function downloadYearTable() {
+    async function fetchWeather(force) {
+      const ds = curDate;
+      document.getElementById('w-temps').textContent = '날씨 불러오는 중...';
       try {
-        await ensureXLSX();
-        const { y, rows } = yearTableRows;
-        const aoa = [['구분', ...monthLabels, '합계', '평균']];
-        let grp = '';
-        rows.forEach(r => {
-          if (r.grp) { grp = r.grp; aoa.push([`[${r.grp}]`]); return; }
-          const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 100) / 100 : v);
-          aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), r.label === '상태' ? '' : clean(r.avg)]);
-        });
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `${y}년`);
-        XLSX.writeFile(wb, `유틸리티_월별상세_${y}.xlsx`);
-      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
-    }
-
-    // =====================================================================
-    // 일일검침
-    // =====================================================================
-    let dailyYm = thisYm;
-    const DCOLS = [
-      { k: 'elec_kwh', label: '전기 사용량', unit: 'kWh', kind: 'usage', small: false },
-      { k: 'elec_peak_kw', label: '전기 최대수요', unit: 'kW', kind: 'usage', small: true },
-      { k: 'gas_boiler', label: '가스 보일러', unit: '지침 ㎥', kind: 'reading' },
-      { k: 'gas_rest', label: '가스 식당', unit: '지침 ㎥', kind: 'reading', small: true },
-      { k: 'water_40a', label: '용수 40A', unit: '지침 ㎥', kind: 'reading', small: true },
-      { k: 'water_50a', label: '용수 50A', unit: '지침 ㎥', kind: 'reading', small: true },
-      { k: 'wastewater', label: '폐수 유량계', unit: '지침 ㎥', kind: 'reading', small: true }
-    ];
-    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
-
-    function shiftDailyMonth(d) { dailyYm = d > 0 ? UT.nextYm(dailyYm) : UT.prevYm(dailyYm); renderDaily(); }
-    function jumpToday() { dailyYm = thisYm; renderDaily(); }
-
-    function dval(dateStr, k) { const r = DAILY[dateStr]; return r && r[k] !== null && r[k] !== undefined ? Number(r[k]) : null; }
-    function nextDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-    function prevDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-
-    function useText(dateStr, col) {
-      if (col.kind !== 'reading') return '';
-      const a = dval(dateStr, col.k), b = dval(nextDate(dateStr), col.k);
-      if (a === null || b === null) return '';
-      const u = b - a;
-      return (u < 0 ? '⚠ ' : '') + f2(u);
-    }
-
-    function renderDaily() {
-      document.getElementById('daily-month').textContent = ymLabel(dailyYm);
-      const n = UT.daysIn(dailyYm);
-      let h = `<table class="daily"><tr><th>날짜</th>${DCOLS.map(c => `<th>${c.label}<br><span class="u">${c.unit}</span></th>`).join('')}</tr>`;
-      for (let d = 1; d <= n; d++) {
-        const ds = UT.dateStr(dailyYm, d);
-        const wd = new Date(ds + 'T00:00:00').getDay();
-        h += `<tr class="${ds === todayStr ? 'today' : ''} ${wd === 0 || wd === 6 ? 'weekend' : ''}" id="row-${ds}">
-          <td>${d}일 (${WEEK[wd]})</td>` +
-          DCOLS.map(c => {
-            const v = dval(ds, c.k);
-            const warn = c.kind === 'reading' && v !== null && dval(prevDate(ds), c.k) !== null && v < dval(prevDate(ds), c.k);
-            return `<td><input type="number" step="any" inputmode="decimal" class="${c.small ? 'small' : ''} ${warn ? 'warn' : ''}" data-d="${ds}" data-k="${c.k}" value="${v === null ? '' : v}" ${warn ? 'title="전날 지침보다 작습니다"' : ''}>
-              <span class="use" id="use-${ds}-${c.k}">${useText(ds, c)}</span></td>`;
-          }).join('') + '</tr>';
-      }
-      // 월 합계 (사용량)
-      const st = UT.dailyStats(DAILY, dailyYm);
-      const sumCell = c => {
-        if (c.k === 'elec_kwh') return `${f0(st.elec_kwh)} kWh`;
-        if (c.k === 'elec_peak_kw') return `최대 ${f1(st.elec_peak)}`;
-        return st[c.k] === null ? '-' : `${f2(st[c.k])} ㎥`;
-      };
-      h += `<tr class="sum"><td>월 합계</td>${DCOLS.map(c => `<td>${sumCell(c)}</td>`).join('')}</tr></table>`;
-      const wrap = document.getElementById('daily-wrap');
-      wrap.innerHTML = h;
-      wrap.querySelectorAll('input').forEach(inp => {
-        inp.addEventListener('change', () => saveDailyCell(inp));
-        inp.addEventListener('keydown', e => {
-          if (e.key === 'Enter') { // 엔터 → 다음 날 같은 칸
-            e.preventDefault();
-            const nx = wrap.querySelector(`input[data-d="${nextDate(inp.dataset.d)}"][data-k="${inp.dataset.k}"]`);
-            if (nx) nx.focus(); else inp.blur();
-          }
-        });
-      });
-      if (dailyYm === thisYm) {
-        const row = document.getElementById('row-' + todayStr);
-        if (row) setTimeout(() => row.scrollIntoView({ block: 'center' }), 50);
-      }
-    }
-
-    async function saveDailyCell(inp) {
-      const d = inp.dataset.d, k = inp.dataset.k;
-      const raw = inp.value.trim();
-      const v = raw === '' ? null : Number(raw);
-      if (raw !== '' && isNaN(v)) { inp.classList.add('err'); return; }
-      inp.classList.remove('saved', 'err'); inp.classList.add('saving');
-      const { error } = await sb.from('ut_daily').upsert({ d, [k]: v }, { onConflict: 'd' });
-      inp.classList.remove('saving');
-      if (error) { inp.classList.add('err'); inp.title = '저장 실패: ' + error.message; alert('저장 실패: ' + error.message); return; }
-      inp.classList.add('saved'); inp.title = '';
-      DAILY[d] = { ...(DAILY[d] || {}), [k]: v };
-      resetCache();
-      // 그날·전날 사용량 표시 갱신
-      const col = DCOLS.find(c => c.k === k);
-      [d, prevDate(d)].forEach(ds => { const el = document.getElementById(`use-${ds}-${k}`); if (el) el.textContent = useText(ds, col); });
-      const prevV = dval(prevDate(d), k);
-      inp.classList.toggle('warn', col.kind === 'reading' && v !== null && prevV !== null && v < prevV);
-    }
-
-    // =====================================================================
-    // 월간입력
-    // =====================================================================
-    let monthlyYm = null, monthlyDraft = {};
-
-    function shiftMonthlyMonth(d) {
-      if (monthlyDirty && !confirm('저장하지 않은 입력이 있습니다. 이동할까요?')) return;
-      monthlyYm = d > 0 ? UT.nextYm(monthlyYm) : UT.prevYm(monthlyYm); renderMonthly();
-    }
-    let monthlyDirty = false;
-
-    function renderMonthly() {
-      if (!monthlyYm) monthlyYm = UT.prevYm(thisYm); // 보통 지난달 마감
-      document.getElementById('monthly-month').textContent = ymLabel(monthlyYm);
-      monthlyDraft = { ...(MONTHLY[monthlyYm] || {}) };
-      monthlyDirty = false;
-      const ro = !isAdmin();
-      document.getElementById('monthly-save').hidden = ro;
-      document.getElementById('monthly-note').textContent = ro ? '월간입력은 관리자만 수정할 수 있습니다. (보기 전용)' :
-        (monthlyDraft._imported ? '엑셀에서 옮겨온 달입니다. 빈 칸 자동 채움이 꺼져 있습니다.' : '빈 칸은 회색 글씨 값(전월 값·자체 검침값)으로 계산됩니다.');
-      const eff = UT.effective(monthlyYm, MONTHLY, DAILY, {});
-      const groups = [];
-      UT.FIELDS.forEach(f => { let g = groups.find(x => x.g === f.g); if (!g) groups.push(g = { g: f.g, fields: [] }); g.fields.push(f); });
-      const openGroups = ['생산', '전기', '가스', '용수', '폐수', '고지서 실제 금액'];
-      let h = '';
-      groups.forEach(g => {
-        h += `<details class="fgroup" ${openGroups.includes(g.g) ? 'open' : ''}><summary>${esc(g.g)}</summary><div class="fields">`;
-        g.fields.forEach(f => {
-          const v = monthlyDraft[f.k];
-          const filled = v !== undefined && v !== null && v !== '';
-          const effV = eff[f.k];
-          const src = eff._src[f.k];
-          const ph = (!filled && effV !== undefined && effV !== null && effV !== '') ? (f.text ? effV : f2(Number(effV))) : '';
-          const srcTxt = !filled && ph !== '' ? `${src === '자동' ? '자동' : (src === '전월' ? '전월 값' : '기본값')}: ${esc(ph)}` : (f.hint ? esc(f.hint) : '');
-          let input;
-          if (f.options) {
-            input = `<select data-k="${f.k}" ${ro ? 'disabled' : ''}><option value="">${ph ? `(${esc(ph)})` : '-'}</option>${f.options.map(o => `<option ${v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
-          } else {
-            input = `<input ${f.text ? 'type="text"' : 'type="number" step="any" inputmode="decimal"'} data-k="${f.k}" class="${filled ? 'filled' : ''}" value="${filled ? esc(v) : ''}" placeholder="${esc(ph)}" ${ro ? 'disabled' : ''}>`;
-          }
-          h += `<div class="f"><label>${esc(f.label)} <span class="u">${esc(f.unit)}</span></label>${input}<div class="src">${srcTxt}</div></div>`;
-        });
-        h += '</div></details>';
-      });
-      const form = document.getElementById('monthly-form');
-      form.innerHTML = h;
-      form.querySelectorAll('input, select').forEach(el => el.addEventListener('input', () => {
-        const k = el.dataset.k, f = UT.FIELD[k];
-        const raw = el.value.trim();
-        if (raw === '') delete monthlyDraft[k];
-        else monthlyDraft[k] = (f.text || f.options) ? raw : Number(raw);
-        el.classList.toggle('filled', raw !== '');
-        monthlyDirty = true;
-        renderMonthlyPreview();
-      }));
-      renderMonthlyPreview();
-    }
-
-    function renderMonthlyPreview() {
-      const tmp = { ...MONTHLY, [monthlyYm]: monthlyDraft };
-      const s = UT.summary(monthlyYm, tmp, DAILY, {});
-      const e = s.elec.calc, g = s.gas.calc;
-      const row = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
-      const head = (u, st) => `<tr class="h"><td><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${st ? `<span class="st st-${st}">${st}</span>` : ''}</td></tr>`;
-      let h = `<h3>계산 결과 미리보기 <span class="sub">${ymLabel(monthlyYm)}</span></h3><table>`;
-      h += head(UT.UTILS[0], s.elec.status);
-      if (e) {
-        h += row('사용량', `${f0(e.kwh)} kWh`) + row('기본요금', won(e.base)) + row('전력량요금', won(e.energy)) +
-          row('기후환경·연료비조정', won(e.climate + e.fuel)) + row('역률요금', won(e.pfFee + e.leadFee)) +
-          (e.settlement ? row('정산요금', won(e.settlement)) : '') +
-          row('부가세 + 전력기금', won(e.vat + e.fund)) + row('<b>계산 금액</b>', `<b>${won(e.total)}</b>`);
-      } else h += row('입력 없음', '');
-      if (s.elec.status === '확정') h += row('고지서 금액', `<b>${won(s.elec.cost)}</b>`);
-      h += head(UT.UTILS[1], s.gas.status);
-      if (g) {
-        h += row('사용량', `${f1(g.m3)} ㎥ / ${f0(g.mj)} MJ`) +
-          (g.boiler ? row('보일러', won(g.boiler.total)) : '') + (g.rest ? row('식당', won(g.rest.total)) : '') +
-          row('<b>계산 금액</b>', `<b>${won(g.total)}</b>`);
-      } else h += row('입력 없음', '');
-      if (s.gas.status === '확정') h += row('고지서 금액', `<b>${won(s.gas.cost)}</b>`);
-      h += head(UT.UTILS[2], s.water.status);
-      h += row('40A', `${f0(s.water.w40 && s.water.w40.usage)} ㎥ · ${won(s.water.w40cost)}`);
-      h += row('50A', `${f0(s.water.w50 && s.water.w50.usage)} ㎥ · ${won(s.water.w50cost)}`);
-      h += head(UT.UTILS[3], s.ww.status);
-      h += row('발생량 (폐수+오수)', `${f1(s.ww.usage)} ㎥`) + row('금액', won(s.ww.cost));
-      // 클러스터 검침값 비교
-      const m = s.m, pm = (UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {}));
-      if (m.cluster_water_reading !== undefined || m.cluster_ww_reading !== undefined) {
-        const cw = (m.cluster_water_reading != null && pm.cluster_water_reading != null) ? m.cluster_water_reading - pm.cluster_water_reading : null;
-        const cww = (m.cluster_ww_reading != null && pm.cluster_ww_reading != null) ? m.cluster_ww_reading - pm.cluster_ww_reading : null;
-        h += row('클러스터 상수 사용량', cw === null ? '전월 값 필요' : `${f1(cw)} ㎥ (우리 용수 ${f1(s.water.usage)})`);
-        h += row('클러스터 폐수 사용량', cww === null ? '전월 값 필요' : `${f1(cww)} ㎥ (우리 폐수 ${f1(s.ww.flow)})`);
-      }
-      h += `<tr class="tot"><td>합계 (VAT 포함)</td><td>${won(s.total)}</td></tr>`;
-      h += `<tr><td>VAT 별도</td><td>${won(s.exvat)}</td></tr>`;
-      h += `<tr><td>생산량당 비용</td><td>${f0(ratio(s.total, s.production))} 원/kg</td></tr></table>`;
-      document.getElementById('monthly-preview').innerHTML = h;
-    }
-
-    async function saveMonthly() {
-      if (!isAdmin()) return;
-      const btn = document.getElementById('monthly-save');
-      btn.disabled = true;
-      try {
-        const data = {};
-        Object.entries(monthlyDraft).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined && !(typeof v === 'number' && isNaN(v))) data[k] = v; });
-        const { error } = await sb.from('ut_monthly').upsert({ ym: monthlyYm, data }, { onConflict: 'ym' });
-        if (error) throw error;
-        MONTHLY[monthlyYm] = data;
-        resetCache();
-        monthlyDirty = false;
-        btn.textContent = '저장됨 ✓';
-        setTimeout(() => { btn.textContent = '저장'; }, 1500);
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=35.8964&longitude=126.9396&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=Asia%2FSeoul&start_date=${ds}&end_date=${ds}`;
+        const res = await fetch(url);
+        const j = await res.json();
+        if (!j.daily) throw new Error(j.reason || '날씨 없음');
+        if (ds !== curDate) return;
+        const tmin = Math.round(j.daily.temperature_2m_min[0] * 10) / 10, tmax = Math.round(j.daily.temperature_2m_max[0] * 10) / 10;
+        const desc = WCODE[j.daily.weathercode[0]] || '흐림';
+        showWeatherCard(desc, tmin, tmax, '자동');
+        const sel = document.getElementById('w-sel'), mn = document.getElementById('t-min'), mx = document.getElementById('t-max');
+        if (force || !sel.value) sel.value = desc;
+        if (force || mn.value === '') mn.value = tmin;
+        if (force || mx.value === '') mx.value = tmax;
+        weatherDirty = true; renderFooter();
       } catch (e) {
-        alert('저장 실패: ' + errMsg(e));
-      } finally { btn.disabled = false; }
-    }
-
-    // =====================================================================
-    // 회계보고 (월초 예상값 / 확정값)
-    // =====================================================================
-    let reportYm = null, reportRows = [];
-    function shiftReportMonth(d) { reportYm = d > 0 ? UT.nextYm(reportYm) : UT.prevYm(reportYm); renderReport(); }
-
-    // 전기: 전기요금계(부가세 제외) / 부가세 / 전력기금 / 연체료 나누기
-    function elecParts(s) {
-      const e = s.elec.calc;
-      const raw = MONTHLY[s.ym] || {};
-      const late = Number((s.m || {}).elec_late_fee) || 0;
-      if (s.elec.status !== '확정') {
-        if (!e) return null;
-        return { sub: e.subtotal, vat: e.vat, fund: e.fund, late: e.late, total: e.total };
+        document.getElementById('w-icon').textContent = '?';
+        document.getElementById('w-temps').textContent = '날씨 자동 확인 불가';
+        document.getElementById('w-desc').textContent = '아래에 직접 입력해 주세요';
       }
-      // 확정(고지서 금액 입력): 청구액에서 거꾸로 나눔 (전력기금 = 전기요금계 × 2.7% 10원 미만 절사)
-      const T = Number(raw.elec_bill_total);
-      let sub = Math.round((T - late) / 1.127);
-      let fund = Math.trunc(sub * 0.027 / 10) * 10;
-      if (raw.elec_bill_exvat !== undefined && raw.elec_bill_exvat !== null && raw.elec_bill_exvat !== '') {
-        sub = Number(raw.elec_bill_exvat) - late - fund;
-        fund = Math.trunc(sub * 0.027 / 10) * 10;
-        sub = Number(raw.elec_bill_exvat) - late - fund;
-      }
-      return { sub, vat: Math.round(sub * 0.1), fund, late, total: T };
     }
+    function markDirty() { weatherDirty = true; renderFooter(); }
 
-    // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
-    function renderReport() {
-      if (!reportYm) reportYm = UT.prevYm(thisYm);
-      document.getElementById('report-month').textContent = ymLabel(reportYm);
-      const s = S(reportYm);
-      const g = s.gas.calc, ep = elecParts(s);
-      const gasConf = s.gas.status === '확정';
-      reportRows = [
-        ['전기', '', s.elec.usage, 'kWh', s.elec.exvat, s.elec.cost, s.elec.status],
-        ...(ep ? [
-          ['', '전기요금계 (부가세 제외)', null, '', ep.sub, ep.sub + ep.vat, ''],
-          ['', '전력기금', null, '', ep.fund, ep.fund, ''],
-          ...(ep.late ? [['', '연체료', null, '', ep.late, ep.late, '']] : [])
-        ] : []),
-        ['가스', '', s.gas.m3, '㎥', s.gas.exvat, s.gas.cost, s.gas.status],
-        ...(g && g.boiler ? [['', '보일러', g.boiler.m3, '㎥', gasConf ? null : g.boiler.cost + g.boiler.fee, gasConf ? null : g.boiler.total, '']] : []),
-        ...(g && g.rest ? [['', '식당', g.rest.m3, '㎥', gasConf ? null : g.rest.cost + g.rest.fee, gasConf ? null : g.rest.total, '']] : []),
-        ['용수', '', s.water.usage, '㎥', s.water.exvat, s.water.cost, s.water.status],
-        ['', '40A', s.water.w40 ? s.water.w40.usage : null, '㎥', s.water.w40cost, s.water.w40cost, ''],
-        ['', '50A', s.water.w50 ? s.water.w50.usage : null, '㎥', s.water.w50cost, s.water.w50cost, ''],
-        ['폐수', '', s.ww.usage, '㎥', s.ww.exvat, s.ww.cost, s.ww.status],
-        ['합계', '', null, '', s.exvat, s.total, s.status]
-      ];
-      let h = `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성일 ${todayStr}</span></h3>`;
-      h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
-      reportRows.forEach(r => {
-        const isSum = r[0] === '합계', isSub = !r[0] && !isSum;
-        h += `<tr class="${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''}"><td class="l">${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
-          <td class="key">${r[4] === null ? '' : f0(r[4])}</td><td>${r[5] === null ? '' : f0(r[5])}</td>
-          <td>${r[6] ? `<span class="st st-${r[6]}">${r[6]}</span>` : ''}</td></tr>`;
+    // ---------------- 화면 ----------------
+    function tabCount(t) {
+      let total = 0, filled = 0;
+      t.sections.forEach(s => s.fields.forEach(f => { total++; if (values[f.id] !== undefined && values[f.id] !== '') filled++; }));
+      return { total, filled };
+    }
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = TABS.map((t, i) => {
+        const c = tabCount(t);
+        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span></div>`;
+      }).join('') + (adminMode ? `<div class="tab" onclick="addTab()">＋ 탭</div>` : '');
+    }
+    function switchTab(i) { activeTab = i; renderTabs(); renderContent(); renderFooter(); window.scrollTo({ top: 0 }); }
+
+    function metaHtml(f) {
+      const parts = [esc(f.unit)];
+      if (f.std_value !== null && f.std_value !== undefined) parts.push(`<span class="std">기준 ${nf.format(f.std_value)}${esc(f.unit)}</span>`);
+      const p = prevValue(f.id, curDate);
+      if (p) {
+        const dd = p.d.slice(5).replace('-', '/');
+        parts.push(`전 ${nf.format(p.v)}${p.d !== prevDay(curDate) ? ` (${dd})` : ''}`);
+        const cur = values[f.id];
+        if (f.cumulative && cur !== undefined && cur !== '' && !isNaN(cur)) {
+          const u = Number(cur) - p.v;
+          parts.push(u < 0 ? `<span class="neg">⚠ 전보다 ${nf.format(-u)} 작음</span>` : `<span class="use">사용 ${nf.format(u)}</span>`);
+        }
+      }
+      return parts.join(' · ');
+    }
+    function prevDay(ds) { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() - 1); return ymd(d); }
+
+    function renderContent() {
+      const c = document.getElementById('content');
+      const t = TABS[activeTab];
+      if (!t) { c.innerHTML = '<div class="loading">항목이 없습니다.' + (isAdmin() ? ' 위의 ⚙ 항목 관리에서 추가하세요.' : '') + '</div>'; return; }
+      if (adminMode) { renderAdmin(); return; }
+      let h = '';
+      t.sections.forEach(s => {
+        h += `<div class="sec">${esc(s.name)}</div>`;
+        s.fields.forEach(f => {
+          const v = values[f.id] ?? '';
+          const p = prevValue(f.id, curDate);
+          const warn = f.cumulative && v !== '' && p && Number(v) < p.v;
+          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''}" id="card-${esc(f.id)}">
+            <div class="info"><div class="fname">${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
+            <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
+              value="${esc(v)}" data-id="${esc(f.id)}">
+          </div>`;
+        });
       });
-      h += '</table></div>';
-      h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
-      document.getElementById('report-body').innerHTML = h;
+      c.innerHTML = h;
+      c.querySelectorAll('input.val').forEach(inp => {
+        inp.addEventListener('input', () => onInput(inp));
+        inp.addEventListener('focus', () => { inp.select(); setTimeout(() => inp.closest('.card').scrollIntoView({ block: 'center', behavior: 'smooth' }), 250); });
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const all = [...c.querySelectorAll('input.val')]; const i = all.indexOf(inp);
+            if (all[i + 1]) all[i + 1].focus(); else inp.blur();
+          }
+        });
+      });
     }
 
-    async function downloadReport() {
+    function onInput(inp) {
+      const id = inp.dataset.id, v = inp.value.trim();
+      const orig = ((DAYS[curDate] || {}).v || {})[id];
+      values[id] = v;
+      const changed = String(orig ?? '') !== v;
+      if (changed) dirty.add(id); else dirty.delete(id);
+      inp.classList.toggle('filled', v !== '');
+      const f = FIELDS.find(x => x.id === id);
+      const p = prevValue(id, curDate);
+      inp.classList.toggle('warn', !!(f.cumulative && v !== '' && p && Number(v) < p.v));
+      document.getElementById('meta-' + id).innerHTML = metaHtml(f);
+      inp.closest('.card').classList.toggle('dirty', changed);
+      renderTabs(); renderFooter();
+    }
+
+    function renderFooter() {
+      let total = 0, filled = 0;
+      TABS.forEach(t => { const c = tabCount(t); total += c.total; filled += c.filled; });
+      document.getElementById('prog-fill').style.width = (total ? Math.round(filled / total * 100) : 0) + '%';
+      document.getElementById('prog-text').textContent = `전체 ${filled} / ${total}`;
+      const btn = document.getElementById('save-btn');
+      if (btn.classList.contains('saving')) return;
+      const n = dirty.size;
+      btn.className = 'save' + (n || weatherDirty ? ' has' : '');
+      btn.textContent = adminMode ? '✓ 항목 구성 저장' : (n ? `저장 (${n}개 변경)` : (weatherDirty ? '저장 (날씨)' : '저장'));
+    }
+
+    async function saveDay() {
+      if (adminMode) return saveStructure();
+      const btn = document.getElementById('save-btn');
+      if (!dirty.size && !weatherDirty) { toast('바뀐 값이 없습니다'); return; }
+      const patch = {};
+      for (const id of dirty) {
+        const v = values[id];
+        if (v === '' || v === undefined) patch[id] = null;
+        else if (isNaN(Number(v))) { toast('숫자가 아닌 값이 있습니다'); return; }
+        else patch[id] = Number(v);
+      }
+      const num = id => { const x = document.getElementById(id).value; return x === '' ? null : Number(x); };
+      btn.classList.add('saving'); btn.textContent = '저장 중...';
+      const { data, error } = await sb.rpc('meter_save', {
+        p_d: curDate, p_weather: document.getElementById('w-sel').value, p_tmin: num('t-min'), p_tmax: num('t-max'), p_patch: patch
+      });
+      btn.classList.remove('saving');
+      if (error) { btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ ' + errMsg(error)); return; }
+      if (!DAYS[curDate]) { SORTED_DAYS.push(curDate); SORTED_DAYS.sort(); }
+      DAYS[curDate] = data;
+      dirty = new Set(); weatherDirty = false;
+      btn.className = 'save done'; btn.textContent = '✓ 저장 완료';
+      toast(`${curDate.slice(5).replace('-', '/')} 저장됨`);
+      setTimeout(() => { renderFooter(); }, 1800);
+      renderTabs(); renderContent();
+    }
+
+    // ---------------- 관리자: 항목 구성 ----------------
+    function toggleAdmin() {
+      if (!isAdmin()) return;
+      if (!adminMode && (dirty.size || weatherDirty) && !confirm('저장하지 않은 검침값이 있습니다. 항목 관리로 넘어갈까요? (입력값은 유지됩니다)')) return;
+      adminMode = !adminMode;
+      const b = document.getElementById('admin-btn');
+      b.classList.toggle('on', adminMode);
+      b.textContent = adminMode ? '✕ 관리 닫기' : '⚙ 항목 관리';
+      if (!adminMode) { buildTabsFromEdit(); }
+      renderTabs(); renderContent(); renderFooter();
+    }
+    let EDIT = null; // 관리 중인 구성 사본
+    function ensureEdit() { if (!EDIT) EDIT = JSON.parse(JSON.stringify(TABS)); }
+    function buildTabsFromEdit() { EDIT = null; buildTabs(); }
+
+    function renderAdmin() {
+      ensureEdit();
+      const t = EDIT[activeTab];
+      const c = document.getElementById('content');
+      if (!t) { c.innerHTML = '<div class="loading">탭이 없습니다. 위의 ＋ 탭을 누르세요.</div>'; return; }
+      const secOpts = EDIT.flatMap((tt, ti) => tt.sections.map((s, si) => `<option value="${ti}|${si}">${esc(tt.name)} › ${esc(s.name)}</option>`)).join('');
+      let h = `<div class="adm"><b style="color:var(--blue);font-size:12px">탭 이름</b>
+        <input type="text" value="${esc(t.name)}" style="flex:1" onchange="EDIT[${activeTab}].name=this.value;renderTabsAdmin()">
+        <button class="mini blue" onclick="moveTab(-1)">◀</button><button class="mini blue" onclick="moveTab(1)">▶</button></div>`;
+      t.sections.forEach((s, si) => {
+        h += `<div class="adm" style="background:#fff;margin-top:6px">
+          <input type="text" value="${esc(s.name)}" style="flex:1;font-weight:700;font-size:13px" onchange="EDIT[${activeTab}].sections[${si}].name=this.value">
+          <button class="mini" onclick="moveSec(${si},-1)">▲</button><button class="mini" onclick="moveSec(${si},1)">▼</button></div>`;
+        s.fields.forEach((f, fi) => {
+          h += `<div class="acard">
+            <div>
+              <input type="text" class="nm" value="${esc(f.name)}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].name=this.value">
+              <div class="row">단위 <input type="text" style="width:54px" value="${esc(f.unit)}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].unit=this.value">
+                기준값 <input type="number" step="any" style="width:64px" value="${f.std_value ?? ''}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].std_value=this.value===''?null:Number(this.value)">
+                <label><input type="checkbox" ${f.cumulative ? 'checked' : ''} onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].cumulative=this.checked"> 누적지침</label>
+              </div>
+              <div class="row">이동 <select onchange="moveField(${si},${fi},this.value)"><option value="">현재 위치</option>${secOpts}</select>
+                <span style="color:var(--hint)">ID: ${esc(f.id)}</span></div>
+            </div>
+            <div class="btns"><button class="mini" onclick="moveFld(${si},${fi},-1)">▲</button><button class="mini" onclick="moveFld(${si},${fi},1)">▼</button>
+              <button class="mini red" onclick="delFld(${si},${fi})">삭제</button></div>
+          </div>`;
+        });
+        h += `<div class="addrow"><input id="nf-${si}" placeholder="새 항목 이름"><input class="u" id="nu-${si}" placeholder="단위"><button onclick="addFld(${si})">＋ 항목</button></div>`;
+      });
+      h += `<div class="addrow" style="margin-top:10px"><input id="new-sec" placeholder="새 섹션 이름"><button onclick="addSec()">＋ 섹션</button></div>`;
+      h += `<div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6">· 삭제한 항목은 화면에서만 사라지고 예전 기록은 남습니다.<br>· 누적지침: 계량기처럼 계속 늘어나는 값. 전날보다 작으면 경고하고 사용량을 보여줍니다.<br>· 항목이 하나도 없는 섹션·탭은 저장되지 않습니다.<br>· 다 고친 뒤 아래 <b>항목 구성 저장</b>을 누르세요.</div>`;
+      c.innerHTML = h;
+    }
+    function renderTabsAdmin() {
+      document.getElementById('tabs').innerHTML = EDIT.map((t, i) => `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="activeTab=${i};renderTabsAdmin();renderAdmin()">${esc(t.name)}</div>`).join('') + `<div class="tab" onclick="addTab()">＋ 탭</div>`;
+    }
+    const origRenderTabs = renderTabs;
+    renderTabs = function () { if (adminMode) { ensureEdit(); renderTabsAdmin(); } else origRenderTabs(); };
+    function swap(a, i, j) { if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; }
+    function moveTab(d) { swap(EDIT, activeTab, activeTab + d); if (EDIT[activeTab + d]) activeTab += d; renderTabsAdmin(); renderAdmin(); }
+    function moveSec(si, d) { swap(EDIT[activeTab].sections, si, si + d); renderAdmin(); }
+    function moveFld(si, fi, d) { swap(EDIT[activeTab].sections[si].fields, fi, fi + d); renderAdmin(); }
+    function moveField(si, fi, target) {
+      if (!target) return;
+      const [ti, tsi] = target.split('|').map(Number);
+      const f = EDIT[activeTab].sections[si].fields.splice(fi, 1)[0];
+      EDIT[ti].sections[tsi].fields.push(f);
+      toast(`"${f.name}" → ${EDIT[ti].name} › ${EDIT[ti].sections[tsi].name}`);
+      renderAdmin();
+    }
+    function delFld(si, fi) {
+      const f = EDIT[activeTab].sections[si].fields[fi];
+      if (!confirm(`"${f.name}" 항목을 삭제할까요? (예전 기록은 남습니다)`)) return;
+      EDIT[activeTab].sections[si].fields.splice(fi, 1);
+      (window._deleted = window._deleted || []).push(f.id);
+      renderAdmin();
+    }
+    function addFld(si) {
+      const n = document.getElementById('nf-' + si).value.trim(); if (!n) return;
+      const u = document.getElementById('nu-' + si).value.trim();
+      EDIT[activeTab].sections[si].fields.push({ id: 'f' + Date.now().toString(36), name: n, unit: u, std_value: null, cumulative: false, active: true, _new: true });
+      renderAdmin();
+    }
+    function addSec() {
+      const n = document.getElementById('new-sec').value.trim(); if (!n) return;
+      EDIT[activeTab].sections.push({ name: n, fields: [] }); renderAdmin();
+    }
+    function addTab() {
+      ensureEdit();
+      const n = prompt('새 탭 이름'); if (!n) return;
+      EDIT.push({ name: n.trim(), sections: [{ name: '기본', fields: [] }] }); activeTab = EDIT.length - 1; renderTabsAdmin(); renderAdmin();
+    }
+
+    async function saveStructure() {
+      const btn = document.getElementById('save-btn');
+      const rows = []; let sort = 10;
+      EDIT.forEach(t => t.sections.forEach(s => s.fields.forEach(f => {
+        rows.push({ id: f.id, tab: t.name.trim() || '탭', section: s.name.trim() || '섹션', name: f.name.trim() || '(이름 없음)', unit: f.unit || '', sort, std_value: f.std_value ?? null, cumulative: !!f.cumulative, active: true });
+        sort += 10;
+      })));
+      const ids = new Set(rows.map(r => r.id));
+      const deleted = (window._deleted || []).filter(id => !ids.has(id));
+      btn.classList.add('saving'); btn.textContent = '저장 중...';
       try {
-        await ensureXLSX();
-        const aoa = [[`${ymLabel(reportYm)} 유틸리티 비용`], [], ['구분', '세부', '사용량', '단위', '공급가액(VAT별도)', '금액(VAT포함)', '상태']];
-        reportRows.forEach(r => aoa.push(r.map(v => typeof v === 'number' ? Math.round(v * 10) / 10 : (v ?? ''))));
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 6 }, { wch: 18 }, { wch: 16 }, { wch: 8 }];
-        XLSX.utils.book_append_sheet(wb, ws, reportYm);
-        XLSX.writeFile(wb, `유틸리티비용_${reportYm.replace('-', '')}.xlsx`);
-      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
+        const up = await sb.from('meter_fields').upsert(rows, { onConflict: 'id' });
+        if (up.error) throw up.error;
+        if (deleted.length) { const dl = await sb.from('meter_fields').update({ active: false }).in('id', deleted); if (dl.error) throw dl.error; }
+        window._deleted = [];
+        const f = await fetchAll('meter_fields', '*', 'sort');
+        ALLFIELDS = f; FIELDS = f.filter(x => x.active);
+        EDIT = null; buildTabs(); ensureEdit();
+        btn.classList.remove('saving'); btn.className = 'save done'; btn.textContent = '✓ 항목 구성 저장됨';
+        toast('항목 구성을 저장했습니다');
+        setTimeout(renderFooter, 1500);
+        renderTabs(); renderAdmin();
+      } catch (e) {
+        btn.classList.remove('saving'); btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ ' + errMsg(e));
+      }
     }
 
-    // =====================================================================
-    // 시작
-    // =====================================================================
-    window.addEventListener('beforeunload', e => { if (monthlyDirty) { e.preventDefault(); e.returnValue = ''; } });
+    // ---------------- 시작 ----------------
+    window.addEventListener('beforeunload', e => { if (dirty.size || weatherDirty) { e.preventDefault(); e.returnValue = ''; } });
     Portal.start({
-      appId: 'utility',
-      title: '유틸리티 사용량·비용 분석',
+      appId: 'meter',
+      title: '설비점검일지 검침',
       onReady: async P => {
         sb = P.sb; me = P.me;
-        document.getElementById('kpis').innerHTML = '<div class="loading">불러오는 중...</div>';
-        try {
-          await loadAll();
-          switchTab('dash');
-        } catch (e) {
-          document.getElementById('kpis').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 7번·8번 SQL을 실행했는지 확인해 주세요.</div>`;
-        }
+        document.getElementById('admin-btn').hidden = !isAdmin();
+        try { await loadAll(); loadDay(); }
+        catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 9번·10번 SQL을 실행했는지 확인해 주세요.</div>`; }
       }
     });
   </script>
