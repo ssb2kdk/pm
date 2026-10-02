@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>설비점검일지 검침</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root {
+      --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0;
+      --text: #1a1a1a; --muted: #888; --hint: #bbb;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA;
+      --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB;
+      --radius: 12px; --radius-sm: 8px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
+    .title { font-size: 17px; font-weight: 700; }
+    .btn-admin { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .btn-admin.on { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); }
+    .date-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .date-row button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 14px; cursor: pointer; }
+    .date-row input { flex: 1; font-size: 15px; font-weight: 600; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; text-align: center; background: var(--card); color: var(--text); }
+    .date-row .today { width: auto; padding: 0 10px; font-size: 12px; }
+    .weather { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; display: flex; gap: 8px; align-items: center; }
+    .w-icon { font-size: 20px; }
+    .w-info { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+    .w-info b { font-size: 14px; color: var(--text); }
+    .btn-sm { font-size: 11px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); color: var(--muted); cursor: pointer; white-space: nowrap; }
+    .w-inputs { display: flex; gap: 6px; margin-top: 6px; }
+    .w-inputs select, .w-inputs input { font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; background: var(--card); color: var(--text); }
+    .w-inputs select { flex: 1; } .w-inputs input { width: 72px; text-align: center; }
+    .tabs { background: var(--card); border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; position: sticky; top: 0; z-index: 19; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 11px 14px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; border-bottom: 2.5px solid transparent; flex-shrink: 0; }
+    .tab.active { color: var(--text); border-bottom-color: var(--primary); }
+    .tab .cnt { font-size: 11px; font-weight: normal; margin-left: 3px; }
+    .tab .cnt.done { color: var(--teal); }
+    .content { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 130px; }
+    .sec { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .5px; padding: 10px 2px 2px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; align-items: center; gap: 10px; min-height: 62px; }
+    .card.dirty { border-color: var(--blue); }
+    .info { flex: 1; min-width: 0; }
+    .fname { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .fmeta { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .fmeta .std { color: var(--blue); } .fmeta .use { color: var(--teal); font-weight: 600; } .fmeta .neg { color: #E53935; font-weight: 600; }
+    .val { width: 120px; text-align: right; font-size: 18px; font-weight: 700; border: none; border-bottom: 1.5px solid var(--border); background: transparent; color: var(--text); padding: 4px; outline: none; font-variant-numeric: tabular-nums; }
+    .val:focus { border-bottom-color: var(--primary); }
+    .val.filled { border-bottom-color: var(--teal); }
+    .val.warn { color: #E53935; border-bottom-color: #E53935; }
+    .footer { background: var(--card); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; }
+    .footer-in { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+    .prog { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--teal); transition: width .3s; }
+    .save { width: 100%; padding: 14px; background: var(--primary); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; cursor: pointer; }
+    .save.saving { background: #888; } .save.done { background: var(--teal); } .save.has { background: var(--blue); }
+    .toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 100; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+    .loading { text-align: center; padding: 40px 0; color: var(--muted); }
+
+    /* 관리자 모드 */
+    .adm { background: var(--blue-bg); border: 1px solid var(--blue); border-radius: var(--radius); padding: 10px 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .adm input[type=text], .adm input[type=number] { border: none; border-bottom: 1px dashed var(--blue); background: transparent; font-size: 14px; padding: 3px; outline: none; color: var(--text); }
+    .mini { min-width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); cursor: pointer; font-size: 12px; padding: 0 6px; }
+    .mini.red { color: var(--red); border-color: var(--red); }
+    .mini.blue { color: var(--blue); border-color: var(--blue); }
+    .acard { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+    .acard .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .acard input[type=text], .acard input[type=number] { border: none; border-bottom: 1px dashed var(--border); background: transparent; font-size: 13px; padding: 3px; outline: none; color: var(--text); }
+    .acard .nm { font-size: 14px; font-weight: 600; width: 100%; }
+    .acard select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 3px; max-width: 160px; }
+    .btns { display: flex; flex-direction: column; gap: 4px; }
+    .addrow { display: flex; gap: 6px; }
+    .addrow input { flex: 1; min-width: 0; font-size: 13px; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: transparent; }
+    .addrow input.u { flex: 0 0 64px; }
+    .addrow button { padding: 8px 12px; border: 1px solid var(--blue); border-radius: 8px; background: var(--blue-bg); color: var(--blue); cursor: pointer; font-size: 13px; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="wrap">
+      <div class="head">
+        <div class="head-row">
+          <span class="title">📋 설비점검일지 · 검침</span>
+          <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목 관리</button>
+        </div>
+        <div class="date-row">
+          <button onclick="shiftDate(-1)">◀</button>
+          <input type="date" id="work-date" onchange="changeDate(this.value)">
+          <button onclick="shiftDate(1)">▶</button>
+          <button class="today" onclick="changeDate(todayStr())">오늘</button>
+        </div>
+        <div class="weather">
+          <div class="w-icon" id="w-icon">⏳</div>
+          <div class="w-info"><div>익산시 왕궁면 푸드폴리스</div><b id="w-temps">날씨 불러오는 중...</b> <span id="w-desc"></span></div>
+          <button class="btn-sm" onclick="fetchWeather(true)">↺ 날씨</button>
+        </div>
+        <div class="w-inputs">
+          <select id="w-sel" onchange="markDirty()">
+            <option value="">날씨 선택</option>
+            <option>맑음</option><option>구름 조금</option><option>구름 많음</option><option>흐림</option>
+            <option>비</option><option>눈</option><option>안개</option><option>소나기</option><option>뇌우</option><option>이슬비</option>
+          </select>
+          <input type="number" id="t-min" placeholder="최저°C" step="0.1" inputmode="decimal" oninput="markDirty()">
+          <input type="number" id="t-max" placeholder="최고°C" step="0.1" inputmode="decimal" oninput="markDirty()">
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="content" id="content"><div class="loading">불러오는 중...</div></div>
+    </div>
+    <div class="footer" id="footer">
+      <div class="footer-in">
+        <div class="prog"><div class="bar"><div id="prog-fill" style="width:0%"></div></div><span id="prog-text">0 / 0</span></div>
+        <button class="save" id="save-btn" onclick="saveDay()">저장</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let sb = null, me = null;
+    const isAdmin = () => !!(me && me.role === 'admin');
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = () => ymd(new Date());
+    const nf = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+
+    // ---------------- 데이터 ----------------
+    let FIELDS = [];          // meter_fields (활성 항목)
+    let ALLFIELDS = [];       // 비활성 포함
+    let DAYS = {};            // d -> { weather, temp_min, temp_max, v }
+    let SORTED_DAYS = [];     // 날짜 오름차순
+    let curDate = todayStr();
+    let values = {};          // 화면의 현재 값 (항목ID -> 문자열)
+    let dirty = new Set();    // 바뀐 항목ID
+    let weatherDirty = false;
+    let activeTab = 0;
+    let adminMode = false;
+    let TABS = [];            // [{ name, sections: [{ name, fields: [...] }] }]
+
+    async function fetchAll(table, cols, order) {
+      const out = []; let from = 0;
+      while (true) {
+        const { data, error } = await sb.from(table).select(cols).order(order).range(from, from + 999);
+        if (error) throw error;
+        out.push(...data); if (data.length < 1000) break; from += 1000;
+      }
+      return out;
+    }
+
+    async function loadAll() {
+      const [f, d] = await Promise.all([
+        fetchAll('meter_fields', '*', 'sort'),
+        fetchAll('meter_daily', 'd, weather, temp_min, temp_max, v', 'd')
+      ]);
+      ALLFIELDS = f;
+      FIELDS = f.filter(x => x.active);
+      DAYS = Object.fromEntries(d.map(r => [r.d, r]));
+      SORTED_DAYS = d.map(r => r.d);
+      buildTabs();
+    }
+
+    function buildTabs() {
+      TABS = [];
+      FIELDS.slice().sort((a, b) => a.sort - b.sort).forEach(f => {
+        let t = TABS.find(x => x.name === f.tab); if (!t) TABS.push(t = { name: f.tab, sections: [] });
+        let s = t.sections.find(x => x.name === f.section); if (!s) t.sections.push(s = { name: f.section, fields: [] });
+        s.fields.push(f);
+      });
+      if (activeTab >= TABS.length) activeTab = 0;
+    }
+
+    // 이 날짜 이전의 가장 최근 값
+    function prevValue(fid, date) {
+      for (let i = SORTED_DAYS.length - 1; i >= 0; i--) {
+        const d = SORTED_DAYS[i];
+        if (d >= date) continue;
+        const v = (DAYS[d].v || {})[fid];
+        if (v !== undefined && v !== null && v !== '') return { d, v: Number(v) };
+      }
+      return null;
+    }
+
+    // ---------------- 날짜 ----------------
+    function confirmLeave() { return !(dirty.size || weatherDirty) || confirm('저장하지 않은 입력이 있습니다. 버리고 이동할까요?'); }
+    function shiftDate(n) { const d = new Date(curDate + 'T00:00:00'); d.setDate(d.getDate() + n); changeDate(ymd(d)); }
+    function changeDate(ds) {
+      if (!ds) return;
+      if (ds !== curDate && !confirmLeave()) { document.getElementById('work-date').value = curDate; return; }
+      curDate = ds; loadDay();
+    }
+    function loadDay() {
+      document.getElementById('work-date').value = curDate;
+      const r = DAYS[curDate] || {};
+      values = {};
+      Object.entries(r.v || {}).forEach(([k, v]) => values[k] = String(v));
+      dirty = new Set(); weatherDirty = false;
+      document.getElementById('w-sel').value = r.weather || '';
+      document.getElementById('t-min').value = r.temp_min ?? '';
+      document.getElementById('t-max').value = r.temp_max ?? '';
+      if (!r.weather && r.temp_min == null) fetchWeather(false);
+      else showWeatherCard(r.weather, r.temp_min, r.temp_max, '저장된 값');
+      renderTabs(); renderContent(); renderFooter();
+    }
+
+    // ---------------- 날씨 (open-meteo, 회사망에서 막히면 직접 입력) ----------------
+    const WCODE = { 0: '맑음', 1: '맑음', 2: '구름 조금', 3: '흐림', 45: '안개', 48: '안개', 51: '이슬비', 53: '이슬비', 55: '이슬비', 61: '비', 63: '비', 65: '비', 71: '눈', 73: '눈', 75: '눈', 80: '소나기', 81: '소나기', 82: '소나기', 95: '뇌우', 96: '뇌우', 99: '뇌우' };
+    const WICON = { '맑음': '☀️', '구름 조금': '🌤️', '구름 많음': '⛅', '흐림': '☁️', '안개': '🌫️', '이슬비': '🌦️', '비': '🌧️', '눈': '🌨️', '소나기': '🌦️', '뇌우': '⛈️' };
+    function showWeatherCard(desc, tmin, tmax, note) {
+      document.getElementById('w-icon').textContent = WICON[desc] || '🌡️';
+      document.getElementById('w-temps').textContent = (tmin != null && tmax != null) ? `${tmin}° / ${tmax}°C` : (desc || '날씨 정보 없음');
+      document.getElementById('w-desc').textContent = [desc, note].filter(Boolean).join(' · ');
+    }
+    async function fetchWeather(force) {
+      const ds = curDate;
+      document.getElementById('w-temps').textContent = '날씨 불러오는 중...';
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=35.8964&longitude=126.9396&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=Asia%2FSeoul&start_date=${ds}&end_date=${ds}`;
+        const res = await fetch(url);
+        const j = await res.json();
+        if (!j.daily) throw new Error(j.reason || '날씨 없음');
+        if (ds !== curDate) return;
+        const tmin = Math.round(j.daily.temperature_2m_min[0] * 10) / 10, tmax = Math.round(j.daily.temperature_2m_max[0] * 10) / 10;
+        const desc = WCODE[j.daily.weathercode[0]] || '흐림';
+        showWeatherCard(desc, tmin, tmax, '자동');
+        const sel = document.getElementById('w-sel'), mn = document.getElementById('t-min'), mx = document.getElementById('t-max');
+        if (force || !sel.value) sel.value = desc;
+        if (force || mn.value === '') mn.value = tmin;
+        if (force || mx.value === '') mx.value = tmax;
+        weatherDirty = true; renderFooter();
+      } catch (e) {
+        document.getElementById('w-icon').textContent = '?';
+        document.getElementById('w-temps').textContent = '날씨 자동 확인 불가';
+        document.getElementById('w-desc').textContent = '아래에 직접 입력해 주세요';
+      }
+    }
+    function markDirty() { weatherDirty = true; renderFooter(); }
+
+    // ---------------- 화면 ----------------
+    function tabCount(t) {
+      let total = 0, filled = 0;
+      t.sections.forEach(s => s.fields.forEach(f => { total++; if (values[f.id] !== undefined && values[f.id] !== '') filled++; }));
+      return { total, filled };
+    }
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = TABS.map((t, i) => {
+        const c = tabCount(t);
+        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span></div>`;
+      }).join('') + (adminMode ? `<div class="tab" onclick="addTab()">＋ 탭</div>` : '');
+    }
+    function switchTab(i) { activeTab = i; renderTabs(); renderContent(); renderFooter(); window.scrollTo({ top: 0 }); }
+
+    function metaHtml(f) {
+      const parts = [esc(f.unit)];
+      if (f.std_value !== null && f.std_value !== undefined) parts.push(`<span class="std">기준 ${nf.format(f.std_value)}${esc(f.unit)}</span>`);
+      const p = prevValue(f.id, curDate);
+      if (p) {
+        const dd = p.d.slice(5).replace('-', '/');
+        parts.push(`전 ${nf.format(p.v)}${p.d !== prevDay(curDate) ? ` (${dd})` : ''}`);
+        const cur = values[f.id];
+        if (f.cumulative && cur !== undefined && cur !== '' && !isNaN(cur)) {
+          const u = Number(cur) - p.v;
+          parts.push(u < 0 ? `<span class="neg">⚠ 전보다 ${nf.format(-u)} 작음</span>` : `<span class="use">사용 ${nf.format(u)}</span>`);
+        }
+      }
+      return parts.join(' · ');
+    }
+    function prevDay(ds) { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() - 1); return ymd(d); }
+
+    function renderContent() {
+      const c = document.getElementById('content');
+      const t = TABS[activeTab];
+      if (!t) { c.innerHTML = '<div class="loading">항목이 없습니다.' + (isAdmin() ? ' 위의 ⚙ 항목 관리에서 추가하세요.' : '') + '</div>'; return; }
+      if (adminMode) { renderAdmin(); return; }
+      let h = '';
+      t.sections.forEach(s => {
+        h += `<div class="sec">${esc(s.name)}</div>`;
+        s.fields.forEach(f => {
+          const v = values[f.id] ?? '';
+          const p = prevValue(f.id, curDate);
+          const warn = f.cumulative && v !== '' && p && Number(v) < p.v;
+          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''}" id="card-${esc(f.id)}">
+            <div class="info"><div class="fname">${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
+            <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
+              value="${esc(v)}" data-id="${esc(f.id)}">
+          </div>`;
+        });
+      });
+      c.innerHTML = h;
+      c.querySelectorAll('input.val').forEach(inp => {
+        inp.addEventListener('input', () => onInput(inp));
+        inp.addEventListener('focus', () => { inp.select(); setTimeout(() => inp.closest('.card').scrollIntoView({ block: 'center', behavior: 'smooth' }), 250); });
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const all = [...c.querySelectorAll('input.val')]; const i = all.indexOf(inp);
+            if (all[i + 1]) all[i + 1].focus(); else inp.blur();
+          }
+        });
+      });
+    }
+
+    function onInput(inp) {
+      const id = inp.dataset.id, v = inp.value.trim();
+      const orig = ((DAYS[curDate] || {}).v || {})[id];
+      values[id] = v;
+      const changed = String(orig ?? '') !== v;
+      if (changed) dirty.add(id); else dirty.delete(id);
+      inp.classList.toggle('filled', v !== '');
+      const f = FIELDS.find(x => x.id === id);
+      const p = prevValue(id, curDate);
+      inp.classList.toggle('warn', !!(f.cumulative && v !== '' && p && Number(v) < p.v));
+      document.getElementById('meta-' + id).innerHTML = metaHtml(f);
+      inp.closest('.card').classList.toggle('dirty', changed);
+      renderTabs(); renderFooter();
+    }
+
+    function renderFooter() {
+      let total = 0, filled = 0;
+      TABS.forEach(t => { const c = tabCount(t); total += c.total; filled += c.filled; });
+      document.getElementById('prog-fill').style.width = (total ? Math.round(filled / total * 100) : 0) + '%';
+      document.getElementById('prog-text').textContent = `전체 ${filled} / ${total}`;
+      const btn = document.getElementById('save-btn');
+      if (btn.classList.contains('saving')) return;
+      const n = dirty.size;
+      btn.className = 'save' + (n || weatherDirty ? ' has' : '');
+      btn.textContent = adminMode ? '✓ 항목 구성 저장' : (n ? `저장 (${n}개 변경)` : (weatherDirty ? '저장 (날씨)' : '저장'));
+    }
+
+    async function saveDay() {
+      if (adminMode) return saveStructure();
+      const btn = document.getElementById('save-btn');
+      if (!dirty.size && !weatherDirty) { toast('바뀐 값이 없습니다'); return; }
+      const patch = {};
+      for (const id of dirty) {
+        const v = values[id];
+        if (v === '' || v === undefined) patch[id] = null;
+        else if (isNaN(Number(v))) { toast('숫자가 아닌 값이 있습니다'); return; }
+        else patch[id] = Number(v);
+      }
+      const num = id => { const x = document.getElementById(id).value; return x === '' ? null : Number(x); };
+      btn.classList.add('saving'); btn.textContent = '저장 중...';
+      const { data, error } = await sb.rpc('meter_save', {
+        p_d: curDate, p_weather: document.getElementById('w-sel').value, p_tmin: num('t-min'), p_tmax: num('t-max'), p_patch: patch
+      });
+      btn.classList.remove('saving');
+      if (error) { btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ ' + errMsg(error)); return; }
+      if (!DAYS[curDate]) { SORTED_DAYS.push(curDate); SORTED_DAYS.sort(); }
+      DAYS[curDate] = data;
+      dirty = new Set(); weatherDirty = false;
+      btn.className = 'save done'; btn.textContent = '✓ 저장 완료';
+      toast(`${curDate.slice(5).replace('-', '/')} 저장됨`);
+      setTimeout(() => { renderFooter(); }, 1800);
+      renderTabs(); renderContent();
+    }
+
+    // ---------------- 관리자: 항목 구성 ----------------
+    function toggleAdmin() {
+      if (!isAdmin()) return;
+      if (!adminMode && (dirty.size || weatherDirty) && !confirm('저장하지 않은 검침값이 있습니다. 항목 관리로 넘어갈까요? (입력값은 유지됩니다)')) return;
+      adminMode = !adminMode;
+      const b = document.getElementById('admin-btn');
+      b.classList.toggle('on', adminMode);
+      b.textContent = adminMode ? '✕ 관리 닫기' : '⚙ 항목 관리';
+      if (!adminMode) { buildTabsFromEdit(); }
+      renderTabs(); renderContent(); renderFooter();
+    }
+    let EDIT = null; // 관리 중인 구성 사본
+    function ensureEdit() { if (!EDIT) EDIT = JSON.parse(JSON.stringify(TABS)); }
+    function buildTabsFromEdit() { EDIT = null; buildTabs(); }
+
+    function renderAdmin() {
+      ensureEdit();
+      const t = EDIT[activeTab];
+      const c = document.getElementById('content');
+      if (!t) { c.innerHTML = '<div class="loading">탭이 없습니다. 위의 ＋ 탭을 누르세요.</div>'; return; }
+      const secOpts = EDIT.flatMap((tt, ti) => tt.sections.map((s, si) => `<option value="${ti}|${si}">${esc(tt.name)} › ${esc(s.name)}</option>`)).join('');
+      let h = `<div class="adm"><b style="color:var(--blue);font-size:12px">탭 이름</b>
+        <input type="text" value="${esc(t.name)}" style="flex:1" onchange="EDIT[${activeTab}].name=this.value;renderTabsAdmin()">
+        <button class="mini blue" onclick="moveTab(-1)">◀</button><button class="mini blue" onclick="moveTab(1)">▶</button></div>`;
+      t.sections.forEach((s, si) => {
+        h += `<div class="adm" style="background:#fff;margin-top:6px">
+          <input type="text" value="${esc(s.name)}" style="flex:1;font-weight:700;font-size:13px" onchange="EDIT[${activeTab}].sections[${si}].name=this.value">
+          <button class="mini" onclick="moveSec(${si},-1)">▲</button><button class="mini" onclick="moveSec(${si},1)">▼</button></div>`;
+        s.fields.forEach((f, fi) => {
+          h += `<div class="acard">
+            <div>
+              <input type="text" class="nm" value="${esc(f.name)}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].name=this.value">
+              <div class="row">단위 <input type="text" style="width:54px" value="${esc(f.unit)}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].unit=this.value">
+                기준값 <input type="number" step="any" style="width:64px" value="${f.std_value ?? ''}" onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].std_value=this.value===''?null:Number(this.value)">
+                <label><input type="checkbox" ${f.cumulative ? 'checked' : ''} onchange="EDIT[${activeTab}].sections[${si}].fields[${fi}].cumulative=this.checked"> 누적지침</label>
+              </div>
+              <div class="row">이동 <select onchange="moveField(${si},${fi},this.value)"><option value="">현재 위치</option>${secOpts}</select>
+                <span style="color:var(--hint)">ID: ${esc(f.id)}</span></div>
+            </div>
+            <div class="btns"><button class="mini" onclick="moveFld(${si},${fi},-1)">▲</button><button class="mini" onclick="moveFld(${si},${fi},1)">▼</button>
+              <button class="mini red" onclick="delFld(${si},${fi})">삭제</button></div>
+          </div>`;
+        });
+        h += `<div class="addrow"><input id="nf-${si}" placeholder="새 항목 이름"><input class="u" id="nu-${si}" placeholder="단위"><button onclick="addFld(${si})">＋ 항목</button></div>`;
+      });
+      h += `<div class="addrow" style="margin-top:10px"><input id="new-sec" placeholder="새 섹션 이름"><button onclick="addSec()">＋ 섹션</button></div>`;
+      h += `<div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6">· 삭제한 항목은 화면에서만 사라지고 예전 기록은 남습니다.<br>· 누적지침: 계량기처럼 계속 늘어나는 값. 전날보다 작으면 경고하고 사용량을 보여줍니다.<br>· 항목이 하나도 없는 섹션·탭은 저장되지 않습니다.<br>· 다 고친 뒤 아래 <b>항목 구성 저장</b>을 누르세요.</div>`;
+      c.innerHTML = h;
+    }
+    function renderTabsAdmin() {
+      document.getElementById('tabs').innerHTML = EDIT.map((t, i) => `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="activeTab=${i};renderTabsAdmin();renderAdmin()">${esc(t.name)}</div>`).join('') + `<div class="tab" onclick="addTab()">＋ 탭</div>`;
+    }
+    const origRenderTabs = renderTabs;
+    renderTabs = function () { if (adminMode) { ensureEdit(); renderTabsAdmin(); } else origRenderTabs(); };
+    function swap(a, i, j) { if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; }
+    function moveTab(d) { swap(EDIT, activeTab, activeTab + d); if (EDIT[activeTab + d]) activeTab += d; renderTabsAdmin(); renderAdmin(); }
+    function moveSec(si, d) { swap(EDIT[activeTab].sections, si, si + d); renderAdmin(); }
+    function moveFld(si, fi, d) { swap(EDIT[activeTab].sections[si].fields, fi, fi + d); renderAdmin(); }
+    function moveField(si, fi, target) {
+      if (!target) return;
+      const [ti, tsi] = target.split('|').map(Number);
+      const f = EDIT[activeTab].sections[si].fields.splice(fi, 1)[0];
+      EDIT[ti].sections[tsi].fields.push(f);
+      toast(`"${f.name}" → ${EDIT[ti].name} › ${EDIT[ti].sections[tsi].name}`);
+      renderAdmin();
+    }
+    function delFld(si, fi) {
+      const f = EDIT[activeTab].sections[si].fields[fi];
+      if (!confirm(`"${f.name}" 항목을 삭제할까요? (예전 기록은 남습니다)`)) return;
+      EDIT[activeTab].sections[si].fields.splice(fi, 1);
+      (window._deleted = window._deleted || []).push(f.id);
+      renderAdmin();
+    }
+    function addFld(si) {
+      const n = document.getElementById('nf-' + si).value.trim(); if (!n) return;
+      const u = document.getElementById('nu-' + si).value.trim();
+      EDIT[activeTab].sections[si].fields.push({ id: 'f' + Date.now().toString(36), name: n, unit: u, std_value: null, cumulative: false, active: true, _new: true });
+      renderAdmin();
+    }
+    function addSec() {
+      const n = document.getElementById('new-sec').value.trim(); if (!n) return;
+      EDIT[activeTab].sections.push({ name: n, fields: [] }); renderAdmin();
+    }
+    function addTab() {
+      ensureEdit();
+      const n = prompt('새 탭 이름'); if (!n) return;
+      EDIT.push({ name: n.trim(), sections: [{ name: '기본', fields: [] }] }); activeTab = EDIT.length - 1; renderTabsAdmin(); renderAdmin();
+    }
+
+    async function saveStructure() {
+      const btn = document.getElementById('save-btn');
+      const rows = []; let sort = 10;
+      EDIT.forEach(t => t.sections.forEach(s => s.fields.forEach(f => {
+        rows.push({ id: f.id, tab: t.name.trim() || '탭', section: s.name.trim() || '섹션', name: f.name.trim() || '(이름 없음)', unit: f.unit || '', sort, std_value: f.std_value ?? null, cumulative: !!f.cumulative, active: true });
+        sort += 10;
+      })));
+      const ids = new Set(rows.map(r => r.id));
+      const deleted = (window._deleted || []).filter(id => !ids.has(id));
+      btn.classList.add('saving'); btn.textContent = '저장 중...';
+      try {
+        const up = await sb.from('meter_fields').upsert(rows, { onConflict: 'id' });
+        if (up.error) throw up.error;
+        if (deleted.length) { const dl = await sb.from('meter_fields').update({ active: false }).in('id', deleted); if (dl.error) throw dl.error; }
+        window._deleted = [];
+        const f = await fetchAll('meter_fields', '*', 'sort');
+        ALLFIELDS = f; FIELDS = f.filter(x => x.active);
+        EDIT = null; buildTabs(); ensureEdit();
+        btn.classList.remove('saving'); btn.className = 'save done'; btn.textContent = '✓ 항목 구성 저장됨';
+        toast('항목 구성을 저장했습니다');
+        setTimeout(renderFooter, 1500);
+        renderTabs(); renderAdmin();
+      } catch (e) {
+        btn.classList.remove('saving'); btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ ' + errMsg(e));
+      }
+    }
+
+    // ---------------- 시작 ----------------
+    window.addEventListener('beforeunload', e => { if (dirty.size || weatherDirty) { e.preventDefault(); e.returnValue = ''; } });
+    Portal.start({
+      appId: 'meter',
+      title: '설비점검일지 검침',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        document.getElementById('admin-btn').hidden = !isAdmin();
+        try { await loadAll(); loadDay(); }
+        catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 9번·10번 SQL을 실행했는지 확인해 주세요.</div>`; }
+      }
+    });
+  </script>
+</body>
+</html>
