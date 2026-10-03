@@ -875,8 +875,8 @@
   // 기준선(예상 사용량) — 사용량 = a×날수 + b×생산량 (+ c×난방도일 / 냉방도일)
   // =====================================================================
   UT.HDD_BASE = 18; UT.CDD_BASE = 24;   // 평균기온 18℃ 아래는 난방, 24℃ 위는 냉방
-  UT.MODEL_FEATS = { elec: ['days', 'prod', 'cdd'], gas: ['days', 'prod', 'hdd'], water: ['days', 'prod', 'hdd'], ww: ['days', 'prod', 'hdd'] };
-  UT.FEAT_LABEL = { days: '날마다 기본', prod: '생산 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
+  UT.MODEL_FEATS = { elec: ['days', 'prod', 'cdd'], gas: ['op', 'prod', 'hdd'], water: ['days', 'prod', 'hdd'], ww: ['days', 'prod', 'hdd'] };
+  UT.FEAT_LABEL = { days: '날마다 기본', op: '가동일 1일당', prod: '생산 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
   // 그 달의 날수·난방도일·냉방도일 (temps: { 'YYYY-MM-DD': 평균기온 }) — 기온 빠진 날은 비율로 보정
   UT.monthWeather = (ym, temps) => {
     const n = UT.daysIn(ym); let hdd = 0, cdd = 0, cnt = 0;
@@ -884,6 +884,14 @@
     if (cnt < n * 0.6) return { days: n, hdd: null, cdd: null };
     return { days: n, hdd: hdd * n / cnt, cdd: cdd * n / cnt };
   };
+  // 그 달 가동일 수: 보일러 가스를 쓴 날(하루 50㎥ 넘게) — 가스 검침이 빠진 달은 전기로 판단한 가동일
+  UT.opDays = (daily, ym) => {
+    const n = UT.daysIn(ym); let g = 0, seen = 0, w = 0;
+    for (let d = 1; d <= n; d++) { const ds = UT.dateStr(ym, d); const u = UT.dailyUsage(daily, ds); if (u.gas !== null) { seen++; if (u.gas > 50) g++; } if (UT.isWorkDay(daily, ds)) w++; }
+    return seen >= n * 0.8 ? Math.round(g * n / seen) : w;
+  };
+  // 평일 수 (계획용 기본값)
+  UT.weekdays = ym => { let c = 0; for (let d = 1; d <= UT.daysIn(ym); d++) if (!isWeekend(UT.dateStr(ym, d))) c++; return c; };
   // 평년값: 같은 달(1~12월)의 여러 해 평균
   UT.weatherNormals = temps => {
     const by = {};
@@ -910,7 +918,7 @@
   UT.fitBaseline = (rows, feats) => {
     const ok = rows.filter(r => r.y !== null && r.y !== undefined && feats.every(f => r[f] !== null && r[f] !== undefined));
     let use = feats;
-    if (ok.length < feats.length + 2) use = ['days', 'prod'];
+    if (ok.length < feats.length + 2) use = feats.slice(0, 2);
     const ok2 = rows.filter(r => r.y !== null && r.y !== undefined && use.every(f => r[f] !== null && r[f] !== undefined));
     if (ok2.length < use.length + 1) return null;
     const coef = UT.ols(ok2.map(r => use.map(f => r[f])), ok2.map(r => r.y));
@@ -1006,7 +1014,7 @@
     // 한 달 데이터 (실적 + 날씨)
     function monthRow(ym) {
       const s = S(ym), w = UT.monthWeather(ym, TEMPS || {});
-      const r = { ym, days: w.days, prod: s.production, hdd: w.hdd, cdd: w.cdd, s };
+      const r = { ym, days: w.days, op: UT.opDays(DAILY, ym), prod: s.production, hdd: w.hdd, cdd: w.cdd, s };
       UT.UTILS.forEach(u => { r[u.k] = s[u.k].usage; r[u.k + '_cost'] = s[u.k].cost; });
       return r;
     }
@@ -1067,7 +1075,7 @@
           const note = (f, v) => f === 'hdd' ? (v < 0 ? ' <span class="hint">(추울수록 덜 씀)</span>' : ' <span class="hint">(추울수록 더 씀)</span>') : f === 'cdd' ? (v < 0 ? ' <span class="hint">(더울수록 덜 씀)</span>' : ' <span class="hint">(더울수록 더 씀)</span>') : '';
           const parts = m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
-      h += `<div class="hint" style="margin-top:6px">난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
+      h += `<div class="hint" style="margin-top:6px">가동일 = 보일러 가스를 쓴 날 수 (스팀보일러는 생산하는 날만 돌기 때문에 가스는 달력 날수 대신 가동일로 계산). 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
       document.getElementById('tg-model').innerHTML = h;
 
       // 2) 절감률
@@ -1084,14 +1092,14 @@
       const uk = targetUtil, U = UT.UTILS.find(u => u.k === uk), last = lastCompleteYm();
       const ev = Array.from({ length: 12 }, (_, i) => { const ym = UT.ym(y, i + 1); return ym > last ? null : evalMonth(y, ym, uk, models, t); });
       const sumE = list => { const l = list.filter(Boolean); if (!l.length) return null; const exp = l.reduce((a, e) => a + e.exp, 0), act = l.reduce((a, e) => a + e.act, 0); return { exp, act, target: l.every(e => e.target !== null) ? l.reduce((a, e) => a + e.target, 0) : null, save: (1 - act / exp) * 100, rate: rateOf(t, uk), n: l.length }; };
-      const er = (label, e, cls = '') => `<tr class="${cls}"><td class="l">${label}</td><td>${e ? f0(e.prod ?? '') : ''}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e && e.target !== null ? f0(e.target) : '-'}</td><td>${e ? f0(e.act) : '-'}</td><td>${e ? saveTxt(e.save) : '-'}</td><td>${e ? judge(e) : ''}</td></tr>`;
-      let ht = `<table class="t"><tr><th class="l">월</th><th>생산량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
+      const er = (label, e, cls = '') => `<tr class="${cls}"><td class="l">${label}</td><td>${e && e.op !== undefined ? f0(e.op) : ''}</td><td>${e ? f0(e.prod ?? '') : ''}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e && e.target !== null ? f0(e.target) : '-'}</td><td>${e ? f0(e.act) : '-'}</td><td>${e ? saveTxt(e.save) : '-'}</td><td>${e ? judge(e) : ''}</td></tr>`;
+      let ht = `<table class="t"><tr><th class="l">월</th><th>가동일</th><th>생산량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
       for (let q = 0; q < 4; q++) {
-        for (let i = q * 3; i < q * 3 + 3; i++) { const e = ev[i]; if (e) e.prod = S(UT.ym(y, i + 1)).production; ht += er(`${i + 1}월`, e); }
-        const qs = sumE(ev.slice(q * 3, q * 3 + 3)); if (qs) qs.prod = ev.slice(q * 3, q * 3 + 3).filter(Boolean).reduce((a, e) => a + e.prod, 0);
+        for (let i = q * 3; i < q * 3 + 3; i++) { const e = ev[i]; if (e) { e.prod = S(UT.ym(y, i + 1)).production; e.op = UT.opDays(DAILY, UT.ym(y, i + 1)); } ht += er(`${i + 1}월`, e); }
+        const qs = sumE(ev.slice(q * 3, q * 3 + 3)); if (qs) { const l = ev.slice(q * 3, q * 3 + 3).filter(Boolean); qs.prod = l.reduce((a, e) => a + e.prod, 0); qs.op = l.reduce((a, e) => a + e.op, 0); }
         ht += er(`<b>${QN[q]}</b>${qs && qs.n < 3 ? ` <span class="hint">(${qs.n}개월)</span>` : ''}`, qs, 'qrow');
       }
-      const ys = sumE(ev); if (ys) ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0);
+      const ys = sumE(ev); if (ys) { ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0); ys.op = ev.filter(Boolean).reduce((a, e) => a + e.op, 0); }
       ht += er(`<b>${y}년 누적</b>${ys ? ` <span class="hint">(${ys.n}개월)</span>` : ''}`, ys, 'sum') + '</table>';
       ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. 예상 사용량 = 그 달 실제 생산량·날씨를 위 식에 넣은 값. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
       document.getElementById('target-table').innerHTML = ht;
@@ -1135,6 +1143,10 @@
       const v = (t.plan_prod || {})[m]; if (v !== undefined && v !== null && v !== '') return Number(v);
       return null;
     }
+    function planOp(t, y, m) { // 계획 가동일: 입력값 → 없으면 그 달 평일 수
+      const v = (t.plan_op || {})[m]; if (v !== undefined && v !== null && v !== '') return Number(v);
+      return UT.weekdays(UT.ym(y, m));
+    }
     function priceOf(y, uk, m) { // 단가: 전년 같은 달, 없으면 기준 달 평균
       const s = S(UT.ym(y - 1, m)); const p = ratio(s[uk].cost, s[uk].usage); if (p) return p;
       const b = baseMonths(targetDraft, y).map(S); const c = b.reduce((a, x) => a + (x[uk].cost || 0), 0), u = b.reduce((a, x) => a + (x[uk].usage || 0), 0);
@@ -1143,17 +1155,17 @@
     function renderPlan(models) {
       const y = targetY, t = targetDraft, ro = !isAdmin(), nm = normals();
       let h = `<div class="toolbar no-print" style="margin-bottom:8px">${ro ? '' : `<button class="btn secondary" onclick="fillPlanProd('prev')">전년 실적으로 생산계획 채우기</button>
-        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">생산계획(kg)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
-      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>생산계획 (kg)</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
+        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">생산계획(kg)과 가동일(기본 = 평일 수, 공휴일 등은 고쳐 넣기)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
+      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>생산계획 (kg)</th><th>가동일</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
       const tot = { prod: 0, cost: 0 }; UT.UTILS.forEach(u => { tot[u.k] = 0; tot[u.k + 'c'] = 0; });
       const rows = [];
       for (let m = 1; m <= 12; m++) {
         const p = planProd(t, y, m), w = nm[m];
-        const r = { m, prod: p };
+        const r = { m, prod: p, op: planOp(t, y, m) };
         let costSum = p === null ? null : 0;
         UT.UTILS.forEach(u => {
           const mdl = models[u.k];
-          const exp = (mdl && p !== null && w) ? mdl.predict({ days: UT.daysIn(UT.ym(y, m)), prod: p, hdd: w.hdd, cdd: w.cdd }) : null;
+          const exp = (mdl && p !== null && w) ? mdl.predict({ days: UT.daysIn(UT.ym(y, m)), op: r.op, prod: p, hdd: w.hdd, cdd: w.cdd }) : null;
           const rate = rateOf(t, u.k);
           r[u.k] = exp === null ? null : exp * (1 - (rate || 0) / 100);
           const pr = priceOf(y, u.k, m);
@@ -1162,13 +1174,18 @@
         });
         r.cost = costSum; rows.push(r);
       }
-      const line = (label, r, cls = '', edit = false) => `<tr class="${cls}"><td class="l">${label}</td><td>${edit && !ro ? `<input type="number" data-pm="${r.m}" value="${r.prod ?? ''}" style="width:96px">` : f0(r.prod)}</td>` +
+      const line = (label, r, cls = '', edit = false) => `<tr class="${cls}"><td class="l">${label}</td><td>${edit && !ro ? `<input type="number" data-pm="${r.m}" value="${r.prod ?? ''}" style="width:96px">` : f0(r.prod)}</td><td>${edit && !ro ? `<input type="number" data-po="${r.m}" value="${r.op ?? ''}" style="width:54px">` : f0(r.op)}</td>` +
         UT.UTILS.map(u => `<td>${f0(r[u.k])}</td>`).join('') + UT.UTILS.map(u => `<td>${r[u.k + 'c'] === null ? '-' : man(r[u.k + 'c'])}</td>`).join('') + `<td><b>${r.cost === null ? '-' : man(r.cost)}</b></td></tr>`;
-      const sum = list => { const o = { prod: list.every(r => r.prod !== null) ? list.reduce((a, r) => a + r.prod, 0) : null, cost: list.every(r => r.cost !== null) ? list.reduce((a, r) => a + r.cost, 0) : null };
+      const sum = list => { const o = { op: list.reduce((a, r) => a + (r.op || 0), 0), prod: list.every(r => r.prod !== null) ? list.reduce((a, r) => a + r.prod, 0) : null, cost: list.every(r => r.cost !== null) ? list.reduce((a, r) => a + r.cost, 0) : null };
         UT.UTILS.forEach(u => { o[u.k] = list.every(r => r[u.k] !== null) ? list.reduce((a, r) => a + r[u.k], 0) : null; o[u.k + 'c'] = list.every(r => r[u.k + 'c'] !== null) ? list.reduce((a, r) => a + r[u.k + 'c'], 0) : null; }); return o; };
       for (let q = 0; q < 4; q++) { rows.slice(q * 3, q * 3 + 3).forEach(r => h += line(`${r.m}월`, r, '', true)); h += line(`<b>${QN[q]}</b>`, sum(rows.slice(q * 3, q * 3 + 3)), 'qrow'); }
       h += line(`<b>${y}년 합계</b>`, sum(rows), 'sum') + '</table></div>';
       document.getElementById('tg-plan').innerHTML = h;
+      document.querySelectorAll('#tg-plan input[data-po]').forEach(el => el.addEventListener('change', () => {
+        targetDraft.plan_op = targetDraft.plan_op || {};
+        if (el.value.trim() === '') delete targetDraft.plan_op[el.dataset.po]; else targetDraft.plan_op[el.dataset.po] = Number(el.value);
+        targetDirty = true; renderTargets(targetDraft);
+      }));
       document.querySelectorAll('#tg-plan input[data-pm]').forEach(el => el.addEventListener('change', () => {
         targetDraft.plan_prod = targetDraft.plan_prod || {};
         if (el.value.trim() === '') delete targetDraft.plan_prod[el.dataset.pm]; else targetDraft.plan_prod[el.dataset.pm] = Number(el.value);
@@ -1177,7 +1194,7 @@
     }
     function fillPlanProd(mode) {
       const y = targetY; targetDraft.plan_prod = {};
-      if (mode === 'prev') { for (let m = 1; m <= 12; m++) { const p = S(UT.ym(y - 1, m)).production; if (p) targetDraft.plan_prod[m] = Math.round(p); } }
+      if (mode === 'prev') { targetDraft.plan_op = {}; for (let m = 1; m <= 12; m++) { const ym = UT.ym(y - 1, m), p = S(ym).production; if (p) { targetDraft.plan_prod[m] = Math.round(p); targetDraft.plan_op[m] = UT.opDays(DAILY, ym); } } }
       else { const v = Number(prompt(`${y}년 연간 생산계획 총량(kg)은? (월 날수 비율로 나눕니다)`, '')); if (!v) return;
         for (let m = 1; m <= 12; m++) targetDraft.plan_prod[m] = Math.round(v * UT.daysIn(UT.ym(y, m)) / (y % 4 === 0 ? 366 : 365)); }
       targetDirty = true; renderTargets(targetDraft);
