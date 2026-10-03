@@ -67,6 +67,10 @@
     .zoom-hd button { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
     .zoom-chart { position: relative; flex: 1; min-height: 300px; }
     .zoom-table { max-height: 34%; overflow: auto; }
+    .per-range { font-size: 13px; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .per-range input, .per-range select { padding: 5px 6px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .anom-note { width: 100%; min-width: 180px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 5px; font-size: 12px; }
+    .anom-note.saved { border-color: #43a047; background: #f1f8e9; }
     #bill { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 210; display: flex; align-items: center; justify-content: center; padding: 16px; }
     #bill[hidden] { display: none !important; }
     .bill-box { background: #fff; border-radius: 12px; width: min(1200px, 100%); height: min(940px, 100%); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
@@ -280,6 +284,7 @@
       <!-- ================= 기간비교 ================= -->
       <div id="tab-period" class="tab">
         <div class="toolbar"><span class="chips" id="per-chips"></span></div>
+        <div class="toolbar" id="per-range"></div>
         <div class="card">
           <h3 id="per-title"></h3>
           <div class="hint" id="per-note" style="margin:-6px 0 8px"></div>
@@ -1348,11 +1353,29 @@
       const list = anomList.filter(a => anomUtil === 'all' || a.u === anomUtil);
       const W = ['일', '월', '화', '수', '목', '금', '토'];
       document.getElementById('anom-table').innerHTML = !list.length ? '<div class="empty">이 기간에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>' :
-        `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소 (최근 4주 같은 종류 날의 중앙값)</th><th>차이</th><th class="l">구분</th></tr>` +
+        `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th></tr>` +
         list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
           return `<tr class="anom-row" onclick="anomUtil='${a.u}';anomFocus='${a.d}';renderAnomChart()"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
-            <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '가동일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td></tr>`; }).join('') + '</table>';
+            <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '가동일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
+            <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td></tr>`; }).join('') + '</table>';
+      document.querySelectorAll('#anom-table .anom-note').forEach(el => {
+        let t = null;
+        const go = () => { clearTimeout(t); t = null; saveAnomNote(el); };
+        el.addEventListener('input', () => { el.classList.remove('saved'); clearTimeout(t); t = setTimeout(go, 1200); });
+        el.addEventListener('change', go);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
+      });
       renderAnomChart();
+    }
+    // 이상감지 메모: 연 설정(YYYY-00)의 anom_notes 에 "날짜|항목" 키로 저장
+    function anomNote(d, u) { return ((yd(Number(d.slice(0, 4))).anom_notes || {})[d + '|' + u]) || ''; }
+    async function saveAnomNote(el) {
+      const d = el.dataset.d, u = el.dataset.u, y = Number(d.slice(0, 4)), v = el.value.trim();
+      if (v === anomNote(d, u)) { if (v) el.classList.add('saved'); return; }
+      const notes = { ...(yd(y).anom_notes || {}) };
+      if (v) notes[d + '|' + u] = v; else delete notes[d + '|' + u];
+      try { await saveYear(y, { anom_notes: notes }); el.classList.toggle('saved', !!v); }
+      catch (e) { alert('메모 저장 실패: ' + errMsg(e)); }
     }
     let anomFocus = null;
     function renderAnomChart() {
@@ -1402,7 +1425,8 @@
       const first = UT.dateStr(brYm, 1), last = UT.dateStr(brYm, UT.daysIn(brYm));
       const an = UT.anomalies(DAILY, first, last < todayStr ? last : UT.addDays(todayStr, -1), { ratio: 1.4 }).filter(a => a.kind === '과다');
       h += `<div class="br-sec">이상 사용 (평소보다 40% 이상 많이 쓴 날)</div><div class="br-txt">${!an.length ? '없음' :
-        UT.DAILY_UTILS.map(u => { const l = an.filter(a => a.u === u.k); return l.length ? `${u.name} ${l.length}건 (${l.slice(0, 4).map(a => a.d.slice(8) + '일 ' + (a.pct === null ? '(평소 0)' : '+' + nf0.format(a.pct) + '%')).join(', ')}${l.length > 4 ? ' …' : ''})` : ''; }).filter(Boolean).join(' / ')}</div>`;
+        UT.DAILY_UTILS.map(u => { const l = an.filter(a => a.u === u.k); return l.length ? `${u.name} ${l.length}건 (${l.slice(0, 4).map(a => a.d.slice(8) + '일 ' + (a.pct === null ? '(평소 0)' : '+' + nf0.format(a.pct) + '%')).join(', ')}${l.length > 4 ? ' …' : ''})` : ''; }).filter(Boolean).join(' / ')}` +
+        (() => { const ns = an.filter(a => anomNote(a.d, a.u)); return ns.length ? '<br>' + ns.map(a => `· ${Number(a.d.slice(5, 7))}/${Number(a.d.slice(8))} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}: ${esc(anomNote(a.d, a.u))}`).join('<br>') : ''; })() + `</div>`;
       const cmt = (yd(y).comments || {})[brYm] || '';
       h += `<div class="br-sec">특이사항 및 조치 계획</div>` + (isAdmin()
         ? `<textarea id="br-comment" class="br-comment" placeholder="예) 9월 가스 사용 증가: 자숙 설비 증설 시운전 영향 / 10월 보일러 공기비 조정 예정">${esc(cmt)}</textarea><div class="no-print" style="text-align:right;margin-top:4px"><button class="btn secondary" onclick="saveBriefComment()">코멘트 저장</button> <span class="hint" id="br-cmt-st"></span></div><div class="print-only br-txt" id="br-comment-print">${esc(cmt)}</div>`
@@ -1481,32 +1505,85 @@
       if (metric === 'usage') return x.usage; if (metric === 'cost') return x.cost === null ? null : x.cost;
       return ratio(x.usage, s.production);
     }
+    // 선택 기간 (null = 최근 기본 개수)
+    const perSel = { day: null, week: null, month: null, quarter: null };
+    function perLastDay() { // 마지막으로 사용량이 계산되는 날 (다음날 검침이 있어야 함)
+      let last = UT.addDays(todayStr, -1);
+      for (let i = 0; i < 7 && dayVal(last, 'elec') === null && dayVal(last, perUtil) === null; i++) last = UT.addDays(last, -1);
+      return last;
+    }
+    const qKey = (y, q) => `${y}-${q}`;
+    const qOfYm = ym => [Number(ym.slice(0, 4)), Math.ceil(Number(ym.slice(5)) / 3)];
+    const qNext = ([y, q]) => q === 4 ? [y + 1, 1] : [y, q + 1];
+    const qPrev = ([y, q]) => q === 1 ? [y - 1, 4] : [y, q - 1];
+    function perDefault(g) {
+      const n = perN[g], last = perLastDay();
+      if (g === 'day') return { from: UT.addDays(last, -(n - 1)), to: last };
+      if (g === 'week') { const w = isoWeekStart(last); return { from: UT.addDays(w, -7 * (n - 1)), to: w }; }
+      if (g === 'month') { let ym = thisYm; for (let i = 0; i < n - 1; i++) ym = UT.prevYm(ym); return { from: ym, to: thisYm }; }
+      let q = qOfYm(thisYm); const to = q; for (let i = 0; i < n - 1; i++) q = qPrev(q); return { from: qKey(...q), to: qKey(...to) };
+    }
+    const PER_MAX = { day: 400, week: 160, month: 120, quarter: 40 };
+    function perRange() { return perSel[perGran] || perDefault(perGran); }
     function periodSeries() {
-      const uk = perUtil, metric = perMetric, n = perN[perGran], out = [];
-      let last = UT.addDays(todayStr, -1); // 마지막으로 사용량이 계산되는 날 (다음날 검침이 있어야 함)
-      for (let i = 0; i < 7 && dayVal(last, 'elec') === null && dayVal(last, uk) === null; i++) last = UT.addDays(last, -1);
+      const uk = perUtil, metric = perMetric, out = [];
+      const last = perLastDay(), { from, to } = perRange();
       if (perGran === 'day') {
-        for (let i = n - 1; i >= 0; i--) { const ds = UT.addDays(last, -i), ly = UT.addDays(ds, -364); // 364일 전 = 같은 요일
-          out.push({ label: `${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prevLabel: ly }); }
+        const end = to > last ? last : to, multiYear = from.slice(0, 4) !== end.slice(0, 4);
+        for (let ds = from, i = 0; ds <= end && i < PER_MAX.day; ds = UT.addDays(ds, 1), i++) { const ly = UT.addDays(ds, -364); // 364일 전 = 같은 요일
+          out.push({ label: `${multiYear ? ds.slice(2, 4) + '/' : ''}${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prevLabel: ly }); }
       } else if (perGran === 'week') {
-        const thisWeek = isoWeekStart(last);
-        for (let i = n - 1; i >= 0; i--) { const ws = UT.addDays(thisWeek, -7 * i), lws = UT.addDays(ws, -364);
+        const multiYear = from.slice(0, 4) !== to.slice(0, 4);
+        for (let ws = isoWeekStart(from), i = 0; ws <= isoWeekStart(to) && ws <= last && i < PER_MAX.week; ws = UT.addDays(ws, 7), i++) { const lws = UT.addDays(ws, -364);
           const days = Math.min(7, (new Date(last + 'T00:00:00') - new Date(ws + 'T00:00:00')) / 864e5 + 1);
           const c = sumDays(ws, days, uk), p = sumDays(lws, days, uk);
-          out.push({ label: `${ws.slice(5).replace('-', '/')}~`, cur: c && c.v, prev: p && p.v, partial: days < 7, prevLabel: lws }); }
+          out.push({ label: `${multiYear ? ws.slice(2, 4) + '/' : ''}${ws.slice(5).replace('-', '/')}~`, cur: c && c.v, prev: p && p.v, partial: days < 7, prevLabel: lws }); }
       } else if (perGran === 'month') {
-        let ym = thisYm; for (let i = 0; i < n - 1; i++) ym = UT.prevYm(ym);
-        for (let i = 0; i < n; i++, ym = UT.nextYm(ym)) { const ly = UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)));
+        for (let ym = from, i = 0; ym <= to && ym <= thisYm && i < PER_MAX.month; ym = UT.nextYm(ym), i++) { const ly = UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)));
           out.push({ label: ym.slice(2).replace('-', '.'), cur: monthVal(ym, uk, metric), prev: monthVal(ly, uk, metric), partial: ym === thisYm && !UT.monthComplete(DAILY, ym) }); }
       } else {
-        const qOf = ym => [Number(ym.slice(0, 4)), Math.ceil(Number(ym.slice(5)) / 3)];
-        let [y, q] = qOf(thisYm); const list = []; for (let i = 0; i < n; i++) { list.unshift([y, q]); q--; if (!q) { q = 4; y--; } }
         const qv = (y, q) => { const ms = [1, 2, 3].map(k => UT.ym(y, (q - 1) * 3 + k)).filter(ym => ym <= thisYm); if (!ms.length) return null;
           if (metric === 'unit') { const u = ms.reduce((a, ym) => a + (S(ym)[perUtil].usage || 0), 0), p = ms.reduce((a, ym) => a + (S(ym).production || 0), 0); return p ? u / p : null; }
           const v = ms.map(ym => monthVal(ym, uk, metric)).filter(x => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
-        list.forEach(([y, q]) => out.push({ label: `${String(y).slice(2)}년 ${q}분기`, cur: qv(y, q), prev: qv(y - 1, q), partial: y === Number(thisYm.slice(0, 4)) && q === Math.ceil(Number(thisYm.slice(5)) / 3) }));
+        const [cy, cq] = qOfYm(thisYm);
+        let q = from.split('-').map(Number); const tq = to.split('-').map(Number);
+        for (let i = 0; (q[0] < tq[0] || (q[0] === tq[0] && q[1] <= tq[1])) && (q[0] < cy || (q[0] === cy && q[1] <= cq)) && i < PER_MAX.quarter; q = qNext(q), i++) {
+          const [y, qq] = q; out.push({ label: `${String(y).slice(2)}년 ${qq}분기`, cur: qv(y, qq), prev: qv(y - 1, qq), partial: y === cy && qq === cq });
+        }
       }
       return out;
+    }
+    // 기간 입력칸
+    function perRangeHtml() {
+      const { from, to } = perRange(), g = perGran;
+      let inp;
+      if (g === 'day' || g === 'week') inp = `<input type="date" id="per-from" value="${from}" max="${todayStr}"> ~ <input type="date" id="per-to" value="${to}" max="${todayStr}">`;
+      else if (g === 'month') inp = `<input type="month" id="per-from" value="${from}" max="${thisYm}"> ~ <input type="month" id="per-to" value="${to}" max="${thisYm}">`;
+      else {
+        const [cy, cq] = qOfYm(thisYm), opts = []; let q = [2023, 1];
+        const first = Object.keys(MONTHLY).sort()[0]; if (first) q = [Number(first.slice(0, 4)) - 1, 1];
+        for (; q[0] < cy || (q[0] === cy && q[1] <= cq); q = qNext(q)) opts.push(qKey(...q));
+        const sel = (id, v) => `<select id="${id}">${opts.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o.slice(0, 4)}년 ${o.slice(5)}분기</option>`).join('')}</select>`;
+        inp = sel('per-from', from) + ' ~ ' + sel('per-to', to);
+      }
+      const quick = { day: [[30, '30일'], [60, '60일'], [90, '90일'], [365, '1년']], week: [[13, '13주'], [26, '26주'], [52, '52주']], month: [[12, '12개월'], [24, '24개월'], [36, '36개월']], quarter: [[4, '4분기'], [8, '8분기'], [12, '12분기']] }[g];
+      return `<span class="per-range">기간 ${inp} <button class="chip" onclick="perApplyRange()">보기</button> &nbsp;최근 ` +
+        quick.map(([n, t]) => `<button class="chip ${!perSel[g] && perN[g] === n ? 'on' : ''}" onclick="perN.${g}=${n};perSel.${g}=null;renderPeriod()">${t}</button>`).join('') + `</span>`;
+    }
+    function perApplyRange() {
+      let from = document.getElementById('per-from').value, to = document.getElementById('per-to').value;
+      if (!from || !to) return alert('시작과 끝을 모두 고르세요.');
+      if (from > to) [from, to] = [to, from];
+      // 너무 길면 줄이기
+      const g = perGran, max = PER_MAX[g];
+      let cnt = 0;
+      if (g === 'day') cnt = (new Date(to) - new Date(from)) / 864e5 + 1;
+      else if (g === 'week') cnt = (new Date(isoWeekStart(to)) - new Date(isoWeekStart(from))) / (7 * 864e5) + 1;
+      else if (g === 'month') cnt = (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5)) - Number(from.slice(5)) + 1;
+      else cnt = (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 4 + Number(to.slice(5)) - Number(from.slice(5)) + 1;
+      if (cnt > max) alert(`한 번에 최대 ${max}개 ${{ day: '일', week: '주', month: '개월', quarter: '분기' }[g]}까지 볼 수 있어 앞쪽 ${max}개만 보여줍니다.`);
+      perSel[g] = { from: g === 'week' ? isoWeekStart(from) : from, to: g === 'week' ? isoWeekStart(to) : to };
+      renderPeriod();
     }
     function renderPeriod() {
       if (!window.Chart) return;
@@ -1516,11 +1593,13 @@
         [['day', '일별'], ['week', '주별'], ['month', '월별'], ['quarter', '분기별']].map(([k, n]) => `<button class="chip ${perGran === k ? 'on' : ''}" onclick="perGran='${k}';renderPeriod()">${n}</button>`).join('') + ' &nbsp; ' +
         UT.UTILS.map(u => `<button class="chip ${perUtil === u.k ? 'on' : ''}" onclick="perUtil='${u.k}';renderPeriod()">${u.name}</button>`).join('') + ' &nbsp; ' +
         [['usage', '사용량'], ['cost', '비용'], ['unit', '원단위']].map(([k, n]) => `<button class="chip ${perMetric === k ? 'on' : ''}" ${(perGran === 'day' || perGran === 'week') && k !== 'usage' ? 'disabled title="일·주 단위는 사용량만 (비용·원육 투입량은 월 단위로만 있음)"' : ''} onclick="perMetric='${k}';renderPeriod()">${n}</button>`).join('');
+      document.getElementById('per-range').innerHTML = perRangeHtml();
       const daily = perGran === 'day' || perGran === 'week';
       const unit = perMetric === 'cost' ? '원' : perMetric === 'unit' ? `${U.unit}/kg` : (daily ? DU.unit : U.unit);
       const ser = periodSeries();
       const gName = { day: '일별', week: '주별', month: '월별', quarter: '분기별' }[perGran];
-      document.getElementById('per-title').textContent = `${U.name} ${gName} ${perMetric === 'usage' ? '사용량' : perMetric === 'cost' ? '비용' : '원단위'} — 전년 같은 기간 비교`;
+      const rg = ser.length ? ` (${ser[0].label} ~ ${ser[ser.length - 1].label})` : '';
+      document.getElementById('per-title').textContent = `${U.name} ${gName} ${perMetric === 'usage' ? '사용량' : perMetric === 'cost' ? '비용' : '원단위'} — 전년 같은 기간 비교${rg}`;
       document.getElementById('per-note').textContent = (perGran === 'day' ? '전년 = 364일 전(같은 요일). ' : perGran === 'week' ? '주 = 월요일 시작, 전년 = 52주 전 같은 주. 이번 주는 어제까지만 합산. ' : '') +
         (daily && perUtil === 'gas' ? '가스 일·주 단위는 ㎥(월·분기는 MJ). ' : '') + '옅은 막대 = 아직 진행 중인 기간.';
       mkChart('chart-period', { type: 'bar', data: { labels: ser.map(s => s.label), datasets: [
