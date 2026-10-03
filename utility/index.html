@@ -209,7 +209,7 @@
             <div class="chart-box"><canvas id="chart-cost"></canvas></div>
           </div>
           <div class="card">
-            <h3>생산량당 유틸리티 비용 <span class="sub">원/kg · 올해 vs 전년</span></h3>
+            <h3>원육 kg당 유틸리티 비용 <span class="sub">원/kg · 올해 vs 전년</span></h3>
             <div class="legend"><span><i class="ln" style="border-color:#333"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
             <div class="chart-box"><canvas id="chart-unitcost"></canvas></div>
             <div class="hint" id="unitcost-note"></div>
@@ -224,7 +224,7 @@
             <div class="hint" id="util-note"></div>
           </div>
           <div class="card">
-            <h3>생산량 <span class="sub">kg · 올해 vs 전년</span></h3>
+            <h3>원육 투입량 <span class="sub">kg · 올해 vs 전년</span></h3>
             <div class="legend"><span><i class="dot" style="background:#777"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
             <div class="chart-box"><canvas id="chart-prod"></canvas></div>
           </div>
@@ -248,7 +248,7 @@
           <span class="hint" id="target-note"></span>
         </div>
         <div class="card">
-          <h3>① 예상 사용량 기준선 <span class="sub">생산량·날씨가 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
+          <h3>① 예상 사용량 기준선 <span class="sub">원육 투입량·날씨가 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
           <div id="tg-model"></div>
         </div>
         <div class="card">
@@ -263,7 +263,7 @@
           <div class="tbl-wrap" id="tg-summary"></div>
         </div>
         <div class="card">
-          <h3>④ 연간 계획표 (예산용) <span class="sub">생산계획 + 평년 날씨 → 월별·분기별 목표 사용량·비용</span></h3>
+          <h3>④ 연간 계획표 (예산용) <span class="sub">원육 투입 계획 + 평년 날씨 → 월별·분기별 목표 사용량·비용</span></h3>
           <div id="tg-plan"></div>
         </div>
       </div>
@@ -278,7 +278,7 @@
             <div class="hint" id="temp-note" style="margin-top:6px"></div>
           </div>
           <div class="card">
-            <h3>생산량과 원단위 <span class="sub">점 하나 = 한 달 · 전년·올해</span></h3>
+            <h3>원육 투입량과 원단위 <span class="sub">점 하나 = 한 달 · 전년·올해</span></h3>
             <div class="chart-box"><canvas id="chart-produnit"></canvas></div>
             <div class="hint" id="produnit-note" style="margin-top:6px"></div>
           </div>
@@ -356,7 +356,7 @@
   // ---------------- 입력 항목 정의 ----------------
   // carry: 값이 없으면 이전 달 값을 그대로 씀 (단가·계수처럼 자주 안 바뀌는 값)
   UT.FIELDS = [
-    { g: '생산', k: 'production_kg', label: '생산량', unit: 'kg' },
+    { g: '원육 투입', k: 'production_kg', label: '원육 투입량', unit: 'kg' },
 
     { g: '전기', k: 'elec_kwh_light', label: '경부하 사용량', unit: 'kWh', hint: '비우면 일별 사용량 × 전월 비율로 추정' },
     { g: '전기', k: 'elec_kwh_mid', label: '중간부하 사용량', unit: 'kWh' },
@@ -876,7 +876,7 @@
   // =====================================================================
   UT.HDD_BASE = 18; UT.CDD_BASE = 24;   // 평균기온 18℃ 아래는 난방, 24℃ 위는 냉방
   UT.MODEL_FEATS = { elec: ['days', 'prod', 'cdd'], gas: ['op', 'prod', 'hdd'], water: ['days', 'prod', 'hdd'], ww: ['days', 'prod', 'hdd'] };
-  UT.FEAT_LABEL = { days: '날마다 기본', op: '가동일 1일당', prod: '생산 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
+  UT.FEAT_LABEL = { days: '날마다 기본', op: '가동일 1일당', prod: '원육 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
   // 그 달의 날수·난방도일·냉방도일 (temps: { 'YYYY-MM-DD': 평균기온 }) — 기온 빠진 날은 비율로 보정
   UT.monthWeather = (ym, temps) => {
     const n = UT.daysIn(ym); let hdd = 0, cdd = 0, cnt = 0;
@@ -995,7 +995,7 @@
           <div><div class="hint">총비용 (VAT 포함)</div>${UT.UTILS.some(u => f[u.k].cost === null) ? '<b style="font-size:13px;color:#999">모든 항목 검침이 쌓이면 계산</b>' : `<b>${man(f.total)}</b><div class="hint">전월 ${pctTxt(f.total, prevS.total)}${tc ? ` · 월 목표 ${man(tc / 12)} 대비 ${pctTxt(f.total, tc / 12)}` : ''}</div>`}</div>
           ${UT.UTILS.map(u => `<div><div class="hint"><i class="dot" style="background:${u.color}"></i>${u.name}</div>${f[u.k].cost === null ? '<b style="font-size:13px;color:#999">검침 2일 이상 쌓이면 계산</b>' : `<b>${man(f[u.k].cost)}</b><div class="hint">${f0(f[u.k].usage)} ${u.unit} · 전월 ${pctTxt(f[u.k].usage, prevS[u.k].usage)}</div>`}</div>`).join('')}
         </div>
-        <div class="hint" style="margin-top:6px">생산량을 아직 안 넣은 달이라 원단위는 월말에 생산량을 넣으면 계산됩니다. 회계보고 탭에서 이 예상값으로 가마감 표를 바로 뽑을 수 있습니다.</div>
+        <div class="hint" style="margin-top:6px">원육 투입량을 아직 안 넣은 달이라 원단위는 월말에 원육 투입량을 넣으면 계산됩니다. 회계보고 탭에서 이 예상값으로 가마감 표를 바로 뽑을 수 있습니다.</div>
       </div>`;
     }
 
@@ -1067,7 +1067,7 @@
 
       // 1) 기준선
       const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
-      let h = `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}) · 생산이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
+      let h = `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
         cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
       h += `<table class="t tg" style="margin-top:10px"><tr><th class="l">항목</th><th class="l">예상 사용량 식 (기준 달 ${base.length}개로 계산)</th><th>맞는 정도</th><th>월 평균 오차</th></tr>` +
         UT.UTILS.map(u => { const m = models[u.k]; if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달이 부족해 계산할 수 없습니다</td></tr>`;
@@ -1093,7 +1093,7 @@
       const ev = Array.from({ length: 12 }, (_, i) => { const ym = UT.ym(y, i + 1); return ym > last ? null : evalMonth(y, ym, uk, models, t); });
       const sumE = list => { const l = list.filter(Boolean); if (!l.length) return null; const exp = l.reduce((a, e) => a + e.exp, 0), act = l.reduce((a, e) => a + e.act, 0); return { exp, act, target: l.every(e => e.target !== null) ? l.reduce((a, e) => a + e.target, 0) : null, save: (1 - act / exp) * 100, rate: rateOf(t, uk), n: l.length }; };
       const er = (label, e, cls = '') => `<tr class="${cls}"><td class="l">${label}</td><td>${e && e.op !== undefined ? f0(e.op) : ''}</td><td>${e ? f0(e.prod ?? '') : ''}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e && e.target !== null ? f0(e.target) : '-'}</td><td>${e ? f0(e.act) : '-'}</td><td>${e ? saveTxt(e.save) : '-'}</td><td>${e ? judge(e) : ''}</td></tr>`;
-      let ht = `<table class="t"><tr><th class="l">월</th><th>가동일</th><th>생산량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
+      let ht = `<table class="t"><tr><th class="l">월</th><th>가동일</th><th>원육 투입량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
       for (let q = 0; q < 4; q++) {
         for (let i = q * 3; i < q * 3 + 3; i++) { const e = ev[i]; if (e) { e.prod = S(UT.ym(y, i + 1)).production; e.op = UT.opDays(DAILY, UT.ym(y, i + 1)); } ht += er(`${i + 1}월`, e); }
         const qs = sumE(ev.slice(q * 3, q * 3 + 3)); if (qs) { const l = ev.slice(q * 3, q * 3 + 3).filter(Boolean); qs.prod = l.reduce((a, e) => a + e.prod, 0); qs.op = l.reduce((a, e) => a + e.op, 0); }
@@ -1101,7 +1101,7 @@
       }
       const ys = sumE(ev); if (ys) { ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0); ys.op = ev.filter(Boolean).reduce((a, e) => a + e.op, 0); }
       ht += er(`<b>${y}년 누적</b>${ys ? ` <span class="hint">(${ys.n}개월)</span>` : ''}`, ys, 'sum') + '</table>';
-      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. 예상 사용량 = 그 달 실제 생산량·날씨를 위 식에 넣은 값. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
+      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. 예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
       document.getElementById('target-table').innerHTML = ht;
       // 전 항목 요약
       document.getElementById('tg-summary').innerHTML = `<table class="t"><tr><th class="l">항목</th><th>목표 절감률</th><th>${y}년 누적 예상</th><th>누적 실제</th><th>예상 대비</th><th>판정</th></tr>` +
@@ -1154,9 +1154,9 @@
     }
     function renderPlan(models) {
       const y = targetY, t = targetDraft, ro = !isAdmin(), nm = normals();
-      let h = `<div class="toolbar no-print" style="margin-bottom:8px">${ro ? '' : `<button class="btn secondary" onclick="fillPlanProd('prev')">전년 실적으로 생산계획 채우기</button>
-        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">생산계획(kg)과 가동일(기본 = 평일 수, 공휴일 등은 고쳐 넣기)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
-      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>생산계획 (kg)</th><th>가동일</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
+      let h = `<div class="toolbar no-print" style="margin-bottom:8px">${ro ? '' : `<button class="btn secondary" onclick="fillPlanProd('prev')">전년 실적으로 원육 투입 계획 채우기</button>
+        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">원육 투입 계획(kg)과 가동일(기본 = 평일 수, 공휴일 등은 고쳐 넣기)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
+      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>원육 투입 계획 (kg)</th><th>가동일</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
       const tot = { prod: 0, cost: 0 }; UT.UTILS.forEach(u => { tot[u.k] = 0; tot[u.k + 'c'] = 0; });
       const rows = [];
       for (let m = 1; m <= 12; m++) {
@@ -1195,7 +1195,7 @@
     function fillPlanProd(mode) {
       const y = targetY; targetDraft.plan_prod = {};
       if (mode === 'prev') { targetDraft.plan_op = {}; for (let m = 1; m <= 12; m++) { const ym = UT.ym(y - 1, m), p = S(ym).production; if (p) { targetDraft.plan_prod[m] = Math.round(p); targetDraft.plan_op[m] = UT.opDays(DAILY, ym); } } }
-      else { const v = Number(prompt(`${y}년 연간 생산계획 총량(kg)은? (월 날수 비율로 나눕니다)`, '')); if (!v) return;
+      else { const v = Number(prompt(`${y}년 연간 원육 투입 계획 총량(kg)은? (월 날수 비율로 나눕니다)`, '')); if (!v) return;
         for (let m = 1; m <= 12; m++) targetDraft.plan_prod[m] = Math.round(v * UT.daysIn(UT.ym(y, m)) / (y % 4 === 0 ? 366 : 365)); }
       targetDirty = true; renderTargets(targetDraft);
     }
@@ -1245,10 +1245,10 @@
       mkChart('chart-produnit', { type: 'scatter', data: { datasets: [
         { label: `${causeYear - 1}년`, data: mp.filter(p => p.ym < `${causeYear}`), backgroundColor: '#a3a29d', pointRadius: 5 },
         { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: U.color, pointRadius: 6 }
-      ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '생산량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
-        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 생산 ${f0(c.raw.x)}kg · ${f2(c.raw.y)} ${unit2}`; return o; })() });
-      document.getElementById('produnit-note').innerHTML = !lr2 ? '생산량을 넣은 달이 부족합니다.' :
-        `생산량이 많은 달일수록 원단위가 ${lr2.a < 0 ? '<b>낮아지는</b>(고정 사용량이 나뉘는)' : '<b>높아지는</b>'} 경향 (R²=${lr2.r2.toFixed(2)}). 같은 생산량인데 점이 위에 있는 달은 낭비를 의심해 볼 달입니다.`;
+      ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '원육 투입량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
+        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 원육 ${f0(c.raw.x)}kg · ${f2(c.raw.y)} ${unit2}`; return o; })() });
+      document.getElementById('produnit-note').innerHTML = !lr2 ? '원육 투입량을 넣은 달이 부족합니다.' :
+        `원육 투입량이 많은 달일수록 원단위가 ${lr2.a < 0 ? '<b>낮아지는</b>(고정 사용량이 나뉘는)' : '<b>높아지는</b>'} 경향 (R²=${lr2.r2.toFixed(2)}). 같은 원육 투입량인데 점이 위에 있는 달은 낭비를 의심해 볼 달입니다.`;
 
       // 3) 전력 구성 (월별)
       const ms = yearMonths(causeYear), es = ms.map(ym => { const s = S(ym); const m = s.m || {}; const tot = s.elec.usage; const hv = Number(m.elec_hvac_kwh) || null, ww = Number(m.elec_ww_kwh) || null; return { tot, hv, ww, etc: tot ? Math.max(0, tot - (hv || 0) - (ww || 0)) : null }; });
@@ -1314,16 +1314,16 @@
         <table class="br-sign"><tr><td>작성</td><td>검토</td><td>승인</td></tr><tr><td></td><td></td><td></td></tr></table></div>`;
       h += `<div class="br-kpis">` +
         tile('유틸리티 총비용', man(s.total), `전월 ${pctTxt(s.total, prev.total)} · 전년 ${pctTxt(s.total, ly.total)}`) +
-        tile('생산량', `${f0(s.production)} kg`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
-        tile('생산량당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))} · 전년 ${pctTxt(uc(s), uc(ly))}`) +
+        tile('원육 투입량', `${f0(s.production)} kg`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
+        tile('원육 kg당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))} · 전년 ${pctTxt(uc(s), uc(ly))}`) +
         tile(`${y}년 누적 (1~${m}월)`, man(yt.total), `원단위 ${f0(ratio(yt.total, yt.production))} 원/kg`) +
         `</div>`;
-      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">생산·기온 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
+      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">원육·기온 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
         UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production), e = fc ? null : evalFor(brYm, u.k);
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${f2(un)} <span class="hint">${u.unit}/kg</span></td>
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
         `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
-      h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (만원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">생산량당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
+      h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (만원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
       // 이상 사용 요약
       const first = UT.dateStr(brYm, 1), last = UT.dateStr(brYm, UT.daysIn(brYm));
       const an = UT.anomalies(DAILY, first, last < todayStr ? last : UT.addDays(todayStr, -1), { ratio: 1.4 }).filter(a => a.kind === '과다');
@@ -1457,9 +1457,9 @@
       const unitCost = s => ratio(s.total, s.production);
       let html = kpiTile('total', '유틸리티 총비용 (VAT 포함)', `${man(cur.total)}`,
         `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null);
-      html += kpiTile('prod', '생산량', `${f0(cur.production)}<small> kg</small>`,
+      html += kpiTile('prod', '원육 투입량', `${f0(cur.production)}<small> kg</small>`,
         `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null);
-      html += kpiTile('total', '생산량당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
+      html += kpiTile('total', '원육 kg당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
         `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null);
       document.getElementById('kpis').innerHTML = html;
       document.getElementById('fc-box').innerHTML = forecastCard(thisYm); // 진행 중인 이번 달 월말 예상
@@ -1530,7 +1530,7 @@
           return o; })()
       });
 
-      // 2) 생산량당 비용
+      // 2) 원육 kg당 비용
       const uc = arr => arr.map(s => ratio(s.total, s.production));
       mkChart('chart-unitcost', {
         type: 'line',
@@ -1585,15 +1585,15 @@
       add('상태', cs.map(s => s.status), v => v ? `<span class="st st-${v}">${v}</span>` : '-', { noSum: true });
       add('유틸리티 합계 (원)', cs.map(s => s.total), f0, { cls: 'sum', prov: cs.map(s => s.status === '가마감') });
       add('VAT 별도 (원)', cs.map(s => s.exvat), f0);
-      add('생산량 (kg)', cs.map(s => s.production), f0);
-      add('생산량당 비용 (원/kg)', cs.map(s => ratio(s.total, s.production)), f0, { noSum: true });
+      add('원육 투입량 (kg)', cs.map(s => s.production), f0);
+      add('원육 kg당 비용 (원/kg)', cs.map(s => ratio(s.total, s.production)), f0, { noSum: true });
       UT.UTILS.forEach(u => {
         rows.push({ grp: u.name });
         add('비용 (원)', cs.map(s => s[u.k].cost), f0, { prov: cs.map(s => s[u.k].status === '가마감') });
         add(`사용량 (${u.unit})`, cs.map(s => s[u.k].usage), f0);
         add(`단가 (원/${u.unit})`, cs.map(s => ratio(s[u.k].cost, s[u.k].usage)), f2, { noSum: true });
-        add(`생산량당 비용 (원/kg)`, cs.map(s => ratio(s[u.k].cost, s.production)), f1, { noSum: true });
-        add(`생산량당 사용량 (${u.unit}/kg)`, cs.map(s => ratio(s[u.k].usage, s.production)), f2, { noSum: true });
+        add(`원육 kg당 비용 (원/kg)`, cs.map(s => ratio(s[u.k].cost, s.production)), f1, { noSum: true });
+        add(`원육 kg당 사용량 (${u.unit}/kg)`, cs.map(s => ratio(s[u.k].usage, s.production)), f2, { noSum: true });
         if (u.k === 'elec') add('최대전력 (kW)', cs.map(s => s.elec.maxKw), f1, { noSum: true });
         if (u.k === 'ww') {
           add('위탁처리비 (원, 합계 제외)', cs.map(s => s.ww.outsource), f0);
@@ -1758,7 +1758,7 @@
       const eff = UT.effective(monthlyYm, MONTHLY, DAILY, {});
       const groups = [];
       UT.FIELDS.forEach(f => { let g = groups.find(x => x.g === f.g); if (!g) groups.push(g = { g: f.g, fields: [] }); g.fields.push(f); });
-      const openGroups = ['생산', '전기', '가스', '용수', '폐수', '고지서 실제 금액'];
+      const openGroups = ['원육 투입', '전기', '가스', '용수', '폐수', '고지서 실제 금액'];
       let h = '';
       groups.forEach(g => {
         h += `<details class="fgroup" ${openGroups.includes(g.g) ? 'open' : ''}><summary>${esc(g.g)}</summary><div class="fields">`;
@@ -1830,7 +1830,7 @@
       }
       h += `<tr class="tot"><td>합계 (VAT 포함)</td><td>${won(s.total)}</td></tr>`;
       h += `<tr><td>VAT 별도</td><td>${won(s.exvat)}</td></tr>`;
-      h += `<tr><td>생산량당 비용</td><td>${f0(ratio(s.total, s.production))} 원/kg</td></tr></table>`;
+      h += `<tr><td>원육 kg당 비용</td><td>${f0(ratio(s.total, s.production))} 원/kg</td></tr></table>`;
       document.getElementById('monthly-preview').innerHTML = h;
     }
 
