@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>환경일지</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    .page-head { background: linear-gradient(135deg, #1D7A5C, #1D9E75); color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-head h1 { font-size: 18px; margin: 0; flex: 1; white-space: nowrap; }
+    .tab-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tab-btn { background: rgba(255,255,255,.18); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .tab-btn.active { background: #fff; color: #1D7A5C; font-weight: bold; }
+    .container { padding: 14px 16px 60px; max-width: 1500px; margin: 0 auto; }
+    .tab { display: none; } .tab.active { display: block; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .month-nav { display: flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 2px; }
+    .month-nav button { border: none; background: transparent; font-size: 15px; padding: 4px 10px; cursor: pointer; }
+    .month-nav span { font-weight: bold; min-width: 96px; text-align: center; }
+    .hint { font-size: 12px; color: #777; line-height: 1.6; }
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 14px; margin-bottom: 12px; }
+    .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+    .seg button { border: none; background: #fff; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+    .seg button.on { background: #1D9E75; color: #fff; }
+
+    /* 장부 표 */
+    .grid-wrap { overflow: auto; max-height: calc(100vh - 230px); background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    table.grid { border-collapse: separate; border-spacing: 0; font-size: 12px; }
+    table.grid th, table.grid td { border-right: 1px solid #e3e6ea; border-bottom: 1px solid #e3e6ea; padding: 0; text-align: center; white-space: nowrap; }
+    table.grid thead th { position: sticky; top: 0; background: #eef3f1; z-index: 2; padding: 5px 4px; font-weight: 600; }
+    table.grid thead tr:nth-child(2) th { top: 27px; }
+    table.grid th.grp { background: #dde9e4; }
+    table.grid .sticky { position: sticky; left: 0; background: #fff; z-index: 1; padding: 0 8px; text-align: left; font-weight: 600; }
+    table.grid thead .sticky { z-index: 3; background: #eef3f1; }
+    table.grid tr.weekend .sticky { color: #c62828; }
+    table.grid tr.today td { background: #fffbe6; }
+    table.grid input[type=number], table.grid input[type=text] { width: 64px; border: none; padding: 6px 4px; text-align: right; font-size: 12px; background: transparent; }
+    table.grid input[type=text] { width: 140px; text-align: left; }
+    table.grid input:focus { outline: 2px solid #1D9E75; background: #fff; }
+    table.grid input.saving { background: #fff8d6; } table.grid input.saved { background: #e3f6ec; } table.grid input.err { background: #fde2e2; }
+    table.grid td.calc { color: #555; background: #f7f8f9; padding: 0 6px; text-align: right; }
+    table.grid td.auto { color: #1D7A5C; background: #f2faf6; padding: 0 6px; text-align: right; }
+    table.grid td.neg { color: #c62828; font-weight: bold; }
+    table.grid tr.sum td { background: #eef3f1; font-weight: bold; padding: 6px; position: sticky; bottom: 0; }
+
+    /* 하루 입력 (핸드폰) */
+    .dayform { max-width: 520px; }
+    .dayform .grp { font-size: 12px; font-weight: bold; color: #1D7A5C; margin: 14px 0 6px; }
+    .dayform .fr { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e3e6ea; border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; }
+    .dayform .fr label { flex: 1; font-size: 14px; }
+    .dayform .fr .u { font-size: 11px; color: #888; }
+    .dayform .fr input[type=number] { width: 110px; font-size: 17px; text-align: right; border: none; border-bottom: 1.5px solid #ccc; padding: 4px; }
+    .dayform .fr input[type=text] { flex: 2; font-size: 14px; border: none; border-bottom: 1.5px solid #ccc; padding: 4px; }
+    .dayform .fr .bal { font-size: 11px; color: #888; }
+    .dayform .save { width: 100%; padding: 13px; font-size: 15px; margin-top: 10px; }
+
+    /* 설정 */
+    .set-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 14px; }
+    .set-grid .field input { font-size: 13px; }
+    table.set { border-collapse: collapse; font-size: 12px; width: 100%; }
+    table.set th, table.set td { border: 1px solid #ddd; padding: 2px; }
+    table.set th { background: #f0f2f5; padding: 5px; }
+    table.set input { width: 100%; border: none; padding: 5px; font-size: 12px; }
+
+    /* ---------- 인쇄 양식 ---------- */
+    #print-area { display: none; }
+    .sheet { width: 190mm; margin: 0 auto; background: #fff; color: #000; font-family: 'Malgun Gothic', 'Batang', serif; font-size: 9pt; }
+    .sheet .form-no { font-size: 8.5pt; display: flex; justify-content: space-between; }
+    .sheet .hd { display: flex; align-items: stretch; margin: 2mm 0 3mm; }
+    .sheet .hd .tt { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 16pt; font-weight: bold; border: 1px solid #000; border-right: none; line-height: 1.35; }
+    .sheet table.ap { border-collapse: collapse; }
+    .sheet table.ap td { border: 1px solid #000; text-align: center; font-size: 8.5pt; width: 19mm; height: 6mm; }
+    .sheet table.ap td.v { writing-mode: vertical-rl; width: 7mm; letter-spacing: 6px; }
+    .sheet table.ap td.box { height: 15mm; }
+    .sheet .dl { display: flex; gap: 12mm; font-size: 10.5pt; margin: 2mm 0 3mm; padding: 0 1mm; }
+    .sheet h3 { font-size: 9.5pt; margin: 3mm 0 1.2mm; }
+    .sheet h4 { font-size: 9pt; margin: 2mm 0 1mm 2mm; font-weight: normal; }
+    .sheet table.f { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .sheet table.f th, .sheet table.f td { border: 1px solid #000; padding: 1.2mm 1mm; text-align: center; font-size: 8.5pt; word-break: keep-all; }
+    .sheet table.f th { background: #efefef; font-weight: normal; }
+    .sheet table.f td.l { text-align: left; }
+    .sheet table.f td.r { text-align: right; padding-right: 2mm; }
+    .sheet table.f td.hr { padding: 0; font-size: 7pt; }
+    .sheet table.f td.on { background: #555; }
+    .sheet table.f td.tall { height: 14mm; vertical-align: top; text-align: left; white-space: pre-wrap; }
+    .sheet .note { font-size: 7.5pt; line-height: 1.5; margin-top: 1.5mm; white-space: pre-wrap; }
+    .sheet .sig { text-align: right; font-size: 10pt; margin: 4mm 2mm; }
+    .sheet .back { text-align: center; font-size: 8.5pt; margin-bottom: 2mm; }
+    @media screen { .preview #print-area { display: block; background: #888; padding: 8mm 0; } .preview .sheet { padding: 10mm; margin-bottom: 8mm; box-shadow: 0 2px 8px rgba(0,0,0,.3); } }
+    @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      body { background: #fff; }
+      #app > :not(#print-area) { display: none !important; }
+      #print-area { display: block !important; }
+      .sheet { page-break-after: always; }
+      .sheet:last-child { page-break-after: auto; }
+      .sheet table.f td.on { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="page-head">
+      <h1>🌿 환경일지</h1>
+      <div class="tab-btns">
+        <button class="tab-btn active" data-tab="book" onclick="showTab('book')">다온산업 장부</button>
+        <button class="tab-btn staff" data-tab="ww" onclick="showTab('ww')">폐수일지 출력</button>
+        <button class="tab-btn staff" data-tab="air" onclick="showTab('air')">대기일지 출력</button>
+        <button class="tab-btn admin" data-tab="set" onclick="showTab('set')">설정</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- ============ 다온산업 장부 ============ -->
+      <div id="tab-book" class="tab active">
+        <div class="toolbar">
+          <div class="seg"><button id="m-grid" class="on" onclick="setMode('grid')">월 표</button><button id="m-day" onclick="setMode('day')">하루 입력</button></div>
+          <div class="month-nav" id="nav-month"><button onclick="shiftMonth(-1)">◀</button><span id="book-month"></span><button onclick="shiftMonth(1)">▶</button></div>
+          <div class="month-nav" id="nav-day" hidden><button onclick="shiftDay(-1)">◀</button><input type="date" id="book-day" onchange="dayDate=this.value;renderDay()" style="border:none;font-weight:bold"><button onclick="shiftDay(1)">▶</button></div>
+          <span class="hint" id="book-hint">칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다.</span>
+        </div>
+        <div id="book-grid" class="grid-wrap"><div class="loading">불러오는 중...</div></div>
+        <div id="book-day-form" class="dayform" hidden></div>
+      </div>
+
+      <!-- ============ 폐수일지 출력 ============ -->
+      <div id="tab-ww" class="tab">
+        <div class="card">
+          <div class="toolbar">
+            <input type="date" id="ww-from"> ~ <input type="date" id="ww-to">
+            <button class="btn" onclick="printForm('ww', true)">미리보기</button>
+            <button class="btn" onclick="printForm('ww', false)">🖨 인쇄</button>
+          </div>
+          <div class="hint">· 하루가 A4 두 장(앞·뒤 쪽)으로 나옵니다. 기간을 고르면 한 번에 인쇄합니다.<br>
+            · 날씨·온도·상수도·방류량·폐수 전력은 <b>설비검침</b>, 슬러지·약품·폭기조는 <b>다온산업 장부</b>, 나머지 고정 문구와 수질 측정값은 <b>설정</b>에서 가져옵니다.<br>
+            · 지침은 그날 08시 검침값(전일지침)과 다음날 08시 검침값(금일지침)으로 계산합니다. 폐수 전력 사용량도 같은 기준입니다.</div>
+        </div>
+      </div>
+
+      <!-- ============ 대기일지 출력 ============ -->
+      <div id="tab-air" class="tab">
+        <div class="card">
+          <div class="toolbar">
+            <input type="date" id="air-from"> ~ <input type="date" id="air-to">
+            <button class="btn" onclick="printForm('air', true)">미리보기</button>
+            <button class="btn" onclick="printForm('air', false)">🖨 인쇄</button>
+          </div>
+          <div class="hint">· 하루가 A4 한 장으로 나옵니다.<br>· 날씨·온도는 설비검침, 연료(LNG) 사용량은 설비검침의 보일러 가스 지침 차이(다음날 − 그날)로 넣습니다. 방지시설·환경기술인은 설정에서 바꿉니다.</div>
+        </div>
+      </div>
+
+      <!-- ============ 설정 ============ -->
+      <div id="tab-set" class="tab">
+        <div id="set-body"></div>
+        <button class="btn" onclick="saveSettings()">✓ 설정 저장</button>
+      </div>
+    </div>
+    <div id="print-area"></div>
+  </div>
+
+  <script>
+    let sb = null, me = null;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = ymd(new Date());
+    const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+    const nf = (v, d = 2) => (v === null || v === undefined || v === '' || isNaN(v)) ? '' : new Intl.NumberFormat('ko-KR', { maximumFractionDigits: d }).format(v);
+    const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+    const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+    const isPartner = () => me && me.role === 'partner';
+    const isAdmin = () => me && me.role === 'admin';
+
+    let SET = null;      // env_settings.env
+    let WW = {};         // d -> ww_daily row
+    let BAL = {};        // d -> { sludge, anion, ... } (그날 끝 잔고)
+    let METER = {};      // d -> { weather, temp_min, temp_max, v }
+    let bookYm = todayStr.slice(0, 7), dayDate = todayStr;
+
+    const DEFAULT_SET = { chems: [], open_date: '2025-12-31', sludge_open: 0, air: { outlets: [], prevention: [] }, ww: { quality: [] } };
+
+    async function fetchAll(q) {
+      const out = []; let from = 0;
+      while (true) { const { data, error } = await q().range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; from += 1000; }
+      return out;
+    }
+    async function loadAll() {
+      const [s, w] = await Promise.all([
+        sb.from('env_settings').select('value').eq('key', 'env').maybeSingle(),
+        fetchAll(() => sb.from('ww_daily').select('*').order('d'))
+      ]);
+      if (s.error) throw s.error;
+      SET = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SET)), (s.data && s.data.value) || {});
+      WW = Object.fromEntries(w.map(r => [r.d, r]));
+      calcBalances();
+    }
+    async function loadMeter(from, to) {
+      const rows = await fetchAll(() => sb.from('meter_daily').select('d, weather, temp_min, temp_max, v').gte('d', addDays(from, -10)).lte('d', addDays(to, 10)).order('d'));
+      rows.forEach(r => METER[r.d] = r);
+    }
+
+    // 잔고: 시작 잔고(설정) + Σ(구입 − 사용), 슬러지 보관량: 시작 + Σ(발생 − 처리)
+    function calcBalances() {
+      BAL = {};
+      const b = { sludge: num(SET.sludge_open) || 0 };
+      SET.chems.forEach(c => b[c.key] = num(c.open) || 0);
+      const days = Object.keys(WW).filter(d => d > SET.open_date).sort();
+      const last = days.length ? days[days.length - 1] : SET.open_date;
+      const end = last > todayStr ? last : todayStr;
+      for (let d = addDays(SET.open_date, 1); d <= end; d = addDays(d, 1)) {
+        const r = WW[d];
+        if (r) {
+          b.sludge += (num(r.sludge_gen) || 0) - (num(r.sludge_out) || 0);
+          SET.chems.forEach(c => b[c.key] += (num(r[c.key + '_in']) || 0) - (num(r[c.key + '_use']) || 0));
+        }
+        BAL[d] = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, round(v, 3)]));
+      }
+    }
+
+    // ---------------- 탭 ----------------
+    function showTab(t) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
+      document.body.classList.remove('preview'); document.getElementById('print-area').innerHTML = '';
+      if (t === 'set') renderSettings();
+      if (t === 'book') renderBook();
+    }
+
+    // ---------------- 장부 칼럼 ----------------
+    function bookCols() {
+      const c = [
+        { g: '슬러지 (kg)', k: 'sludge_gen', label: '발생량' },
+        { g: '슬러지 (kg)', k: 'sludge_out', label: '처리량' },
+        { g: '슬러지 (kg)', calc: d => BAL[d] && BAL[d].sludge, label: '보관량' },
+        { g: '폭기조', k: 'ph', label: 'pH' },
+        { g: '폭기조', k: 'water_temp', label: '수온' },
+        { g: '폭기조', k: 'do_mg', label: 'DO' },
+        { g: '폭기조', k: 'sv30', label: 'SV30' },
+        { g: '폭기조', k: 'mlss', label: 'MLSS' },
+        { g: '폭기조', k: 'aer_hours', label: '폭기시간' },
+      ];
+      SET.chems.forEach(ch => {
+        const g = `${ch.name}${ch.unit ? ' (' + ch.unit + ')' : ''}`;
+        c.push({ g, k: ch.key + '_in', label: '구입' }, { g, k: ch.key + '_use', label: '사용' }, { g, calc: d => BAL[d] && BAL[d][ch.key], label: '잔고' });
+      });
+      c.push({ g: '기타', k: 'micro', label: '미생물상태', text: true, ph: '양호' }, { g: '기타', k: 'remark', label: '고장 유무·특기사항', text: true });
+      return c;
+    }
+
+    // 설비검침 값 (시설팀 계정만 보임): 그날 08시 → 다음날 08시
+    function firstOnAfter(ds, getter, strict) {
+      for (let i = strict ? 1 : 0; i <= 10; i++) { const d = addDays(ds, i), m = METER[d]; const v = m ? getter(m.v || {}) : null; if (v !== null && v > 0) return { d, v }; }
+      return null;
+    }
+    const gWater = v => (num(v['상수도40A']) !== null && num(v['상수도50A']) !== null) ? num(v['상수도40A']) + num(v['상수도50A']) : null;
+    const g = k => v => num(v[k]);
+    function pair(ds, getter) { const a = firstOnAfter(ds, getter, false), b = firstOnAfter(ds, getter, true); return { prev: a && a.v, cur: b && b.v, use: (a && b) ? round(b.v - a.v, 3) : null }; }
+
+    // ---------------- 장부: 월 표 ----------------
+    function shiftMonth(n) { const [y, m] = bookYm.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); bookYm = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; renderBook(); }
+    function setMode(m) {
+      document.getElementById('m-grid').classList.toggle('on', m === 'grid'); document.getElementById('m-day').classList.toggle('on', m === 'day');
+      document.getElementById('book-grid').hidden = m !== 'grid'; document.getElementById('book-day-form').hidden = m !== 'day';
+      document.getElementById('nav-month').hidden = m !== 'grid'; document.getElementById('nav-day').hidden = m !== 'day';
+      document.getElementById('book-hint').textContent = m === 'grid' ? '칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다.' : '값을 넣고 아래 [저장]을 누르세요.';
+      if (m === 'day') renderDay(); else renderBook();
+    }
+    async function renderBook() {
+      const [y, m] = bookYm.split('-').map(Number);
+      document.getElementById('book-month').textContent = `${y}년 ${m}월`;
+      const n = new Date(y, m, 0).getDate();
+      const first = `${bookYm}-01`, last = `${bookYm}-${pad2(n)}`;
+      const showAuto = !isPartner();
+      if (showAuto) { try { await loadMeter(first, last); } catch (e) { } }
+      const cols = bookCols();
+      const groups = [];
+      cols.forEach(c => { const gl = groups[groups.length - 1]; if (gl && gl.g === c.g) gl.n++; else groups.push({ g: c.g, n: 1 }); });
+      let h = '<table class="grid"><thead><tr><th class="sticky" rowspan="2">날짜</th><th rowspan="2">조업</th>';
+      if (showAuto) h += '<th class="grp" colspan="3">설비검침 (자동)</th>';
+      h += groups.map(x => `<th class="grp" colspan="${x.n}">${esc(x.g)}</th>`).join('') + '</tr><tr>';
+      if (showAuto) h += '<th>상수도 ㎥</th><th>방류량 ㎥</th><th>폐수전력 kWh</th>';
+      h += cols.map(c => `<th>${esc(c.label)}</th>`).join('') + '</tr></thead><tbody>';
+      const sums = {};
+      for (let d = 1; d <= n; d++) {
+        const ds = `${bookYm}-${pad2(d)}`, wd = new Date(ds + 'T00:00:00').getDay(), r = WW[ds] || {};
+        h += `<tr class="${wd === 0 || wd === 6 ? 'weekend' : ''} ${ds === todayStr ? 'today' : ''}"><td class="sticky">${d}일 (${WEEK[wd]})</td>`;
+        h += `<td><input type="checkbox" data-d="${ds}" data-k="op" ${r.op === false ? '' : 'checked'}></td>`;
+        if (showAuto) {
+          const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use;
+          const pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
+          h += `<td class="auto">${nf(w)}</td><td class="auto">${nf(f)}</td><td class="auto">${nf(pw, 1)}</td>`;
+        }
+        cols.forEach(c => {
+          if (c.calc) { const v = ds <= todayStr || WW[ds] ? c.calc(ds) : null; h += `<td class="calc ${v < 0 ? 'neg' : ''}">${nf(v)}</td>`; return; }
+          const v = r[c.k];
+          if (!c.text && v !== null && v !== undefined) sums[c.k] = (sums[c.k] || 0) + Number(v);
+          h += c.text ? `<td><input type="text" data-d="${ds}" data-k="${c.k}" value="${esc(v || '')}" placeholder="${esc(c.ph || '')}"></td>`
+            : `<td><input type="number" step="any" data-d="${ds}" data-k="${c.k}" value="${v ?? ''}"></td>`;
+        });
+        h += '</tr>';
+      }
+      h += `<tr class="sum"><td class="sticky">월 합계</td><td></td>${showAuto ? '<td></td><td></td><td></td>' : ''}` +
+        cols.map(c => `<td>${/_in$|_use$|sludge_gen|sludge_out/.test(c.k || '') ? nf(sums[c.k]) : ''}</td>`).join('') + '</tr></tbody></table>';
+      const wrap = document.getElementById('book-grid');
+      wrap.innerHTML = h;
+      wrap.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('change', () => saveCell(inp));
+        if (inp.type !== 'checkbox') inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); const nx = wrap.querySelector(`input[data-d="${addDays(inp.dataset.d, 1)}"][data-k="${inp.dataset.k}"]`); if (nx) nx.focus(); else inp.blur(); }
+        });
+      });
+    }
+    async function saveCell(inp) {
+      const d = inp.dataset.d, k = inp.dataset.k;
+      let v;
+      if (inp.type === 'checkbox') v = inp.checked;
+      else if (inp.type === 'text') v = inp.value.trim();
+      else { const raw = inp.value.trim(); v = raw === '' ? null : Number(raw); if (raw !== '' && isNaN(v)) { inp.classList.add('err'); return; } }
+      inp.classList.remove('saved', 'err'); inp.classList.add('saving');
+      const { error } = await sb.from('ww_daily').upsert({ d, [k]: v }, { onConflict: 'd' });
+      inp.classList.remove('saving');
+      if (error) { inp.classList.add('err'); alert('저장 실패: ' + errMsg(error)); return; }
+      inp.classList.add('saved');
+      WW[d] = { ...(WW[d] || { d }), [k]: v };
+      if (/_in$|_use$|sludge_/.test(k)) { calcBalances(); refreshCalc(); }
+    }
+    function refreshCalc() { // 잔고 칸만 다시 그리기 (입력 위치 유지)
+      const sc = document.getElementById('book-grid').scrollLeft, st = document.getElementById('book-grid').scrollTop;
+      const focused = document.activeElement && document.activeElement.dataset ? [document.activeElement.dataset.d, document.activeElement.dataset.k] : null;
+      renderBook().then(() => {
+        const w = document.getElementById('book-grid'); w.scrollLeft = sc; w.scrollTop = st;
+        if (focused && focused[0]) { const el = w.querySelector(`input[data-d="${focused[0]}"][data-k="${focused[1]}"]`); if (el) el.focus(); }
+      });
+    }
+
+    // ---------------- 장부: 하루 입력 (핸드폰) ----------------
+    function shiftDay(n) { dayDate = addDays(dayDate, n); renderDay(); }
+    function renderDay() {
+      document.getElementById('book-day').value = dayDate;
+      const r = WW[dayDate] || {}, b = BAL[dayDate] || {};
+      let h = `<div class="fr"><label>조업일</label><input type="checkbox" id="df-op" ${r.op === false ? '' : 'checked'} style="width:22px;height:22px"></div>`;
+      let lastG = null;
+      bookCols().forEach(c => {
+        if (c.calc) return;
+        if (c.g !== lastG) { h += `<div class="grp">${esc(c.g)}</div>`; lastG = c.g; }
+        const bal = c.k.endsWith('_use') ? `<span class="bal">잔고 ${nf(b[c.k.replace('_use', '')])}</span>` : (c.k === 'sludge_out' ? `<span class="bal">보관 ${nf(b.sludge)}</span>` : '');
+        h += c.text ? `<div class="fr"><label>${esc(c.label)}</label><input type="text" data-k="${c.k}" value="${esc(r[c.k] || '')}" placeholder="${esc(c.ph || '')}"></div>`
+          : `<div class="fr"><label>${esc(c.label)} ${bal}</label><input type="number" step="any" inputmode="decimal" data-k="${c.k}" value="${r[c.k] ?? ''}"></div>`;
+      });
+      h += `<button class="btn save" onclick="saveDayForm()">저장</button>`;
+      document.getElementById('book-day-form').innerHTML = h;
+    }
+    async function saveDayForm() {
+      const row = { d: dayDate, op: document.getElementById('df-op').checked };
+      for (const inp of document.querySelectorAll('#book-day-form input[data-k]')) {
+        if (inp.type === 'text') row[inp.dataset.k] = inp.value.trim();
+        else { const raw = inp.value.trim(); if (raw !== '' && isNaN(Number(raw))) return alert('숫자가 아닌 값이 있습니다.'); row[inp.dataset.k] = raw === '' ? null : Number(raw); }
+      }
+      const { error } = await sb.from('ww_daily').upsert(row, { onConflict: 'd' });
+      if (error) return alert('저장 실패: ' + errMsg(error));
+      WW[dayDate] = { ...(WW[dayDate] || {}), ...row }; calcBalances(); renderDay();
+      const btn = document.querySelector('#book-day-form .save'); btn.textContent = '✓ 저장 완료'; setTimeout(() => btn.textContent = '저장', 1500);
+    }
+
+    // ---------------- 출력 공통 ----------------
+    const korDate = ds => { const d = new Date(ds + 'T00:00:00'); return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})`; };
+    const approval = () => `<table class="ap"><tr><td class="v" rowspan="2">결재</td><td>환경담당</td><td>검 토</td><td>승 인</td></tr><tr><td class="box"></td><td class="box"></td><td class="box"></td></tr></table>`;
+    function weatherOf(ds) { const m = METER[ds] || {}; return { w: m.weather || '', t: m.temp_max ?? '' }; }
+    function hourCells(spec, on) { // spec 예: "8-17" 또는 "1-24" 또는 "8-12,13-17"
+      const set = new Set();
+      if (on) String(spec || '').split(',').forEach(p => { const [a, b] = p.split('-').map(x => parseInt(x)); if (!isNaN(a)) for (let h = a; h <= (isNaN(b) ? a : b); h++) set.add(h); });
+      let s = ''; for (let h = 1; h <= 24; h++) s += `<td class="hr ${set.has(h) ? 'on' : ''}"></td>`; return s;
+    }
+    async function printForm(kind, preview) {
+      const from = document.getElementById(kind + '-from').value, to = document.getElementById(kind + '-to').value || from;
+      if (!from) return alert('날짜를 고르세요.');
+      if (to < from) return alert('끝 날짜가 시작 날짜보다 빠릅니다.');
+      const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+      if (days.length > 62) return alert('한 번에 62일까지 인쇄할 수 있습니다.');
+      try { await loadMeter(from, to); } catch (e) { return alert('설비검침 값을 불러오지 못했습니다: ' + errMsg(e)); }
+      document.getElementById('print-area').innerHTML = days.map(d => kind === 'ww' ? wwSheet(d) : airSheet(d)).join('');
+      if (preview) { document.body.classList.add('preview'); document.getElementById('print-area').scrollIntoView(); }
+      else { document.body.classList.remove('preview'); setTimeout(() => window.print(), 100); }
+    }
+
+    // ---------------- 폐수일지 (별지 제18호서식) ----------------
+    function wwSheet(ds) {
+      const W = SET.ww || {}, r = WW[ds] || {}, b = BAL[ds] || {}, wt = weatherOf(ds);
+      const ct = num(W.ct) || 40, mt = esc(W.meter_time || '08:00');
+      const w1 = pair(ds, g('상수도40A')), w2 = pair(ds, g('상수도50A')), wt0 = pair(ds, gWater);
+      const fl = pair(ds, g('폐수방류량')), pw = pair(ds, g('폐수전력'));
+      const used = wt0.use, out = fl.use;
+      const rest = (used !== null && out !== null) ? Math.max(0, used - out) : null;
+      const pct = p => rest === null ? '' : nf(rest * (num(p) || 0) / 100, 3);
+      const power = pw.use === null ? null : round(pw.use * ct, 1);
+      const op = r.op !== false;
+      const H = '<tr><th colspan="3">시간대 구분</th>' + Array.from({ length: 24 }, (_, i) => `<th class="hr">${i + 1}</th>`).join('') + '</tr>';
+      const colg = '<colgroup><col span="3" style="width:13mm">' + '<col>'.repeat(24) + '</colgroup>';
+      const ch = SET.chems || [];
+      const chemRow = (a, c) => [a, c].map(x => x ? `<td>${esc(x.name)}</td><td>${nf(r[x.key + '_in'])}</td><td>${nf(r[x.key + '_use'])}</td><td>${nf(b[x.key])}</td><td></td>` : '<td></td><td></td><td></td><td></td><td></td>').join('');
+      const sv = (num(r.sv30) !== null && num(r.mlss)) ? round(r.sv30 * 1000 / r.mlss, 1) : '';
+      const q = (W.quality || []);
+      const front = `<div class="sheet">
+        <div class="form-no"><span>[ 별지 제18호서식 ] &lt;개정 2019. 12. 20.&gt;</span><span>(앞 쪽)</span></div>
+        <div class="hd"><div class="tt">폐수배출시설 및 수질오염방지시설<br>운영일지</div>${approval()}</div>
+        <div class="dl"><span>${korDate(ds)}</span><span>날씨 : ${esc(wt.w)}</span><span>온도 : ${esc(wt.t)}${wt.t !== '' ? '℃' : ''}</span></div>
+        <h3>1. 폐수배출시설 가동(조업)시간대</h3>
+        <table class="f">${colg}${H}
+          <tr><td colspan="3" class="l">13)기타 식품제조시설</td>${hourCells(W.fac_hours, op)}</tr>
+          <tr><td colspan="3" class="l" style="font-size:7pt">82)1호부터 81호까지의 분류에 속하지아니하는시설</td>${hourCells('', false)}</tr></table>
+        <h3>2. 수질오염방지시설 가동시간대(처리방법 : 물리적 + 화학적 + 생물학적 처리)</h3>
+        <table class="f">${colg}${H}
+          <tr><td colspan="3">물리적 처리</td>${hourCells(W.phys_hours, true)}</tr>
+          <tr><td colspan="3">화학적 처리</td>${hourCells(W.chem_hours, true)}</tr>
+          <tr><td colspan="3">생물학적 처리</td>${hourCells(W.bio_hours, true)}</tr>
+          <tr><td colspan="3" style="font-size:7.5pt">시간대별 근무자 직·성명</td><td colspan="24" class="l">※ 근무자 : ${esc(W.worker || '')}</td></tr></table>
+        <h3>3. 용수 공급원별 사용량과 폐수배출량</h3>
+        <table class="f"><colgroup><col style="width:12mm"><col style="width:8mm"><col><col><col><col style="width:16mm"><col style="width:22mm"><col><col><col></colgroup>
+          <tr><th colspan="2">항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>사용량(㎥/일)</th><th>검침<br>시간대</th><th>항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>배출량 및 사용량(㎥/일)</th></tr>
+          <tr><td colspan="2">계</td><td class="r">${nf(wt0.prev, 3)}</td><td class="r">${nf(wt0.cur, 3)}</td><td class="r">${nf(used, 3)}</td><td>${mt}</td><td>폐수발생량</td><td></td><td></td><td></td></tr>
+          <tr><td rowspan="2">상수도</td><td>1호</td><td class="r">${nf(w1.prev, 3)}</td><td class="r">${nf(w1.cur, 3)}</td><td class="r">${nf(w1.use, 3)}</td><td>${mt}</td><td rowspan="2">폐수배출량</td><td class="r" rowspan="2">${nf(fl.prev, 3)}</td><td class="r" rowspan="2">${nf(fl.cur, 3)}</td><td class="r" rowspan="2">${nf(out, 3)}</td></tr>
+          <tr><td>2호</td><td class="r">${nf(w2.prev, 3)}</td><td class="r">${nf(w2.cur, 3)}</td><td class="r">${nf(w2.use, 3)}</td><td>${mt}</td></tr>
+          <tr><td rowspan="2">공업<br>용수</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">냉각수량</td><td colspan="2" rowspan="2"></td><td rowspan="2"></td></tr>
+          <tr><td>2호</td><td></td><td></td><td></td><td></td></tr>
+          <tr><td rowspan="2">지하수</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">${esc(W.evap_label || '소모(증발량)')}</td><td colspan="2" rowspan="2"></td><td class="r" rowspan="2">${pct(W.cool_pct)}</td></tr>
+          <tr><td>2호</td><td></td><td></td><td></td><td></td></tr>
+          <tr><td rowspan="2">하천수</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">제품함유량</td><td colspan="2" rowspan="2"></td><td class="r" rowspan="2">${pct(W.product_pct)}</td></tr>
+          <tr><td>2호</td><td></td><td></td><td></td><td></td></tr>
+          <tr><td rowspan="2">해수등<br>기타</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">생활용수량</td><td colspan="2" rowspan="2"></td><td class="r" rowspan="2">${pct(W.life_pct)}</td></tr>
+          <tr><td>2호</td><td></td><td></td><td></td><td></td></tr></table>
+        <h3>4. 슬러지의 발생량 및 처리량</h3>
+        <table class="f"><tr><th>슬러지발생량(kg)</th><th>처리량(kg)</th><th>보관량(kg)</th><th>함수율(%)</th><th>보관장소</th></tr>
+          <tr><td>${nf(r.sludge_gen)}</td><td>${nf(r.sludge_out)}</td><td>${nf(b.sludge)}</td><td>${esc(W.moisture || '')}</td><td>${esc(W.storage || '')}</td></tr></table>
+        <div class="note">* 위탁처리업소명 : ${esc(W.consign || '')}</div>
+      </div>`;
+      const back = `<div class="sheet">
+        <div class="back">(뒤 쪽)</div>
+        <h3>5. 원료 또는 첨가제 등의 사용량</h3>
+        <table class="f"><tr><th style="width:30mm">원료 또는 첨가제 등</th><td></td><td></td><td></td><td></td><td></td></tr><tr><th>사용량(kg)</th><td></td><td></td><td></td><td></td><td></td></tr></table>
+        <div class="note">※ 일반적으로 사용되는 용어 또는 공통어로 기재합니다.</div>
+        <h3>6. 전력사용량</h3>
+        <table class="f"><tr><th>가동시간</th><th>사용량(kWh)</th><th>금일 폐수 1㎥당 소모전력량(kWh/㎥)</th><th>검침시간</th><th>적산전력계 지침</th><th>참고사항</th></tr>
+          <tr><td>24hr</td><td>${nf(power, 1)}</td><td>${power !== null && out ? nf(power / out, 2) : ''}</td><td>${mt}</td><td>${nf(pw.cur)}</td><td>${ct}배율</td></tr></table>
+        <h3>7. 약품사용량</h3>
+        <table class="f"><tr><th>약품명</th><th>구입량</th><th>약품 소모량</th><th>잔고량</th><th>비고</th><th>약품명</th><th>구입량</th><th>약품 소모량</th><th>잔고량</th><th>비고</th></tr>
+          <tr>${chemRow(ch[0], ch[1])}</tr><tr>${chemRow(ch[2], ch[3])}</tr><tr>${chemRow(ch[4], ch[5])}</tr></table>
+        <h3>8. 폭기조 운전상태(생물화학적 처리시설의 경우)</h3>
+        <table class="f"><tr><th>pH</th><th>수온</th><th>DO</th><th>SV30</th><th>MLSS</th><th>SVI</th><th>폭기시간</th><th>주미생물상태</th></tr>
+          <tr><td>${nf(r.ph)}</td><td>${nf(r.water_temp)}</td><td>${nf(r.do_mg)}</td><td>${nf(r.sv30)}</td><td>${nf(r.mlss)}</td><td>${nf(sv, 1)}</td><td>${r.aer_hours !== null && r.aer_hours !== undefined ? nf(r.aer_hours) + 'hr' : ''}</td><td>${esc(r.micro || (r.ph !== null && r.ph !== undefined ? '양호' : ''))}</td></tr></table>
+        <div class="note">※ 미생물 관찰: 현미경 보유(600배율 이상), 주미생물상태는 양호 또는 불량으로 적습니다.</div>
+        <h3>9. 수질오염방지시설 고장 유무 및 특기사항</h3>
+        <table class="f"><tr><td class="tall">${esc(r.remark || '')}</td></tr></table>
+        <h3>10. 수질오염물질 측정내용</h3>
+        <table class="f"><tr><th>항목 구분</th><th>BOD<br>(mg/L)</th><th>TOC<br>(mg/L)</th><th>SS<br>(mg/L)</th><th>T-N<br>(mg/L)</th><th>T-P<br>(mg/L)</th><th>총대장균군</th><th>pH</th><th>분석일</th><th>비고</th></tr>
+          ${[0, 1].map(i => { const x = q[i] || {}; return `<tr><td>${esc(x.kind || '')}</td><td>${esc(x.bod || '')}</td><td>${esc(x.toc || '')}</td><td>${esc(x.ss || '')}</td><td>${esc(x.tn || '')}</td><td>${esc(x.tp || '')}</td><td>${esc(x.coli || '')}</td><td>${esc(x.ph || '')}</td><td>${esc(x.date || '')}</td><td>${esc(x.note || '')}</td></tr>`; }).join('')}</table>
+        <div class="note">※ 사업장에서 분석하는 경우 분석자명 :
+※ 분석을 위탁하는 경우 측정대행업소명 : ${esc(W.lab || '')}</div>
+        <h3>11. 수질자동측정기기 등의 측정항목별 점검내용</h3>
+        <table class="f"><tr><th style="width:26mm">항목 구분</th><th>pH</th><th>BOD</th><th>TOC</th><th>COD</th><th>SS</th><th>T-N</th><th>T-P</th><th>유량계</th><th>시료채취조</th></tr>
+          ${['청소상태', '시료도입[튜빙류] 상태', '시약류 주입상태', '센서류 작동여부', '소모품 교체'].map(x => `<tr><td style="font-size:7.5pt">${x}</td>${'<td></td>'.repeat(9)}</tr>`).join('')}</table>
+        <h3>12. 지도점검을 받은 사항</h3>
+        <table class="f"><tr><td class="tall" style="height:10mm"></td></tr></table>
+        <div class="note">※ 제1호부터 제4호까지 폐수처리방법 등 사업장 특성을 고려하여 해당 부분을 반드시 적어야 하며, 제5호부터 제12호까지는 사업자의 판단에 따라 선택적으로 적을 수 있습니다.</div>
+      </div>`;
+      return front + back;
+    }
+
+    // ---------------- 대기일지 (별지 제7호서식) ----------------
+    function airSheet(ds) {
+      const A = SET.air || {}, r = WW[ds] || {}, wt = weatherOf(ds), op = r.op !== false;
+      const gas = pair(ds, g('가스보일러')).use;
+      const prev = (A.prevention || []);
+      return `<div class="sheet">
+        <div class="form-no"><span>[ 별지 제7호서식 ] &lt;개정 2022. 5. 3.&gt;</span><span>(앞 쪽)</span></div>
+        <div class="hd"><div class="tt">대기배출시설 및 방지시설 운영기록부</div>${approval()}</div>
+        <div class="dl"><span>${korDate(ds)}</span><span>날씨 : ${esc(wt.w)}</span><span>온도 : ${esc(wt.t)}${wt.t !== '' ? '℃' : ''}</span></div>
+        <h3>1. 배출구별 주요 배출시설 및 방지시설 가동(조업)시간</h3>
+        <table class="f"><colgroup><col style="width:24mm"><col style="width:42mm"><col><col style="width:34mm"></colgroup>
+          <tr><th>배 출 구</th><th>배 출 시 설</th><th>가 동 시 간</th><th>비 고</th></tr>
+          ${(A.outlets || []).map(o => `<tr><td>${esc(o.no)}</td><td>${esc(o.name)}</td><td>${op ? esc(A.op_hours || '') : ''}</td><td>${op && A.op_hours ? '정상' : ''}</td></tr>`).join('')}</table>
+        <div class="note">*비고란은 정상 여부를 기재합니다.</div>
+        <h3>2. 방지시설 운영 사항</h3>
+        <h4>가. 방지시설 운전사항</h4>
+        <table class="f"><colgroup><col style="width:30mm"><col style="width:14mm"><col><col><col style="width:15mm"><col><col><col><col></colgroup>
+          <tr><th rowspan="2">방지<br>시설명</th><th rowspan="2">설치<br>위치</th><th rowspan="2">전력사용량<br>(kW/h)</th><th rowspan="2">처리용량<br>(m3/min)</th><th rowspan="2">처리오염<br>물질</th><th rowspan="2">처리농도<br>(ppm 또는 mg/Sm3)</th><th rowspan="2">처리효율<br>(%)</th><th colspan="2">사용약품</th></tr>
+          <tr><th>약품명</th><th>사용량</th></tr>
+          ${prev.map(p => `<tr><td style="font-size:7.5pt">${esc(p.name)}</td><td>${esc(p.loc)}</td><td>${esc(p.kwh)}</td><td>${esc(p.cap)}</td><td>${esc(p.pollutant)}</td><td>${esc(p.conc)}</td><td>${esc(p.eff)}</td><td>${esc(p.chem)}</td><td>${esc(p.chemuse)}</td></tr>`).join('')}</table>
+        <h4>나. 방지시설 보수사항</h4>
+        <table class="f"><tr><th>방지시설명</th><th>배출구별</th><th>보수기간</th><th>보수자</th><th>보수명세</th></tr>${'<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>'.repeat(3)}</table>
+        <h3>3. 자가측정사항</h3>
+        <table class="f"><tr><td colspan="6" class="l">측정일 :</td></tr>
+          <tr><th>①기 상</th><th>②기온</th><th>③습도</th><th>④기압</th><th>⑤풍향</th><th>⑥풍속</th></tr>
+          <tr><td style="font-size:7.5pt">□맑음 □흐림 □구름<br>□눈 □비</td><td class="r">℃</td><td class="r">%</td><td class="r">mb</td><td class="r">풍</td><td class="r">m/sec</td></tr></table>
+        <table class="f" style="margin-top:-1px"><tr><th>⑦배출구<br>번호</th><th>⑧주요배출<br>시설명</th><th>⑨측정<br>항목</th><th>⑩측정농도<br>(ppm, mg/Sm3)</th><th>⑪일일유량<br>(Sm3/일)</th><th>⑫일일배출량<br>(kg/일)</th><th>⑬검사<br>기기명</th><th>⑭검사<br>방법</th></tr>${'<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'.repeat(2)}</table>
+        <table class="f" style="margin-top:-1px"><colgroup><col style="width:42mm"><col></colgroup>
+          <tr><th>⑮연료명 및 사용량<br>( ${ds.slice(5).replace('-', '/')} 일)</th><td class="l">${gas !== null ? `${esc(A.fuel_name || 'LNG')} ${nf(gas, 3)} ㎥ (보일러)` : ''}</td></tr>
+          <tr><th>⑯원료명 및 사용량<br>(특정대기유해물질 배출원 포함)</th><td></td></tr>
+          <tr><th>⑰환경기술인의 의견</th><td style="height:10mm"></td></tr>
+          <tr><th>⑱기 타</th><td style="height:8mm"></td></tr></table>
+        <div class="sig">환경기술인 직급 : ${esc(A.eng_rank || '')} &nbsp;&nbsp;&nbsp;&nbsp; 성명 : ${esc(A.eng_name || '')} &nbsp;&nbsp;&nbsp; (인)</div>
+        <div class="note">※ 작성 요령
+  1. 「대기환경보전법」 제39조에 따라「환경분야 시험∙검사 등에 관한 법률」에 따른 측정 대행업자에게 해당 오염물질 전부를 위탁하여 측정하도록 하는 경우에는 제3호란을 작성하지 아니할 수 있습니다.
+  2. 방지시설의 설치를 면제받은 사업장은 제2호와 제3호란을 작성하지 아니할 수 있습니다.
+  3. 제2호나목의 방지시설 보수사항은 별도의 계약서나 지출증빙서로 갈음할 수 있습니다.
+  4. 사물인터넷 측정기기를 부착한 배출시설 및 방지시설의 경우 제1호의 가동시간란 및 제2호가목의 방지시설명란∙설치위치란은 「대기환경보전법 시행령」 제19조제1항제2호의 사물인터넷 측정기기 관제센터로 전송된 측정결과로 이를 갈음할 수 있습니다.</div>
+      </div>`;
+    }
+
+    // ---------------- 설정 (관리자) ----------------
+    const SF = [
+      ['폐수일지', [['ww.worker', '근무자 (업체)'], ['ww.consign', '슬러지 위탁처리업소'], ['ww.lab', '측정대행업소'], ['ww.moisture', '슬러지 함수율 (%)'], ['ww.storage', '슬러지 보관장소'],
+        ['ww.ct', '폐수 전력계 배율', 'n'], ['ww.meter_time', '검침시간'], ['ww.cool_pct', '소모(증발량) % (사용량−배출량의)', 'n'], ['ww.product_pct', '제품함유량 %', 'n'], ['ww.life_pct', '생활용수량 %', 'n'],
+        ['ww.fac_hours', '배출시설 가동시간대 (예: 8-17, 조업일만)'], ['ww.phys_hours', '물리적 처리 시간대 (예: 1-24)'], ['ww.chem_hours', '화학적 처리 시간대'], ['ww.bio_hours', '생물학적 처리 시간대']]],
+      ['대기일지', [['air.op_hours', '보일러 가동시간 (예: 08:00~17:00, 조업일만)'], ['air.fuel_name', '연료명'], ['air.eng_rank', '환경기술인 직급'], ['air.eng_name', '환경기술인 성명']]],
+      ['장부 시작값', [['open_date', '시작 기준일 (이날 끝 잔고)'], ['sludge_open', '슬러지 시작 보관량 (kg)', 'n']]]
+    ];
+    const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? undefined : a[k], o);
+    const setP = (o, p, v) => { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach(k => { a[k] = a[k] || {}; a = a[k]; }); a[ks[ks.length - 1]] = v; };
+    let EDIT = null;
+    function renderSettings() {
+      EDIT = JSON.parse(JSON.stringify(SET));
+      EDIT.ww = EDIT.ww || {}; EDIT.air = EDIT.air || {};
+      EDIT.ww.quality = EDIT.ww.quality || []; while (EDIT.ww.quality.length < 2) EDIT.ww.quality.push({});
+      EDIT.air.outlets = EDIT.air.outlets || []; EDIT.air.prevention = EDIT.air.prevention || [];
+      while (EDIT.chems.length < 6) EDIT.chems.push({ key: ['anion', 'cation', 'almin', 'alum', 'defoam', 'etc'][EDIT.chems.length], name: '', unit: '', open: 0 });
+      const inp = (path, val, type) => `<input ${type === 'n' ? 'type="number" step="any"' : ''} value="${esc(val ?? '')}" onchange="setP(EDIT,'${path}',${type === 'n' ? 'this.value===\'\'?null:Number(this.value)' : 'this.value'})">`;
+      let h = SF.map(([title, fs]) => `<div class="card"><b>${title}</b><div class="set-grid" style="margin-top:8px">${fs.map(([p, l, t]) => `<div class="field"><label>${l}</label>${inp(p, getP(EDIT, p), t)}</div>`).join('')}</div></div>`).join('');
+      const tbl = (title, arr, path, cols, extra = '') => `<div class="card"><b>${title}</b>${extra}<table class="set" style="margin-top:8px"><tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>${arr.map((row, i) => `<tr>${cols.map(([k, , t]) => `<td>${inp(`${path}.${i}.${k}`, row[k], t)}</td>`).join('')}</tr>`).join('')}</table></div>`;
+      h += tbl('약품 (장부·폐수일지 7번)', EDIT.chems, 'chems', [['name', '약품명'], ['unit', '단위'], ['open', '시작 잔고 (기준일 끝)', 'n']], '<div class="hint">순서·칸은 고정입니다 (아니온, 카치온, 알민산, 황산반토, 소포제, 기타 자리). 이름만 바꿔 쓰세요.</div>');
+      h += tbl('수질오염물질 측정내용 (폐수일지 10번 — 새 분석 결과가 나오면 바꾸세요)', EDIT.ww.quality, 'ww.quality', [['kind', '구분'], ['bod', 'BOD'], ['toc', 'TOC'], ['ss', 'SS'], ['tn', 'T-N'], ['tp', 'T-P'], ['coli', '총대장균군'], ['ph', 'pH'], ['date', '분석일'], ['note', '비고']]);
+      h += tbl('대기 배출구', EDIT.air.outlets, 'air.outlets', [['no', '배출구'], ['name', '배출시설']]);
+      h += tbl('대기 방지시설 운전사항', EDIT.air.prevention, 'air.prevention', [['name', '방지시설명'], ['loc', '설치위치'], ['kwh', '전력사용량'], ['cap', '처리용량'], ['pollutant', '처리오염물질'], ['conc', '처리농도'], ['eff', '처리효율'], ['chem', '약품명'], ['chemuse', '사용량']]);
+      document.getElementById('set-body').innerHTML = h;
+    }
+    async function saveSettings() {
+      const v = JSON.parse(JSON.stringify(EDIT));
+      v.chems.forEach((c, i) => c.key = ['anion', 'cation', 'almin', 'alum', 'defoam', 'etc'][i]);
+      const { error } = await sb.from('env_settings').upsert({ key: 'env', value: v }, { onConflict: 'key' });
+      if (error) return alert('저장 실패: ' + errMsg(error));
+      SET = v; calcBalances(); alert('설정을 저장했습니다.');
+    }
+
+    // ---------------- 시작 ----------------
+    Portal.start({
+      appId: 'env',
+      title: '환경일지',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        document.querySelectorAll('.tab-btn.staff').forEach(b => b.hidden = isPartner());
+        document.querySelectorAll('.tab-btn.admin').forEach(b => b.hidden = !isAdmin());
+        ['ww', 'air'].forEach(k => { document.getElementById(k + '-from').value = todayStr; document.getElementById(k + '-to').value = todayStr; });
+        try { await loadAll(); if (window.innerWidth < 700) setMode('day'); else renderBook(); }
+        catch (e) { document.getElementById('book-grid').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 11번·12번 SQL을 실행했는지 확인해 주세요.</div>`; }
+      }
+    });
+  </script>
+</body>
+</html>
