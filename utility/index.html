@@ -59,7 +59,15 @@
     /* 차트 */
     .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 16px; }
     .charts .card { min-width: 0; }
-    .chart-box { position: relative; height: 280px; }
+    .chart-box { position: relative; height: 280px; cursor: zoom-in; }
+    #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #zoom[hidden] { display: none !important; }
+    .zoom-box { background: #fff; border-radius: 12px; width: min(1400px, 100%); height: min(900px, 100%); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
+    .zoom-hd { display: flex; align-items: center; gap: 12px; } .zoom-hd b { font-size: 16px; color: var(--brand); } .zoom-hd .hint { flex: 1; }
+    .zoom-hd button { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    .zoom-chart { position: relative; flex: 1; min-height: 300px; }
+    .zoom-table { max-height: 34%; overflow: auto; }
+    .chip:disabled { opacity: .4; cursor: default; }
     .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
     .chip { border: 1px solid #ccc; background: #fff; border-radius: 14px; padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--ink2); }
     .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
@@ -178,6 +186,7 @@
       <h1>📊 유틸리티 사용량 · 비용 분석</h1>
       <nav>
         <button class="tab-btn active" data-tab="dash">분석</button>
+        <button class="tab-btn" data-tab="period">기간비교</button>
         <button class="tab-btn" data-tab="target">목표</button>
         <button class="tab-btn" data-tab="cause">원인분석</button>
         <button class="tab-btn" data-tab="anom">이상감지</button>
@@ -237,6 +246,17 @@
           <div class="hint" style="margin:-6px 0 8px;">노란 칸 = 가마감(고지서 전 자체 계산값). 고지서 금액을 입력하면 확정으로 바뀝니다.</div>
           <div class="tbl-wrap" id="year-table"></div>
         </div>
+      </div>
+
+      <!-- ================= 기간비교 ================= -->
+      <div id="tab-period" class="tab">
+        <div class="toolbar"><span class="chips" id="per-chips"></span></div>
+        <div class="card">
+          <h3 id="per-title"></h3>
+          <div class="hint" id="per-note" style="margin:-6px 0 8px"></div>
+          <div class="chart-box" style="height:340px"><canvas id="chart-period"></canvas></div>
+        </div>
+        <div class="card"><div class="tbl-wrap" id="per-table"></div></div>
       </div>
 
       <!-- ================= 목표 ================= -->
@@ -346,6 +366,13 @@
     </div>
   </div>
 
+  <div id="zoom" hidden onclick="if (event.target.id === 'zoom') closeZoom()">
+    <div class="zoom-box">
+      <div class="zoom-hd"><b id="zoom-title"></b><span class="hint">범례를 누르면 그 항목을 숨기거나 보일 수 있습니다 · Esc 닫기</span><button onclick="closeZoom()">✕ 닫기</button></div>
+      <div class="zoom-chart"><canvas id="zoom-canvas"></canvas></div>
+      <div class="zoom-table tbl-wrap" id="zoom-table"></div>
+    </div>
+  </div>
   <script>
 // =====================================================================
 // 유틸리티 요금·사용량 계산 (엑셀 "유틸리티 비용 상세" 파일과 같은 계산식)
@@ -1352,6 +1379,120 @@
     }
 
 
+    // =====================================================================
+    // 차트 크게 보기 (차트를 누르면 큰 창 + 값 표)
+    // =====================================================================
+    const CHART_CFG = {};
+    function cloneCfg(v) { // 함수는 그대로, 객체·배열만 복사
+      if (Array.isArray(v)) return v.map(cloneCfg);
+      if (v && typeof v === 'object' && !(v instanceof Date)) { const o = {}; for (const k in v) o[k] = cloneCfg(v[k]); return o; }
+      return v;
+    }
+    let zoomChart = null;
+    function openZoom(id) {
+      const cfg = CHART_CFG[id]; if (!cfg) return;
+      const card = document.getElementById(id).closest('.card');
+      const h3 = card ? card.querySelector('h3') : null;
+      document.getElementById('zoom-title').textContent = h3 ? (h3.childNodes[0].textContent || '').trim() || h3.textContent.trim().split('\n')[0] : '';
+      const c = cloneCfg(cfg);
+      c.options = c.options || {}; c.options.maintainAspectRatio = false; c.options.animation = false;
+      c.options.plugins = c.options.plugins || {}; c.options.plugins.legend = { ...(c.options.plugins.legend || {}), display: true, position: 'top' };
+      document.getElementById('zoom').hidden = false;
+      if (zoomChart) zoomChart.destroy();
+      zoomChart = new Chart(document.getElementById('zoom-canvas'), c);
+      // 값 표
+      const ds = (cfg.data.datasets || []).filter(d => d.label);
+      let h = '';
+      if (cfg.type === 'scatter' || (ds[0] && ds[0].data && ds[0].data[0] && typeof ds[0].data[0] === 'object')) {
+        h = '<div class="hint">점 그래프는 점에 마우스를 올리면 값이 보입니다.</div>';
+      } else {
+        const labels = cfg.data.labels || [];
+        const fmt = v => v === null || v === undefined || isNaN(v) ? '-' : (Math.abs(v) >= 100 ? f0(v) : f2(v));
+        h = `<table class="t"><tr><th class="l">구분</th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}<th>합계</th><th>평균</th></tr>` +
+          ds.map(d => { const vals = (d.data || []).map(x => x === null || x === undefined ? null : Number(x)); const ok = vals.filter(x => x !== null && !isNaN(x));
+            return `<tr><td class="l">${esc(d.label)}</td>${vals.map(v => `<td>${fmt(v)}</td>`).join('')}<td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0)) : '-'}</td><td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0) / ok.length) : '-'}</td></tr>`; }).join('') + '</table>';
+      }
+      document.getElementById('zoom-table').innerHTML = h;
+    }
+    function closeZoom() { document.getElementById('zoom').hidden = true; if (zoomChart) { zoomChart.destroy(); zoomChart = null; } }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('zoom').hidden) closeZoom(); });
+    document.addEventListener('click', e => {
+      const box = e.target.closest('.chart-box'); if (!box || box.closest('#zoom')) return;
+      const cv = box.querySelector('canvas'); if (cv && CHART_CFG[cv.id]) openZoom(cv.id);
+    });
+
+    // =====================================================================
+    // 기간 비교: 일별 / 주별 / 월별 / 분기별 + 전년 같은 기간
+    // =====================================================================
+    let perGran = 'month', perUtil = 'elec', perMetric = 'usage', perN = { day: 60, week: 26, month: 24, quarter: 8 };
+    const isoWeekStart = ds => { const d = new Date(ds + 'T00:00:00'); const w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return ymd(d); };
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    function dayVal(ds, uk) { const u = UT.dailyUsage(DAILY, ds)[uk]; return u === null || u < 0 ? null : u; }
+    function sumDays(from, n, uk) { let s = 0, c = 0; for (let i = 0; i < n; i++) { const v = dayVal(UT.addDays(from, i), uk); if (v !== null) { s += v; c++; } } return c ? { v: s, c } : null; }
+    function monthVal(ym, uk, metric) {
+      const s = S(ym); const x = s[uk];
+      if (metric === 'usage') return x.usage; if (metric === 'cost') return x.cost === null ? null : x.cost;
+      return ratio(x.usage, s.production);
+    }
+    function periodSeries() {
+      const uk = perUtil, metric = perMetric, n = perN[perGran], out = [];
+      let last = UT.addDays(todayStr, -1); // 마지막으로 사용량이 계산되는 날 (다음날 검침이 있어야 함)
+      for (let i = 0; i < 7 && dayVal(last, 'elec') === null && dayVal(last, uk) === null; i++) last = UT.addDays(last, -1);
+      if (perGran === 'day') {
+        for (let i = n - 1; i >= 0; i--) { const ds = UT.addDays(last, -i), ly = UT.addDays(ds, -364); // 364일 전 = 같은 요일
+          out.push({ label: `${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prevLabel: ly }); }
+      } else if (perGran === 'week') {
+        const thisWeek = isoWeekStart(last);
+        for (let i = n - 1; i >= 0; i--) { const ws = UT.addDays(thisWeek, -7 * i), lws = UT.addDays(ws, -364);
+          const days = Math.min(7, (new Date(last + 'T00:00:00') - new Date(ws + 'T00:00:00')) / 864e5 + 1);
+          const c = sumDays(ws, days, uk), p = sumDays(lws, days, uk);
+          out.push({ label: `${ws.slice(5).replace('-', '/')}~`, cur: c && c.v, prev: p && p.v, partial: days < 7, prevLabel: lws }); }
+      } else if (perGran === 'month') {
+        let ym = thisYm; for (let i = 0; i < n - 1; i++) ym = UT.prevYm(ym);
+        for (let i = 0; i < n; i++, ym = UT.nextYm(ym)) { const ly = UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)));
+          out.push({ label: ym.slice(2).replace('-', '.'), cur: monthVal(ym, uk, metric), prev: monthVal(ly, uk, metric), partial: ym === thisYm && !UT.monthComplete(DAILY, ym) }); }
+      } else {
+        const qOf = ym => [Number(ym.slice(0, 4)), Math.ceil(Number(ym.slice(5)) / 3)];
+        let [y, q] = qOf(thisYm); const list = []; for (let i = 0; i < n; i++) { list.unshift([y, q]); q--; if (!q) { q = 4; y--; } }
+        const qv = (y, q) => { const ms = [1, 2, 3].map(k => UT.ym(y, (q - 1) * 3 + k)).filter(ym => ym <= thisYm); if (!ms.length) return null;
+          if (metric === 'unit') { const u = ms.reduce((a, ym) => a + (S(ym)[perUtil].usage || 0), 0), p = ms.reduce((a, ym) => a + (S(ym).production || 0), 0); return p ? u / p : null; }
+          const v = ms.map(ym => monthVal(ym, uk, metric)).filter(x => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+        list.forEach(([y, q]) => out.push({ label: `${String(y).slice(2)}년 ${q}분기`, cur: qv(y, q), prev: qv(y - 1, q), partial: y === Number(thisYm.slice(0, 4)) && q === Math.ceil(Number(thisYm.slice(5)) / 3) }));
+      }
+      return out;
+    }
+    function renderPeriod() {
+      if (!window.Chart) return;
+      if ((perGran === 'day' || perGran === 'week') && perMetric !== 'usage') perMetric = 'usage';
+      const U = UT.UTILS.find(u => u.k === perUtil), DU = UT.DAILY_UTILS.find(u => u.k === perUtil);
+      document.getElementById('per-chips').innerHTML =
+        [['day', '일별'], ['week', '주별'], ['month', '월별'], ['quarter', '분기별']].map(([k, n]) => `<button class="chip ${perGran === k ? 'on' : ''}" onclick="perGran='${k}';renderPeriod()">${n}</button>`).join('') + ' &nbsp; ' +
+        UT.UTILS.map(u => `<button class="chip ${perUtil === u.k ? 'on' : ''}" onclick="perUtil='${u.k}';renderPeriod()">${u.name}</button>`).join('') + ' &nbsp; ' +
+        [['usage', '사용량'], ['cost', '비용'], ['unit', '원단위']].map(([k, n]) => `<button class="chip ${perMetric === k ? 'on' : ''}" ${(perGran === 'day' || perGran === 'week') && k !== 'usage' ? 'disabled title="일·주 단위는 사용량만 (비용·원육 투입량은 월 단위로만 있음)"' : ''} onclick="perMetric='${k}';renderPeriod()">${n}</button>`).join('');
+      const daily = perGran === 'day' || perGran === 'week';
+      const unit = perMetric === 'cost' ? '원' : perMetric === 'unit' ? `${U.unit}/kg` : (daily ? DU.unit : U.unit);
+      const ser = periodSeries();
+      const gName = { day: '일별', week: '주별', month: '월별', quarter: '분기별' }[perGran];
+      document.getElementById('per-title').textContent = `${U.name} ${gName} ${perMetric === 'usage' ? '사용량' : perMetric === 'cost' ? '비용' : '원단위'} — 전년 같은 기간 비교`;
+      document.getElementById('per-note').textContent = (perGran === 'day' ? '전년 = 364일 전(같은 요일). ' : perGran === 'week' ? '주 = 월요일 시작, 전년 = 52주 전 같은 주. 이번 주는 어제까지만 합산. ' : '') +
+        (daily && perUtil === 'gas' ? '가스 일·주 단위는 ㎥(월·분기는 MJ). ' : '') + '옅은 막대 = 아직 진행 중인 기간.';
+      mkChart('chart-period', { type: 'bar', data: { labels: ser.map(s => s.label), datasets: [
+        { label: '이번', data: ser.map(s => s.cur), backgroundColor: ser.map(s => s.partial ? U.color + '66' : U.color), maxBarThickness: 26, order: 2 },
+        { type: 'line', label: '전년 같은 기간', data: ser.map(s => s.prev), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 2, pointRadius: perGran === 'day' ? 0 : 3, order: 1 }
+      ] }, options: (() => { const o = baseOpts(unit); o.plugins.legend.display = true; o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.autoSkip = true;
+        o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${perMetric === 'unit' ? f2(c.raw) : f0(c.raw)} ${unit}`;
+        o.plugins.tooltip.callbacks.footer = items => { const i = items[0].dataIndex, s = ser[i]; return s.cur !== null && s.prev ? `전년 대비 ${((s.cur / s.prev - 1) * 100).toFixed(1)}%` : ''; }; return o; })() });
+      // 표 (최근 것부터)
+      const fmt = v => v === null || v === undefined ? '-' : (perMetric === 'unit' ? f2(v) : f0(v));
+      const curSum = ser.filter(s => s.cur !== null && s.prev !== null && !s.partial);
+      const tc = curSum.reduce((a, s) => a + s.cur, 0), tp = curSum.reduce((a, s) => a + s.prev, 0);
+      document.getElementById('per-table').innerHTML = `<table class="t"><tr><th class="l">기간</th><th>이번</th><th>전년 같은 기간</th><th>증감</th><th>전 기간 대비</th></tr>` +
+        ser.map((s, i) => ({ s, i })).reverse().map(({ s, i }) => { const pv = i > 0 ? ser[i - 1].cur : null;
+          return `<tr${s.partial ? ' class="hint"' : ''}><td class="l">${esc(s.label)}${s.partial ? ' (진행 중)' : ''}</td><td>${fmt(s.cur)}</td><td>${fmt(s.prev)}</td><td>${pctTxt(s.cur, s.prev)}</td><td>${pctTxt(s.cur, pv)}</td></tr>`; }).join('') +
+        (perMetric !== 'unit' && curSum.length ? `<tr class="sum"><td class="l">합계 (비교 가능한 ${curSum.length}개 기간)</td><td>${fmt(tc)}</td><td>${fmt(tp)}</td><td>${pctTxt(tc, tp)}</td><td></td></tr>` : '') + '</table>' +
+        `<div class="hint" style="margin-top:6px">단위: ${unit}. 증감 ▲ = 더 씀(빨강), ▼ = 덜 씀(초록).</div>`;
+    }
+
   </script>
   <script>
     // =====================================================================
@@ -1422,7 +1563,7 @@
     }
 
     // ---------------- 탭 ----------------
-    const loaders = { dash: renderDash, target: () => renderTargets(), cause: renderCause, anom: renderAnomaly, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief };
+    const loaders = { dash: renderDash, period: renderPeriod, target: () => renderTargets(), cause: renderCause, anom: renderAnomaly, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief };
     function switchTab(t) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
       document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
@@ -1504,6 +1645,7 @@
       return opts;
     }
     function mkChart(id, cfg) {
+      CHART_CFG[id] = cfg;
       if (charts[id]) charts[id].destroy();
       charts[id] = new Chart(document.getElementById(id), cfg);
     }
