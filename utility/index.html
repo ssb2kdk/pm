@@ -201,7 +201,7 @@
         <div class="toolbar">
           <div class="month-nav"><button onclick="shiftDailyMonth(-1)">◀</button><span id="daily-month"></span><button onclick="shiftDailyMonth(1)">▶</button></div>
           <button class="btn secondary" onclick="jumpToday()">오늘로</button>
-          <span class="hint"><b>이 값들은 설비점검일지(검침)에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비점검일지에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다.</span>
+          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다.</span>
         </div>
         <div class="daily-wrap" id="daily-wrap"><div class="loading">불러오는 중...</div></div>
       </div>
@@ -252,9 +252,9 @@
     { g: '전기', k: 'elec_pf_lead', label: '진상역률', unit: '', carry: true },
     { g: '전기', k: 'elec_late_fee', label: '연체료', unit: '원' },
     { g: '전기', k: 'elec_settlement', label: '정산 요금', unit: '원', hint: '고지서에 있을 때만 (차감은 − 로)' },
-    { g: '전기', k: 'elec_ww_kwh', label: '폐수동 전력량', unit: 'kWh', hint: '비우면 설비점검일지 폐수전력 지침 (다음달 1일 − 이달 1일) × 배율' },
+    { g: '전기', k: 'elec_ww_kwh', label: '폐수동 전력량', unit: 'kWh', hint: '비우면 설비검침 폐수전력 지침 (다음달 1일 − 이달 1일) × 배율' },
     { g: '전기', k: 'elec_ww_ct', label: '폐수동 계량기 배율', unit: '배', carry: true, def: 40 },
-    { g: '전기', k: 'elec_hvac_kwh', label: '공조냉동 전력량', unit: 'kWh', hint: '비우면 설비점검일지 냉동·냉장·공조 12개 계량기 합 (다음달 1일 − 이달 1일)' },
+    { g: '전기', k: 'elec_hvac_kwh', label: '공조냉동 전력량', unit: 'kWh', hint: '비우면 설비검침 냉동·냉장·공조 12개 계량기 합 (다음달 1일 − 이달 1일)' },
 
     { g: '전기 단가', k: 'elec_season', label: '계절', unit: '', carry: true, text: true },
     { g: '전기 단가', k: 'elec_base_rate', label: '기본요금 단가', unit: '원/kW', carry: true },
@@ -917,7 +917,7 @@
     function shiftDailyMonth(d) { dailyYm = d > 0 ? UT.nextYm(dailyYm) : UT.prevYm(dailyYm); renderDaily(); }
     function jumpToday() { dailyYm = thisYm; renderDaily(); }
 
-    // 일일검침 칸 → 설비점검일지 항목ID
+    // 일일검침 칸 → 설비검침 항목ID
     const METER_ID = { elec_kwh: '전력사용량', elec_peak_kw: '최대수요', gas_boiler: '가스보일러', gas_rest: '가스식당', water_40a: '상수도40A', water_50a: '상수도50A', wastewater: '폐수방류량' };
     function dval(dateStr, k) { const r = DAILY[dateStr]; return r && r[k] !== null && r[k] !== undefined ? Number(r[k]) : null; }
     function nextDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
