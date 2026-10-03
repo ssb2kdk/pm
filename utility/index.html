@@ -126,12 +126,42 @@
     .preview tr.h td { font-weight: bold; color: var(--brand); padding-top: 10px; border-bottom: 1px solid #d8e0ec; }
     .preview tr.tot td { font-weight: bold; font-size: 14px; border-top: 2px solid #333; }
 
+    .st-예측 { background: #ede7fb; color: #5b3fa8; }
+    .anom-banner { background: #fff4e5; border: 1px solid #f3c98b; color: #8a5300; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; cursor: pointer; font-size: 13px; }
+    .fc-card { border-left: 4px solid #7b5cd6; }
+    .fc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .fc-grid b { font-size: 18px; display: block; margin: 2px 0; }
+    .fc-note { background: #f3effc; border-left: 4px solid #7b5cd6; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; }
+    table.tg input { padding: 5px 6px; border: 1px solid #c8d3e6; border-radius: 5px; text-align: right; font-size: 13px; background: #fff; }
+    table.tg td.key, table.tg th.key { background: #eef4fd; }
+    .ok { color: var(--good); font-weight: bold; } .ng { color: var(--bad); font-weight: bold; }
+    tr.anom-row { cursor: pointer; } tr.anom-row:hover td { background: #f6f9fe; }
+    /* 월간보고서 */
+    .brief-sheet { background: #fff; width: 190mm; min-height: 270mm; margin: 0 auto; padding: 10mm; box-shadow: 0 2px 8px rgba(0,0,0,.15); font-size: 11px; }
+    .br-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1d3f73; padding-bottom: 6px; margin-bottom: 8px; }
+    .br-title { font-size: 20px; font-weight: bold; color: #1d3f73; }
+    .br-sign { border-collapse: collapse; font-size: 10px; } .br-sign td { border: 1px solid #999; width: 16mm; text-align: center; height: 5mm; } .br-sign tr:last-child td { height: 12mm; }
+    .br-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+    .br-kpi { border: 1px solid #d8dee8; border-top: 3px solid #1d3f73; border-radius: 4px; padding: 6px 8px; }
+    .br-kpi .l { font-size: 10px; color: #555; } .br-kpi .v { font-size: 16px; font-weight: bold; margin: 2px 0; } .br-kpi .s { font-size: 9.5px; color: #555; line-height: 1.5; }
+    table.br-t { font-size: 10.5px; } table.br-t th, table.br-t td { padding: 4px 5px; }
+    .br-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+    .br-ct { font-size: 11px; font-weight: bold; color: #1d3f73; margin-bottom: 2px; }
+    .br-box { position: relative; height: 62mm; }
+    .br-sec { font-weight: bold; color: #1d3f73; margin: 8px 0 3px; font-size: 12px; border-left: 3px solid #1d3f73; padding-left: 6px; }
+    .br-txt { font-size: 11px; line-height: 1.6; }
+    .br-comment { width: 100%; min-height: 70px; font: inherit; font-size: 12px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .print-only { display: none; }
     @media print {
+      @page { size: A4 portrait; margin: 8mm; }
       header, nav, .no-print, .pt-bar { display: none !important; }
       body { background: #fff; }
       .container { padding: 0; max-width: none; }
-      .tab { display: none !important; } #tab-report { display: block !important; }
+      .tab:not(.active) { display: none !important; }
       .card { box-shadow: none; }
+      .brief-sheet { box-shadow: none; padding: 0; width: auto; min-height: 0; }
+      .br-comment { display: none; } .print-only { display: block !important; white-space: pre-wrap; min-height: 40px; }
+      .st, .br-kpi, table.t th, .fc-note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
@@ -141,9 +171,13 @@
       <h1>📊 유틸리티 사용량 · 비용 분석</h1>
       <nav>
         <button class="tab-btn active" data-tab="dash">분석</button>
+        <button class="tab-btn" data-tab="target">목표</button>
+        <button class="tab-btn" data-tab="cause">원인분석</button>
+        <button class="tab-btn" data-tab="anom">이상감지</button>
         <button class="tab-btn" data-tab="daily">일일검침</button>
         <button class="tab-btn" data-tab="monthly">월간입력</button>
         <button class="tab-btn" data-tab="report">회계보고</button>
+        <button class="tab-btn" data-tab="brief">월간보고서</button>
       </nav>
     </header>
 
@@ -156,6 +190,8 @@
           <span id="dash-status"></span>
           <span class="hint" id="dash-note"></span>
         </div>
+        <div id="anom-banner"></div>
+        <div id="fc-box"></div>
         <div class="kpis" id="kpis"><div class="loading">불러오는 중...</div></div>
         <div class="kpis" id="kpis2"></div>
 
@@ -196,6 +232,57 @@
         </div>
       </div>
 
+      <!-- ================= 목표 ================= -->
+      <div id="tab-target" class="tab">
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftTargetYear(-1)">◀</button><span id="target-year"></span><button onclick="shiftTargetYear(1)">▶</button></div>
+          <button class="btn secondary" id="target-fill" onclick="fillTargets()">전년 대비 % 절감으로 채우기</button>
+          <button class="btn" id="target-save" onclick="saveTargets()">저장</button>
+          <span class="hint" id="target-note"></span>
+        </div>
+        <div class="card">
+          <h3>연간 목표 (KPI) <span class="sub">주 지표 = 원단위(생산량 1kg당 사용량) · 보조 지표 = 비용. 원단위는 낮을수록 좋습니다.</span></h3>
+          <div class="tbl-wrap" id="target-table"></div>
+        </div>
+        <div class="card">
+          <h3>월별 원단위 — 실적 vs 전년 vs 목표 <span class="chips" id="target-chips"></span></h3>
+          <div class="chart-box"><canvas id="chart-target"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ================= 원인분석 ================= -->
+      <div id="tab-cause" class="tab">
+        <div class="toolbar"><span class="chips" id="cause-chips"></span></div>
+        <div class="charts">
+          <div class="card">
+            <h3>기온과 하루 사용량 <span class="sub">평일만 · 점 하나 = 하루</span></h3>
+            <div class="chart-box"><canvas id="chart-temp"></canvas></div>
+            <div class="hint" id="temp-note" style="margin-top:6px"></div>
+          </div>
+          <div class="card">
+            <h3>생산량과 원단위 <span class="sub">점 하나 = 한 달 · 전년·올해</span></h3>
+            <div class="chart-box"><canvas id="chart-produnit"></canvas></div>
+            <div class="hint" id="produnit-note" style="margin-top:6px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>전력 사용 구성 <span class="month-nav" style="font-size:13px"><button onclick="causeYear--;renderCause()">◀</button><span id="cause-year"></span><button onclick="causeYear++;renderCause()">▶</button></span>
+            <span class="sub">공조냉동·폐수동 = 설비검침 계량기 / 그 외 = 전체 − 두 항목</span></h3>
+          <div class="chart-box"><canvas id="chart-elecmix"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ================= 이상감지 ================= -->
+      <div id="tab-anom" class="tab">
+        <div class="toolbar"><span class="chips" id="anom-chips"></span></div>
+        <div class="card">
+          <h3 id="anom-chart-title"></h3>
+          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 전기 사용량으로 가동일·쉬는 날을 자동 구분해 주말 특근도 반영). 아래 표에서 줄을 누르면 그 항목 그래프로 바뀝니다.</div>
+          <div class="chart-box"><canvas id="chart-anom"></canvas></div>
+        </div>
+        <div class="card"><div class="tbl-wrap" id="anom-table"></div></div>
+      </div>
+
       <!-- ================= 일일검침 ================= -->
       <div id="tab-daily" class="tab">
         <div class="toolbar">
@@ -217,6 +304,16 @@
           <div class="card" id="monthly-form"><div class="loading">불러오는 중...</div></div>
           <div class="card preview" id="monthly-preview"></div>
         </div>
+      </div>
+
+      <!-- ================= 월간보고서 ================= -->
+      <div id="tab-brief" class="tab">
+        <div class="toolbar no-print">
+          <div class="month-nav"><button onclick="shiftBriefMonth(-1)">◀</button><span id="brief-month"></span><button onclick="shiftBriefMonth(1)">▶</button></div>
+          <button class="btn" onclick="window.print()">🖨 인쇄 (A4 한 장)</button>
+          <span class="hint">목표는 [목표] 탭, 특이사항은 아래 칸에 적고 [코멘트 저장]. 진행 중인 달은 월말 예측값으로 나옵니다.</span>
+        </div>
+        <div class="brief-sheet" id="brief-sheet"></div>
       </div>
 
       <!-- ================= 회계보고 ================= -->
@@ -614,8 +711,457 @@
     return out;
   };
 
+  // =====================================================================
+  // 일별 사용량 (이상 감지·원인 분석용) — 그날 사용량 = 다음날 지침 − 그날 지침
+  // =====================================================================
+  const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+  UT.addDays = addDays;
+  const diffReading = (daily, ds, keys) => {
+    const a = daily[ds], b = daily[addDays(ds, 1)];
+    if (!a || !b) return null;
+    let s = 0;
+    for (const k of keys) { if (!has(a[k]) || !has(b[k])) return null; s += Number(b[k]) - Number(a[k]); }
+    return Math.round(s * 1000) / 1000;
+  };
+  UT.DAILY_UTILS = [
+    { k: 'elec', name: '전기', unit: 'kWh', color: '#2a78d6', minAbs: 300 },
+    { k: 'gas', name: '가스', unit: '㎥', color: '#eb6834', minAbs: 40 },
+    { k: 'water', name: '용수', unit: '㎥', color: '#1baf7a', minAbs: 5 },
+    { k: 'ww', name: '폐수', unit: '㎥', color: '#eda100', minAbs: 5 }
+  ];
+  UT.dailyUsage = (daily, ds) => {
+    const r = daily[ds] || {};
+    return {
+      elec: has(r.elec_kwh) ? Number(r.elec_kwh) : null,
+      gas: diffReading(daily, ds, ['gas_boiler', 'gas_rest']) ?? diffReading(daily, ds, ['gas_boiler']),
+      water: diffReading(daily, ds, ['water_40a', 'water_50a']),
+      ww: diffReading(daily, ds, ['wastewater'])
+    };
+  };
+  const median = arr => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+  const isWeekend = ds => { const w = new Date(ds + 'T00:00:00').getDay(); return w === 0 || w === 6; };
+  UT.isWeekend = isWeekend;
+
+  // 가동일 판단: 그날 전기 사용량이 최근 평일 중앙값의 60% 이상이면 '가동일' (주말 특근·평일 휴무 반영), 전기값 없으면 달력 기준
+  UT.isWorkDay = (daily, ds) => {
+    const r = daily[ds];
+    if (r && has(r.elec_kwh)) {
+      const s = [];
+      for (let i = 1; i <= 35 && s.length < 15; i++) { const d2 = addDays(ds, -i); const x = daily[d2]; if (!isWeekend(d2) && x && has(x.elec_kwh)) s.push(Number(x.elec_kwh)); }
+      const m = median(s);
+      if (m) return Number(r.elec_kwh) >= m * 0.6;
+    }
+    return !isWeekend(ds);
+  };
+  // 이상 사용: 같은 종류의 날(가동일/쉬는 날) 최근 4주 중앙값보다 40% 이상 + 최소량 이상 많으면 '과다', 음수면 '지침 오류'
+  UT.anomalies = (daily, from, to, opt = {}) => {
+    const ratio = opt.ratio || 1.4;
+    const cu = {}, cw = {};
+    const U = ds => (cu[ds] = cu[ds] || UT.dailyUsage(daily, ds));
+    const W = ds => (ds in cw ? cw[ds] : (cw[ds] = UT.isWorkDay(daily, ds)));
+    const out = [];
+    for (let ds = from; ds <= to; ds = addDays(ds, 1)) {
+      const cur = U(ds), wk = W(ds);
+      UT.DAILY_UTILS.forEach(u => {
+        const v = cur[u.k]; if (v === null) return;
+        if (v < 0) { out.push({ d: ds, u: u.k, v, base: null, kind: '지침 오류', work: wk }); return; }
+        const sample = [];
+        for (let i = 1; i <= 28; i++) { const d2 = addDays(ds, -i); if (W(d2) !== wk) continue; const x = U(d2)[u.k]; if (x !== null && x >= 0) sample.push(x); }
+        if (sample.length < 3) return;
+        const base = median(sample);
+        if (base > 0 ? (v > base * ratio && v - base >= u.minAbs) : v >= u.minAbs * 2) out.push({ d: ds, u: u.k, v, base, kind: '과다', work: wk, pct: base ? (v / base - 1) * 100 : null });
+      });
+    }
+    return out;
+  };
+  UT.baseline = (daily, ds, uk) => {
+    const wk = UT.isWorkDay(daily, ds), sample = [];
+    for (let i = 1; i <= 28; i++) { const d2 = addDays(ds, -i); if (UT.isWorkDay(daily, d2) !== wk) continue; const x = UT.dailyUsage(daily, d2)[uk]; if (x !== null && x >= 0) sample.push(x); }
+    return sample.length >= 3 ? median(sample) : null;
+  };
+
+  // 직선 맞추기 (원인 분석: 기울기·결정계수)
+  UT.linreg = pts => {
+    const n = pts.length; if (n < 3) return null;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+    pts.forEach(([x, y]) => { sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y; });
+    const den = n * sxx - sx * sx; if (!den) return null;
+    const a = (n * sxy - sx * sy) / den, b = (sy - a * sx) / n;
+    const r = (n * sxy - sx * sy) / Math.sqrt(den * (n * syy - sy * sy) || 1);
+    return { a, b, r2: r * r };
+  };
+
+  // =====================================================================
+  // 월말 예측: 이달 지금까지의 검침 추세로 월 전체 사용량 추정 → 같은 요금식으로 금액 계산
+  // =====================================================================
+  UT.monthComplete = (daily, ym) => !!(daily[UT.dateStr(UT.nextYm(ym), 1)] && has(daily[UT.dateStr(UT.nextYm(ym), 1)].gas_boiler));
+  UT.forecast = (ym, monthly, daily, asOf) => {
+    const n = UT.daysIn(ym), d1 = UT.dateStr(ym, 1), dEnd = UT.dateStr(ym, n);
+    if (asOf < d1) return null;
+    const lastObs = asOf > dEnd ? dEnd : asOf;
+    // 전기: 평일·주말 평균 × 남은 날
+    let wd = [], we = [], sum = 0, obs = 0;
+    for (let d = 1; d <= n; d++) {
+      const ds = UT.dateStr(ym, d); if (ds > lastObs) break;
+      const r = daily[ds]; if (!r || !has(r.elec_kwh)) continue;
+      const v = Number(r.elec_kwh); sum += v; obs++; (isWeekend(ds) ? we : wd).push(v);
+    }
+    const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    const aWd = avg(wd) ?? avg(we), aWe = avg(we) ?? (aWd !== null ? aWd * 0.6 : null);
+    let elec = null;
+    if (obs) {
+      elec = sum;
+      for (let d = 1; d <= n; d++) { const ds = UT.dateStr(ym, d); const r = daily[ds]; if (r && has(r.elec_kwh) && ds <= lastObs) continue; elec += isWeekend(ds) ? aWe : aWd; }
+    }
+    // 지침 항목: (최근 지침 − 1일 지침) ÷ 지난 날수 × 월 날수
+    const rate = key => {
+      const a = UT.readingOnOrBefore(daily, d1, key, 3);
+      let lastD = null, b = null;
+      for (let ds = UT.dateStr(UT.nextYm(ym), 1); ds >= d1; ds = addDays(ds, -1)) { if (ds > addDays(lastObs, 1)) continue; const r = daily[ds]; if (r && has(r[key]) && Number(r[key]) > 0) { lastD = ds; b = Number(r[key]); break; } }
+      if (a === null || b === null || lastD <= d1) return null;
+      const days = (new Date(lastD + 'T00:00:00') - new Date(d1 + 'T00:00:00')) / 864e5;
+      return Math.max(0, (b - a) / days * n);
+    };
+    let seen = null; for (let ds = lastObs; ds >= d1; ds = addDays(ds, -1)) { if (daily[ds] && (has(daily[ds].elec_kwh) || has(daily[ds].gas_boiler))) { seen = ds; break; } }
+    return { asOf: seen || lastObs, days: obs, n, elec_kwh: elec, gas_boiler: rate('gas_boiler'), gas_rest: rate('gas_rest'), w40: rate('water_40a'), w50: rate('water_50a'), ww: rate('wastewater') };
+  };
+  UT.forecastSummary = (ym, monthly, daily, asOf) => {
+    const f = UT.forecast(ym, monthly, daily, asOf); if (!f) return null;
+    const raw = { ...(monthly[ym] || {}) };
+    const eff = UT.effective(ym, monthly, daily, {});
+    const ov = {};
+    const set = (k, v) => { if (v !== null && v !== undefined && !has(raw[k])) ov[k] = Math.round(v * 100) / 100; };
+    if (f.elec_kwh && !has(raw.elec_kwh_light) && !has(raw.elec_kwh_mid) && !has(raw.elec_kwh_peak)) {
+      const pr = monthly[UT.prevYm(ym)] || {};
+      let l = num(pr.elec_kwh_light), md = num(pr.elec_kwh_mid), p = num(pr.elec_kwh_peak);
+      if (!(l && md && p)) { l = 0.35; md = 0.4; p = 0.25; }
+      const t = l + md + p;
+      set('elec_kwh_light', f.elec_kwh * l / t); set('elec_kwh_mid', f.elec_kwh * md / t); set('elec_kwh_peak', f.elec_kwh * p / t);
+    }
+    if (f.gas_boiler !== null && has(eff.gas_boiler_prev)) set('gas_boiler_cur', Number(eff.gas_boiler_prev) + f.gas_boiler);
+    if (f.gas_rest !== null && has(eff.gas_rest_prev)) set('gas_rest_cur', Number(eff.gas_rest_prev) + f.gas_rest);
+    if (eff.w_combined === '합산') { if (f.w40 !== null || f.w50 !== null) { set('w40_usage', (f.w40 || 0) + (f.w50 || 0)); set('w50_usage', 0); } }
+    else { set('w40_usage', f.w40); set('w50_usage', f.w50); }
+    set('ww_flow', f.ww);
+    const mon = { ...monthly, [ym]: { ...raw, ...ov } };
+    const s = UT.summary(ym, mon, daily, {});
+    s.forecast = f;
+    // 고지서로 확정된 항목은 그대로, 나머지는 '예측'
+    UT.UTILS.forEach(u => { if (s[u.k].status && s[u.k].status !== '확정') s[u.k].status = '예측'; });
+    const st = UT.UTILS.map(u => s[u.k].status).filter(Boolean);
+    s.status = st.length && st.every(x => x === '확정') ? '확정' : '예측';
+    return s;
+  };
+
   root.UT = UT;
 })(typeof window !== 'undefined' ? window : globalThis);
+
+  </script>
+  <script>
+    // =====================================================================
+    // 연도별 설정 (목표·보고서 코멘트): ut_monthly 의 'YYYY-00' 줄에 저장
+    // =====================================================================
+    let YEARDATA = {};   // { 2027: { targets: {...}, comments: { '2027-01': '...' } } }
+    const yd = y => YEARDATA[y] || {};
+    const tgt = y => yd(y).targets || {};
+    async function saveYear(y, patch) {
+      const data = { ...yd(y), ...patch };
+      const { error } = await sb.from('ut_monthly').upsert({ ym: `${y}-00`, data }, { onConflict: 'ym' });
+      if (error) throw error;
+      YEARDATA[y] = data;
+    }
+    // 목표 원단위 (사용량/kg) · 연간 비용 목표
+    const tUnit = (y, k) => { const v = tgt(y)[k + '_unit']; return v === undefined || v === null || v === '' ? null : Number(v); };
+    const tCost = (y, k) => { const v = tgt(y)[k + '_cost']; return v === undefined || v === null || v === '' ? null : Number(v); };
+    const tTotalUnit = y => { const v = tgt(y).total_unit; return v === undefined || v === null || v === '' ? null : Number(v); };
+    const tProd = y => { const v = tgt(y).production; return v === undefined || v === null || v === '' ? null : Number(v); };
+    // 목표 대비 (낮을수록 좋음): ▲ 초과(빨강) / ▼ 미달(초록)
+    const vsTarget = (cur, t) => {
+      if (cur === null || t === null || !t) return '';
+      const p = (cur / t - 1) * 100;
+      return `<span class="${p > 0.05 ? 'up' : 'down'}">${p > 0 ? '목표 초과 ▲' : '목표 이내 ▼'} ${nf1.format(Math.abs(p))}%</span>`;
+    };
+
+    // 연간 누적 (1월 ~ 기준월)
+    function ytd(y, uptoYm) {
+      const out = { production: 0, total: 0 }; UT.UTILS.forEach(u => { out[u.k] = { usage: 0, cost: 0 }; });
+      let months = 0;
+      yearMonths(y).forEach(ym => {
+        if (ym > uptoYm) return;
+        const s = S(ym); if (s.total === null && s.production === null) return;
+        months++;
+        out.production += s.production || 0; out.total += s.total || 0;
+        UT.UTILS.forEach(u => { out[u.k].usage += s[u.k].usage || 0; out[u.k].cost += s[u.k].cost || 0; });
+      });
+      out.months = months;
+      return out;
+    }
+
+    // =====================================================================
+    // 월말 예측 (진행 중인 달)
+    // =====================================================================
+    const fcCache = {};
+    function FC(ym) {
+      if (UT.monthComplete(DAILY, ym) || ym > thisYm) return null;
+      const key = ym + '|' + todayStr;
+      if (!(key in fcCache)) fcCache[key] = UT.forecastSummary(ym, MONTHLY, DAILY, todayStr);
+      return fcCache[key];
+    }
+    function forecastCard(ym) {
+      const f = FC(ym); if (!f || !f.forecast || !f.forecast.days) return '';
+      const prevS = S(UT.prevYm(ym));
+      const y = Number(ym.slice(0, 4)), m = Number(ym.slice(5));
+      const tc = UT.UTILS.reduce((a, u) => a + (tCost(y, u.k) || 0), 0);
+      return `<div class="card fc-card">
+        <h3>🔮 ${m}월 월말 예상 <span class="sub">${f.forecast.asOf.slice(5).replace('-', '/')}까지 검침 ${f.forecast.days}일 기준 · 남은 날은 평일·주말 평균으로 추정</span></h3>
+        <div class="fc-grid">
+          <div><div class="hint">총비용 (VAT 포함)</div>${UT.UTILS.some(u => f[u.k].cost === null) ? '<b style="font-size:13px;color:#999">모든 항목 검침이 쌓이면 계산</b>' : `<b>${man(f.total)}</b><div class="hint">전월 ${pctTxt(f.total, prevS.total)}${tc ? ` · 월 목표 ${man(tc / 12)} 대비 ${pctTxt(f.total, tc / 12)}` : ''}</div>`}</div>
+          ${UT.UTILS.map(u => `<div><div class="hint"><i class="dot" style="background:${u.color}"></i>${u.name}</div>${f[u.k].cost === null ? '<b style="font-size:13px;color:#999">검침 2일 이상 쌓이면 계산</b>' : `<b>${man(f[u.k].cost)}</b><div class="hint">${f0(f[u.k].usage)} ${u.unit} · 전월 ${pctTxt(f[u.k].usage, prevS[u.k].usage)}</div>`}</div>`).join('')}
+        </div>
+        <div class="hint" style="margin-top:6px">생산량을 아직 안 넣은 달이라 원단위는 월말에 생산량을 넣으면 계산됩니다. 회계보고 탭에서 이 예상값으로 가마감 표를 바로 뽑을 수 있습니다.</div>
+      </div>`;
+    }
+
+    // =====================================================================
+    // 목표 (KPI)
+    // =====================================================================
+    let targetY = null, targetDraft = {}, targetDirty = false, targetUtil = 'total';
+    function shiftTargetYear(d) {
+      if (targetDirty && !confirm('저장하지 않은 목표가 있습니다. 이동할까요?')) return;
+      targetY += d; renderTargets();
+    }
+    function annual(y) { // 연간 실적 (데이터 있는 달만)
+      const a = ytd(y, `${y}-12`);
+      a.unit = {}; UT.UTILS.forEach(u => a.unit[u.k] = ratio(a[u.k].usage, a.production));
+      a.totalUnit = ratio(a.total, a.production);
+      return a;
+    }
+    function renderTargets(keepDraft) {
+      if (!targetY) targetY = Number(thisYm.slice(5)) >= 10 ? Number(thisYm.slice(0, 4)) + 1 : Number(thisYm.slice(0, 4));
+      document.getElementById('target-year').textContent = `${targetY}년`;
+      targetDraft = keepDraft || { ...tgt(targetY) }; targetDirty = !!keepDraft;
+      const ro = !isAdmin();
+      document.getElementById('target-save').hidden = ro;
+      document.getElementById('target-fill').hidden = ro;
+      const base = annual(targetY - 1), cur = annual(targetY);
+      const curUpTo = cur.months ? ytd(targetY, thisYm) : null;
+      const inp = (k, v, w = 110) => ro ? f2(v) : `<input type="number" step="any" data-tk="${k}" value="${v ?? ''}" style="width:${w}px">`;
+      let h = `<table class="t tg"><tr><th class="l">항목</th><th>${targetY - 1}년 실적 원단위<br><span class="hint">${base.months}개월</span></th><th class="key">${targetY}년 목표 원단위</th><th>절감률</th>
+        <th>${targetY - 1}년 비용</th><th class="key">${targetY}년 비용 목표 (원)</th><th>${targetY}년 누적 실적 원단위<br><span class="hint">${cur.months}개월</span></th><th>판정</th></tr>`;
+      const row = (label, unitLabel, baseU, tKey, baseCost, cKey, curU) => {
+        const t = targetDraft[tKey] === undefined || targetDraft[tKey] === '' ? null : Number(targetDraft[tKey]);
+        const save = (baseU && t) ? (1 - t / baseU) * 100 : null;
+        const judge = (curU !== null && t) ? (curU <= t ? '<span class="ok">✔ 달성 중</span>' : `<span class="ng">✖ ${nf1.format((curU / t - 1) * 100)}% 초과</span>`) : '-';
+        return `<tr><td class="l"><b>${label}</b> <span class="hint">${unitLabel}</span></td><td>${baseU === null ? '-' : f2(baseU)}</td><td class="key">${inp(tKey, t)}</td>
+          <td data-save="${tKey}">${save === null ? '-' : (save >= 0 ? `${nf1.format(save)}% 절감` : `<span class="up">${nf1.format(-save)}% 증가</span>`)}</td>
+          <td>${baseCost === null ? '-' : f0(baseCost)}</td><td class="key">${cKey ? inp(cKey, targetDraft[cKey] ?? null, 130) : ''}</td>
+          <td>${curU === null ? '-' : f2(curU)}</td><td>${judge}</td></tr>`;
+      };
+      h += row('유틸리티 합계', '원/kg', base.totalUnit, 'total_unit', base.total || null, null, cur.months ? cur.totalUnit : null);
+      UT.UTILS.forEach(u => h += row(u.name, `${u.unit}/kg`, base.unit[u.k], u.k + '_unit', base[u.k].cost || null, u.k + '_cost', cur.months ? cur.unit[u.k] : null));
+      h += `<tr><td class="l"><b>생산량 계획</b> <span class="hint">kg/년</span></td><td>${f0(base.production || null)}</td><td class="key">${inp('production', targetDraft.production ?? null, 130)}</td><td colspan="5" class="l hint">비용 목표를 비워 두면 '목표 원단위 × 생산량 계획 × 전년 단가'로 참고값을 보여줍니다.</td></tr>`;
+      h += '</table>';
+      document.getElementById('target-table').innerHTML = h;
+      document.querySelectorAll('#target-table input[data-tk]').forEach(el => el.addEventListener('input', () => {
+        const k = el.dataset.tk; if (el.value.trim() === '') delete targetDraft[k]; else targetDraft[k] = Number(el.value);
+        targetDirty = true;
+      }));
+      // 비용 목표 참고값 (placeholder)
+      UT.UTILS.forEach(u => {
+        const el = document.querySelector(`#target-table input[data-tk="${u.k}_cost"]`); if (!el) return;
+        const t = targetDraft[u.k + '_unit'], p = targetDraft.production, price = ratio(base[u.k].cost, base[u.k].usage);
+        if (t && p && price) el.placeholder = `참고 ${f0(t * p * price)}`;
+      });
+      renderTargetChart();
+    }
+    function fillTargets() {
+      const pct = Number(prompt(`${targetY - 1}년 실적 대비 몇 % 줄인 값으로 목표를 채울까요? (예: 3)`, '3'));
+      if (isNaN(pct)) return;
+      const base = annual(targetY - 1), k = 1 - pct / 100;
+      if (base.totalUnit) targetDraft.total_unit = Math.round(base.totalUnit * k * 10) / 10;
+      UT.UTILS.forEach(u => {
+        if (base.unit[u.k]) targetDraft[u.k + '_unit'] = Math.round(base.unit[u.k] * k * 10000) / 10000;
+        if (base[u.k].cost) targetDraft[u.k + '_cost'] = Math.round(base[u.k].cost * k / 1000) * 1000;
+      });
+      if (base.production && !targetDraft.production) targetDraft.production = Math.round(base.production);
+      renderTargets({ ...targetDraft }); // 화면에만 반영 (저장 버튼 눌러야 저장)
+      document.getElementById('target-note').textContent = `${targetY - 1}년 실적 대비 ${pct}% 절감으로 채웠습니다. 확인 후 [저장]을 누르세요.`;
+    }
+    async function saveTargets() {
+      try {
+        await saveYear(targetY, { targets: targetDraft });
+        targetDirty = false; document.getElementById('target-note').textContent = '저장했습니다.';
+        renderTargets();
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
+    function renderTargetChart() {
+      if (!window.Chart) return;
+      const y = targetY, ms = yearMonths(y), pms = yearMonths(y - 1);
+      document.getElementById('target-chips').innerHTML = [['total', '합계'], ...UT.UTILS.map(u => [u.k, u.name])].map(([k, n]) => `<button class="chip ${targetUtil === k ? 'on' : ''}" onclick="targetUtil='${k}';renderTargetChart()">${n}</button>`).join('');
+      const U = UT.UTILS.find(u => u.k === targetUtil);
+      const val = s => targetUtil === 'total' ? ratio(s.total, s.production) : ratio(s[targetUtil].usage, s.production);
+      const t = targetUtil === 'total' ? (targetDraft.total_unit ?? null) : (targetDraft[targetUtil + '_unit'] ?? null);
+      const unit = targetUtil === 'total' ? '원/kg' : `${U.unit}/kg`;
+      const color = U ? U.color : '#333';
+      mkChart('chart-target', { type: 'line', data: { labels: monthLabels, datasets: [
+        { label: `${y}년 실적`, data: ms.map(S).map(val), borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 4 },
+        { label: `${y - 1}년`, data: pms.map(S).map(val), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 2, pointRadius: 3 },
+        ...(t ? [{ label: '목표', data: ms.map(() => Number(t)), borderColor: '#d93025', borderDash: [2, 3], borderWidth: 1.5, pointRadius: 0 }] : [])
+      ] }, options: (() => { const o = baseOpts(unit); o.plugins.legend.display = true; o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f2(c.raw)} ${unit}`; return o; })() });
+    }
+
+    // =====================================================================
+    // 원인 분석
+    // =====================================================================
+    let TEMPS = null;
+    async function loadTemps() {
+      if (TEMPS) return;
+      const rows = await fetchAll('meter_daily', 'd, temp_min, temp_max', 'd');
+      TEMPS = {}; rows.forEach(r => { if (r.temp_min !== null && r.temp_max !== null) TEMPS[r.d] = (Number(r.temp_min) + Number(r.temp_max)) / 2; });
+    }
+    let causeDays = 120, causeUtil = 'gas', causeYear = null;
+    async function renderCause() {
+      if (!window.Chart) return;
+      if (!causeYear) causeYear = Number((dashYm || thisYm).slice(0, 4));
+      document.getElementById('cause-year').textContent = `${causeYear}년`;
+      try { await loadTemps(); } catch (e) { TEMPS = {}; }
+      // 1) 기온 vs 일 사용량 (평일만)
+      document.getElementById('cause-chips').innerHTML = UT.DAILY_UTILS.map(u => `<button class="chip ${causeUtil === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderCause()">${u.name}</button>`).join('') +
+        ' ' + [60, 120, 365].map(n => `<button class="chip ${causeDays === n ? 'on' : ''}" onclick="causeDays=${n};renderCause()">${n === 365 ? '1년' : n + '일'}</button>`).join('');
+      const U = UT.DAILY_UTILS.find(u => u.k === causeUtil);
+      const pts = [];
+      for (let i = causeDays; i >= 1; i--) {
+        const ds = UT.addDays(todayStr, -i);
+        if (UT.isWeekend(ds) || TEMPS[ds] === undefined) continue;
+        const v = UT.dailyUsage(DAILY, ds)[causeUtil];
+        if (v !== null && v >= 0) pts.push({ x: Math.round(TEMPS[ds] * 10) / 10, y: v, d: ds });
+      }
+      const lr = UT.linreg(pts.map(p => [p.x, p.y]));
+      const xs = pts.map(p => p.x), x0 = Math.min(...xs), x1 = Math.max(...xs);
+      mkChart('chart-temp', { type: 'scatter', data: { datasets: [
+        { label: '평일', data: pts, backgroundColor: U.color + 'aa', pointRadius: 4 },
+        ...(lr ? [{ type: 'line', label: '추세', data: [{ x: x0, y: lr.a * x0 + lr.b }, { x: x1, y: lr.a * x1 + lr.b }], borderColor: '#333', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }] : [])
+      ] }, options: (() => { const o = baseOpts(`${U.unit}/일`); o.scales.x = { type: 'linear', title: { display: true, text: '평균기온 (℃)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.interaction = { mode: 'nearest', intersect: true };
+        o.plugins.tooltip.callbacks.label = c => c.raw.d ? ` ${c.raw.d.slice(5)} · ${c.raw.x}℃ · ${f1(c.raw.y)} ${U.unit}` : ''; return o; })() });
+      const strength = lr ? (lr.r2 >= 0.5 ? '강함' : lr.r2 >= 0.25 ? '보통' : '약함') : '';
+      document.getElementById('temp-note').innerHTML = !lr ? '기온 기록이 부족합니다. (설비검침의 최저·최고온도 사용)' :
+        `기온이 1℃ <b>${lr.a < 0 ? '내려가면' : '올라가면'}</b> ${U.name} 사용량이 하루 약 <b>${f1(Math.abs(lr.a))} ${U.unit}</b> 늘어나는 경향 (관련성 ${strength}, R²=${lr.r2.toFixed(2)}, 평일 ${pts.length}일)`;
+
+      // 2) 생산량 vs 원단위 (월별, 최근 24개월)
+      const months = []; for (let ym = UT.ym(causeYear - 1, 1); ym <= UT.ym(causeYear, 12) && ym <= thisYm; ym = UT.nextYm(ym)) months.push(ym);
+      const mp = months.map(ym => { const s = S(ym); return { ym, x: s.production, y: causeUtil === 'gas' ? ratio(s.gas.usage, s.production) : ratio(s[causeUtil].usage, s.production) }; }).filter(p => p.x && p.y);
+      const lr2 = UT.linreg(mp.map(p => [p.x, p.y]));
+      const unit2 = `${UT.UTILS.find(u => u.k === causeUtil).unit}/kg`;
+      mkChart('chart-produnit', { type: 'scatter', data: { datasets: [
+        { label: `${causeYear - 1}년`, data: mp.filter(p => p.ym < `${causeYear}`), backgroundColor: '#a3a29d', pointRadius: 5 },
+        { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: U.color, pointRadius: 6 }
+      ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '생산량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
+        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 생산 ${f0(c.raw.x)}kg · ${f2(c.raw.y)} ${unit2}`; return o; })() });
+      document.getElementById('produnit-note').innerHTML = !lr2 ? '생산량을 넣은 달이 부족합니다.' :
+        `생산량이 많은 달일수록 원단위가 ${lr2.a < 0 ? '<b>낮아지는</b>(고정 사용량이 나뉘는)' : '<b>높아지는</b>'} 경향 (R²=${lr2.r2.toFixed(2)}). 같은 생산량인데 점이 위에 있는 달은 낭비를 의심해 볼 달입니다.`;
+
+      // 3) 전력 구성 (월별)
+      const ms = yearMonths(causeYear), es = ms.map(ym => { const s = S(ym); const m = s.m || {}; const tot = s.elec.usage; const hv = Number(m.elec_hvac_kwh) || null, ww = Number(m.elec_ww_kwh) || null; return { tot, hv, ww, etc: tot ? Math.max(0, tot - (hv || 0) - (ww || 0)) : null }; });
+      mkChart('chart-elecmix', { type: 'bar', data: { labels: monthLabels, datasets: [
+        { label: '공조냉동', data: es.map(e => e.hv), backgroundColor: '#5b8def', stack: 'e', maxBarThickness: 34 },
+        { label: '폐수동', data: es.map(e => e.ww), backgroundColor: '#eda100', stack: 'e', maxBarThickness: 34 },
+        { label: '그 외 (생산·기타)', data: es.map(e => e.etc), backgroundColor: '#c8ccd2', stack: 'e', maxBarThickness: 34 }
+      ] }, options: (() => { const o = baseOpts('kWh'); o.scales.x.stacked = true; o.scales.y.stacked = true; o.plugins.legend.display = true;
+        o.plugins.tooltip.callbacks.label = c => { const t = es[c.dataIndex].tot; return ` ${c.dataset.label}: ${f0(c.raw)} kWh${t ? ` (${nf1.format(c.raw / t * 100)}%)` : ''}`; }; return o; })() });
+    }
+
+    // =====================================================================
+    // 이상 사용 감지
+    // =====================================================================
+    let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [];
+    function renderAnomaly() {
+      const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
+      anomList = UT.anomalies(DAILY, from, to, { ratio: anomRatio }).reverse();
+      document.getElementById('anom-chips').innerHTML =
+        [['all', '전체'], ...UT.DAILY_UTILS.map(u => [u.k, u.name])].map(([k, n]) => `<button class="chip ${anomUtil === k ? 'on' : ''}" onclick="anomUtil='${k}';renderAnomaly()">${n} ${k === 'all' ? anomList.length : anomList.filter(a => a.u === k).length}</button>`).join('') +
+        ' &nbsp; ' + [30, 60, 90].map(n => `<button class="chip ${anomDays === n ? 'on' : ''}" onclick="anomDays=${n};renderAnomaly()">${n}일</button>`).join('') +
+        ' &nbsp; 민감도 ' + [[1.3, '높음'], [1.4, '보통'], [1.5, '낮음']].map(([r, n]) => `<button class="chip ${anomRatio === r ? 'on' : ''}" onclick="anomRatio=${r};renderAnomaly()">${n}</button>`).join('');
+      const list = anomList.filter(a => anomUtil === 'all' || a.u === anomUtil);
+      const W = ['일', '월', '화', '수', '목', '금', '토'];
+      document.getElementById('anom-table').innerHTML = !list.length ? '<div class="empty">이 기간에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>' :
+        `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소 (최근 4주 같은 종류 날의 중앙값)</th><th>차이</th><th class="l">구분</th></tr>` +
+        list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
+          return `<tr class="anom-row" onclick="anomUtil='${a.u}';anomFocus='${a.d}';renderAnomChart()"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
+            <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '가동일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td></tr>`; }).join('') + '</table>';
+      renderAnomChart();
+    }
+    let anomFocus = null;
+    function renderAnomChart() {
+      if (!window.Chart) return;
+      const uk = anomUtil === 'all' ? 'elec' : anomUtil, U = UT.DAILY_UTILS.find(u => u.k === uk);
+      document.getElementById('anom-chart-title').textContent = `${U.name} 일 사용량 (${U.unit})`;
+      const to = UT.addDays(todayStr, -1), days = []; for (let i = anomDays - 1; i >= 0; i--) days.push(UT.addDays(to, -i));
+      const vals = days.map(d => UT.dailyUsage(DAILY, d)[uk]);
+      const base = days.map(d => UT.baseline(DAILY, d, uk));
+      const flagged = new Set(anomList.filter(a => a.u === uk).map(a => a.d));
+      mkChart('chart-anom', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: [
+        { label: '사용량', data: vals, backgroundColor: days.map(d => flagged.has(d) ? '#d93025' : (d === anomFocus ? '#333' : U.color + 'aa')), maxBarThickness: 18 },
+        { type: 'line', label: '평소', data: base, borderColor: '#333', borderDash: [4, 3], borderWidth: 1.5, pointRadius: 0, stepped: false }
+      ] }, options: (() => { const o = baseOpts(U.unit); o.plugins.legend.display = true; o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.autoSkip = true;
+        o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f1(c.raw)} ${U.unit}`; return o; })() });
+    }
+
+    // =====================================================================
+    // 월간 보고서 (A4 한 장)
+    // =====================================================================
+    let brYm = null;
+    function shiftBriefMonth(d) { brYm = d > 0 ? UT.nextYm(brYm) : UT.prevYm(brYm); renderBrief(); }
+    function renderBrief() {
+      if (!brYm) brYm = UT.prevYm(thisYm);
+      document.getElementById('brief-month').textContent = ymLabel(brYm);
+      const y = Number(brYm.slice(0, 4)), m = Number(brYm.slice(5));
+      const fc = FC(brYm);
+      const s = fc || S(brYm), prev = S(UT.prevYm(brYm)), ly = S(UT.ym(y - 1, m));
+      const yt = ytd(y, brYm);
+      const uc = x => ratio(x.total, x.production);
+      const tile = (lab, val, sub) => `<div class="br-kpi"><div class="l">${lab}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
+      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : (s.status === '가마감' ? ' · 일부 가마감(고지서 전)' : '')}</div></div>
+        <table class="br-sign"><tr><td>작성</td><td>검토</td><td>승인</td></tr><tr><td></td><td></td><td></td></tr></table></div>`;
+      h += `<div class="br-kpis">` +
+        tile('유틸리티 총비용', man(s.total), `전월 ${pctTxt(s.total, prev.total)} · 전년 ${pctTxt(s.total, ly.total)}`) +
+        tile('생산량', `${f0(s.production)} kg`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
+        tile('생산량당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))}${tTotalUnit(y) ? ` · ${vsTarget(uc(s), tTotalUnit(y))}` : ''}`) +
+        tile(`${y}년 누적 (1~${m}월)`, man(yt.total), `원단위 ${f0(ratio(yt.total, yt.production))} 원/kg${tTotalUnit(y) ? ` · ${vsTarget(ratio(yt.total, yt.production), tTotalUnit(y))}` : ''}`) +
+        `</div>`;
+      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>목표 원단위</th><th>목표 대비</th><th>상태</th></tr>` +
+        UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production), t = tUnit(y, u.k);
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${f2(un)} <span class="hint">${u.unit}/kg</span></td>
+            <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${t === null ? '-' : f2(t)}</td><td>${vsTarget(un, t) || '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
+        `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td>${tTotalUnit(y) === null ? '-' : f0(tTotalUnit(y))}</td><td>${vsTarget(uc(s), tTotalUnit(y)) || '-'}</td><td></td></tr></table>`;
+      h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (만원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">생산량당 비용 (원/kg) · 전년 · 목표</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
+      // 이상 사용 요약
+      const first = UT.dateStr(brYm, 1), last = UT.dateStr(brYm, UT.daysIn(brYm));
+      const an = UT.anomalies(DAILY, first, last < todayStr ? last : UT.addDays(todayStr, -1), { ratio: 1.4 }).filter(a => a.kind === '과다');
+      h += `<div class="br-sec">이상 사용 (평소보다 40% 이상 많이 쓴 날)</div><div class="br-txt">${!an.length ? '없음' :
+        UT.DAILY_UTILS.map(u => { const l = an.filter(a => a.u === u.k); return l.length ? `${u.name} ${l.length}건 (${l.slice(0, 4).map(a => a.d.slice(8) + '일 ' + (a.pct === null ? '(평소 0)' : '+' + nf0.format(a.pct) + '%')).join(', ')}${l.length > 4 ? ' …' : ''})` : ''; }).filter(Boolean).join(' / ')}</div>`;
+      const cmt = (yd(y).comments || {})[brYm] || '';
+      h += `<div class="br-sec">특이사항 및 조치 계획</div>` + (isAdmin()
+        ? `<textarea id="br-comment" class="br-comment" placeholder="예) 9월 가스 사용 증가: 자숙 설비 증설 시운전 영향 / 10월 보일러 공기비 조정 예정">${esc(cmt)}</textarea><div class="no-print" style="text-align:right;margin-top:4px"><button class="btn secondary" onclick="saveBriefComment()">코멘트 저장</button> <span class="hint" id="br-cmt-st"></span></div><div class="print-only br-txt" id="br-comment-print">${esc(cmt)}</div>`
+        : `<div class="br-txt" style="min-height:40px;white-space:pre-wrap">${esc(cmt) || '-'}</div>`);
+      document.getElementById('brief-sheet').innerHTML = h;
+      const ta = document.getElementById('br-comment'); if (ta) ta.addEventListener('input', () => { document.getElementById('br-comment-print').textContent = ta.value; });
+      // 차트
+      if (!window.Chart) return;
+      const ms = yearMonths(y), cs = ms.map(ym => ym === brYm && fc ? fc : S(ym)), ps = yearMonths(y - 1).map(S);
+      mkChart('br-cost', { type: 'bar', data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({ label: u.name, data: cs.map(x => x[u.k].cost === null ? null : x[u.k].cost / 10000), backgroundColor: u.color, stack: 'c', maxBarThickness: 22 })) },
+        options: (() => { const o = baseOpts(''); o.scales.x.stacked = o.scales.y.stacked = true; o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return o; })() });
+      const tu = tTotalUnit(y);
+      mkChart('br-unit', { type: 'line', data: { labels: monthLabels, datasets: [
+        { label: `${y}년`, data: cs.map(uc), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 3 },
+        { label: `${y - 1}년`, data: ps.map(uc), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 2 },
+        ...(tu ? [{ label: '목표', data: ms.map(() => tu), borderColor: '#d93025', borderDash: [2, 3], borderWidth: 1.5, pointRadius: 0 }] : [])
+      ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return clipAxis(o, cs.map(uc), ps.map(uc)); })() });
+    }
+    async function saveBriefComment() {
+      const y = Number(brYm.slice(0, 4));
+      try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [brYm]: document.getElementById('br-comment').value } }); document.getElementById('br-cmt-st').textContent = '저장됨 ✓'; }
+      catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
 
   </script>
   <script>
@@ -668,7 +1214,8 @@
         fetchAll('ut_monthly', 'ym, data', 'ym'),
         fetchAll('ut_daily_v', 'd, elec_kwh, elec_peak_kw, gas_boiler, gas_rest, water_40a, water_50a, wastewater, ww_power, hvac_power', 'd')
       ]);
-      MONTHLY = Object.fromEntries(m.map(r => [r.ym, r.data || {}]));
+      MONTHLY = {}; YEARDATA = {};
+      m.forEach(r => { if (r.ym.endsWith('-00')) YEARDATA[Number(r.ym.slice(0, 4))] = r.data || {}; else MONTHLY[r.ym] = r.data || {}; });
       DAILY = {};
       d.forEach(r => { const { d: k, ...rest } = r; DAILY[k] = rest; });
       resetCache();
@@ -680,11 +1227,13 @@
       let best = null;
       const cands = new Set([...Object.keys(MONTHLY), ...Object.keys(DAILY).map(d => d.slice(0, 7))]);
       [...cands].sort().forEach(ym => { if (ym <= thisYm) { const s = S(ym); if (s.total !== null) best = ym; } });
+      // 이번 달이 아직 진행 중이면 지난달을 기본으로 (이번 달은 월말 예상 카드로)
+      if (best === thisYm && !UT.monthComplete(DAILY, thisYm)) best = UT.prevYm(thisYm);
       return best || thisYm;
     }
 
     // ---------------- 탭 ----------------
-    const loaders = { dash: renderDash, daily: renderDaily, monthly: renderMonthly, report: renderReport };
+    const loaders = { dash: renderDash, target: () => renderTargets(), cause: renderCause, anom: renderAnomaly, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief };
     function switchTab(t) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
       document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
@@ -721,16 +1270,22 @@
         `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null);
       html += kpiTile('prod', '생산량', `${f0(cur.production)}<small> kg</small>`,
         `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null);
+      const tu = tTotalUnit(Number(dashYm.slice(0, 4)));
       html += kpiTile('total', '생산량당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
-        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null);
+        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}` + (tu !== null ? `<br>목표 ${f0(tu)} 원/kg → ${vsTarget(unitCost(cur), tu) || '-'}` : ''), null);
       document.getElementById('kpis').innerHTML = html;
+      document.getElementById('fc-box').innerHTML = forecastCard(thisYm); // 진행 중인 이번 달 월말 예상
+      // 최근 7일 이상 사용
+      const an7 = UT.anomalies(DAILY, UT.addDays(todayStr, -7), UT.addDays(todayStr, -1));
+      document.getElementById('anom-banner').innerHTML = an7.length ? `<div class="anom-banner" onclick="switchTab('anom')">⚠ 최근 7일 평소보다 많이 쓴 날 <b>${an7.length}건</b> — ${an7.slice(-3).reverse().map(a => `${a.d.slice(5).replace('-', '/')} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}${a.kind === '과다' ? (a.pct === null ? ' (평소 0)' : ' +' + nf0.format(a.pct) + '%') : ' 지침오류'}`).join(', ')} <u>자세히 보기</u></div>` : '';
       html = '';
       UT.UTILS.forEach(u => {
         const c = cur[u.k], p = prev[u.k];
         const unitNow = ratio(c.usage, cur.production), unitPrev = ratio(p.usage, prev.production);
         html += kpiTile(u.k, `${u.name}`,
           `${man(c.cost)}`,
-          `사용량 ${f0(c.usage)} ${u.unit} (${pctTxt(c.usage, p.usage)})<br>원단위 ${f2(unitNow)} ${u.unit}/kg (${pctTxt(unitNow, unitPrev)})`,
+          `사용량 ${f0(c.usage)} ${u.unit} (${pctTxt(c.usage, p.usage)})<br>원단위 ${f2(unitNow)} ${u.unit}/kg (${pctTxt(unitNow, unitPrev)})` +
+            (tUnit(Number(dashYm.slice(0, 4)), u.k) !== null ? `<br>목표 ${f2(tUnit(Number(dashYm.slice(0, 4)), u.k))} → ${vsTarget(unitNow, tUnit(Number(dashYm.slice(0, 4)), u.k)) || '-'}` : ''),
           c.status);
       });
       document.getElementById('kpis2').innerHTML = html;
@@ -1141,7 +1696,8 @@
     function renderReport() {
       if (!reportYm) reportYm = UT.prevYm(thisYm);
       document.getElementById('report-month').textContent = ymLabel(reportYm);
-      const s = S(reportYm);
+      const fc = FC(reportYm);
+      const s = fc || S(reportYm);
       const g = s.gas.calc, ep = elecParts(s);
       const gasConf = s.gas.status === '확정';
       reportRows = [
@@ -1160,7 +1716,8 @@
         ['폐수', '', s.ww.usage, '㎥', s.ww.exvat, s.ww.cost, s.ww.status],
         ['합계', '', null, '', s.exvat, s.total, s.status]
       ];
-      let h = `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성일 ${todayStr}</span></h3>`;
+      let h = (fc ? `<div class="fc-note no-print">🔮 아직 진행 중인 달이라 <b>${fc.forecast.asOf.slice(5).replace('-', '/')}까지 검침(${fc.forecast.days}일)으로 월말까지 추정한 예측값</b>입니다. 남은 날은 평일·주말 평균 사용량으로 채웠습니다.</div>` : '') +
+        `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성일 ${todayStr}</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
       reportRows.forEach(r => {
         const isSum = r[0] === '합계', isSub = !r[0] && !isSum;
