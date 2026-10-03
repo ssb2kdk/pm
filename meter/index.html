@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>설비점검일지 검침</title>
+  <title>설비검침</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="../config.js"></script>
   <script src="../common.js"></script>
@@ -88,7 +88,7 @@
     <div class="wrap">
       <div class="head">
         <div class="head-row">
-          <span class="title">📋 설비점검일지 · 검침</span>
+          <span class="title">📟 설비검침</span>
           <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목 관리</button>
         </div>
         <div class="date-row">
@@ -484,7 +484,7 @@
     window.addEventListener('beforeunload', e => { if (dirty.size || weatherDirty) { e.preventDefault(); e.returnValue = ''; } });
     Portal.start({
       appId: 'meter',
-      title: '설비점검일지 검침',
+      title: '설비검침',
       onReady: async P => {
         sb = P.sb; me = P.me;
         document.getElementById('admin-btn').hidden = !isAdmin();
