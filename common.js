@@ -7,6 +7,7 @@
   const ROOT = new URL('.', document.currentScript.src).href; // 사이트 맨 위 주소
   const configured = !!(CFG.SUPABASE_KEY && !String(CFG.SUPABASE_KEY).startsWith('여기에'));
 
+  const SYS_NAME = CFG.SYSTEM_NAME || `${CFG.PLANT_NAME || ''} ${CFG.TEAM_NAME || ''}`.trim();
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------------- 공통 스타일 ----------------
@@ -82,7 +83,7 @@
       <div class="pt-bar" id="pt-bar" hidden></div>
       <div id="pt-login" hidden>
         <form class="pt-login-box" id="pt-login-form" autocomplete="on">
-          <h1>🏭 ${esc(CFG.PLANT_NAME)} ${esc(CFG.TEAM_NAME)}</h1>
+          <h1>🏭 ${esc(SYS_NAME)}</h1>
           <div class="sub">${esc(opts.title || '')}</div>
           <div class="field"><label>아이디</label><input type="text" id="pt-login-id" autocomplete="username" autocapitalize="off" required></div>
           <div class="field"><label>비밀번호</label><input type="password" id="pt-login-pw" autocomplete="current-password" required></div>
@@ -101,7 +102,7 @@
           </div>
         </div>
       </div>`);
-    if (opts.title) document.title = opts.title + ' - ' + CFG.PLANT_NAME;
+    document.title = opts.title ? opts.title + ' - ' + SYS_NAME : SYS_NAME;
 
     document.getElementById('pt-login-form').addEventListener('submit', onLogin);
     document.getElementById('pt-pw-cancel').addEventListener('click', () => document.getElementById('pt-pw-modal').classList.remove('active'));
@@ -174,7 +175,7 @@
     const me = Portal.me;
     const apps = Portal.visibleApps().filter(a => a.ready);
     document.getElementById('pt-bar').innerHTML = `
-      <a class="pt-home" href="${ROOT}">🏭 ${esc(CFG.PLANT_NAME)} ${esc(CFG.TEAM_NAME)}</a>
+      <a class="pt-home" href="${ROOT}">🏭 ${esc(SYS_NAME)}</a>
       <nav class="pt-apps">
         <a href="${ROOT}" class="${opts.appId === 'home' ? 'current' : ''}">🏠 홈</a>
         ${apps.map(a => `<a href="${Portal.appUrl(a)}" class="${a.id === opts.appId ? 'current' : ''}">${a.icon} ${esc(a.name)}</a>`).join('')}

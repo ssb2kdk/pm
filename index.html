@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>순수본 2공장 시설팀</title>
+  <title>순수본 2공장 시설관리시스템</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="common.js"></script>
@@ -79,7 +79,7 @@
 
     Portal.start({
       appId: 'home',
-      title: '홈',
+      title: '',
       onReady: P => {
         sb = P.sb; me = P.me;
         document.getElementById('welcome').textContent = `${me.name}님, 안녕하세요 👋`;
