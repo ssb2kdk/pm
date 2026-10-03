@@ -54,6 +54,8 @@
     sb: null,
     me: null,
     isAdmin: () => !!(Portal.me && Portal.me.role === 'admin'),
+    isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
+    visibleApps: () => (CFG.APPS || []).filter(a => !(Portal.me && Portal.me.role === 'partner') || a.partner),
     appUrl: app => ROOT + app.path,
     start,
     callAdmin
@@ -148,6 +150,11 @@
     if (error || !prof) { await sb.auth.signOut(); return showLogin('계정 정보를 불러오지 못했습니다. 관리자에게 문의하세요.'); }
     if (!prof.active) { await sb.auth.signOut(); return showLogin('사용 중지된 계정입니다. 관리자에게 문의하세요.'); }
     Portal.me = prof;
+    // 협력업체 계정은 허용된 앱만
+    if (prof.role === 'partner' && opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId)) {
+      const first = Portal.visibleApps().find(a => a.ready);
+      location.replace(first ? Portal.appUrl(first) : ROOT); return;
+    }
 
     renderBar();
     document.getElementById('pt-login').hidden = true;
@@ -158,7 +165,7 @@
 
   function renderBar() {
     const me = Portal.me;
-    const apps = (CFG.APPS || []).filter(a => a.ready);
+    const apps = Portal.visibleApps().filter(a => a.ready);
     document.getElementById('pt-bar').innerHTML = `
       <a class="pt-home" href="${ROOT}">🏭 ${esc(CFG.PLANT_NAME)} ${esc(CFG.TEAM_NAME)}</a>
       <nav class="pt-apps">
@@ -166,7 +173,7 @@
         ${apps.map(a => `<a href="${Portal.appUrl(a)}" class="${a.id === opts.appId ? 'current' : ''}">${a.icon} ${esc(a.name)}</a>`).join('')}
       </nav>
       <div class="pt-user">
-        <span id="pt-user-label">${esc(me.name)}${me.role === 'admin' ? ' (관리자)' : ''}</span>
+        <span id="pt-user-label">${esc(me.name)}${me.role === 'admin' ? ' (관리자)' : me.role === 'partner' ? ' (협력업체)' : ''}</span>
         <button type="button" id="pt-pw-btn">비밀번호 변경</button>
         <button type="button" id="pt-logout-btn">로그아웃</button>
       </div>`;
