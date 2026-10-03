@@ -32,7 +32,7 @@
     table.users th { color: #666; font-weight: normal; font-size: 12px; }
     table.users td .btn { margin: 2px 2px 2px 0; }
     .badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #fff; }
-    .badge-admin { background: #2c5aa0; } .badge-user { background: #888; } .badge-off { background: #bbb; }
+    .badge-admin { background: #2c5aa0; } .badge-user { background: #888; } .badge-partner { background: #1D9E75; } .badge-off { background: #bbb; }
     .hint { font-size: 12px; color: #888; margin-top: 8px; }
   </style>
 </head>
@@ -63,6 +63,7 @@
         <select id="u-role">
           <option value="user">일반 — 조회, 완료 처리, 인쇄</option>
           <option value="admin">관리자 — 항목 관리, 사용자 관리, 설정까지</option>
+          <option value="partner">협력업체 — 환경일지(다온산업 장부) 입력만</option>
         </select>
       </div>
       <div class="modal-actions">
@@ -88,7 +89,7 @@
     });
 
     function renderApps() {
-      document.getElementById('app-grid').innerHTML = Portal.config.APPS.map(a => a.ready ? `
+      document.getElementById('app-grid').innerHTML = Portal.visibleApps().map(a => a.ready ? `
         <a class="app-card" href="${Portal.appUrl(a)}">
           <div class="icon">${a.icon}</div>
           <div class="name">${esc(a.name)}</div>
@@ -112,7 +113,7 @@
         return `<tr>
           <td><b>${esc(u.username)}</b></td>
           <td>${esc(u.name)}</td>
-          <td><span class="badge badge-${u.role}">${u.role === 'admin' ? '관리자' : '일반'}</span></td>
+          <td><span class="badge badge-${u.role}">${u.role === 'admin' ? '관리자' : u.role === 'partner' ? '협력업체' : '일반'}</span></td>
           <td>${u.active ? '사용 중' : '<span class="badge badge-off">중지</span>'}</td>
           <td>
             <button class="btn secondary small" onclick="openUserModal('${u.id}')">수정</button>
@@ -161,7 +162,11 @@
         } else {
           if (!/^[a-z0-9._-]{2,30}$/.test(username)) throw new Error('아이디는 영문 소문자/숫자/._- 2~30자로 정해 주세요.');
           if (password.length < 6) throw new Error('비밀번호는 6자 이상이어야 합니다.');
-          await Portal.callAdmin({ action: 'create', username, name, password, role });
+          await Portal.callAdmin({ action: 'create', username, name, password, role: role === 'partner' ? 'user' : role });
+          if (role === 'partner') { // 만든 뒤 협력업체 권한으로 바꿈
+            const { error } = await sb.from('profiles').update({ role: 'partner' }).eq('username', username);
+            if (error) throw new Error('계정은 만들었지만 협력업체 권한 지정에 실패했습니다. [수정]에서 다시 지정해 주세요. (' + error.message + ')');
+          }
           alert(`계정을 만들었습니다.\n\n아이디: ${username}\n비밀번호: ${password}\n\n본인에게 전달하고, 처음 로그인한 뒤 [비밀번호 변경]을 하도록 안내해 주세요.`);
         }
         document.getElementById('user-modal').classList.remove('active');
