@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>설비검침 표</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    .page-head { background: #1a1a1a; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-head h1 { font-size: 17px; margin: 0; flex: 1; white-space: nowrap; }
+    .page-head a { color: #fff; font-size: 13px; text-decoration: none; border: 1px solid rgba(255,255,255,.4); padding: 5px 12px; border-radius: 16px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px; }
+    .month-nav { display: flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 2px; }
+    .month-nav button { border: none; background: transparent; font-size: 15px; padding: 4px 10px; cursor: pointer; }
+    .month-nav span { font-weight: bold; min-width: 96px; text-align: center; }
+    .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; background: #fff; }
+    .seg button { border: none; background: #fff; padding: 6px 12px; cursor: pointer; font-size: 12px; border-right: 1px solid #eee; }
+    .seg button:last-child { border-right: none; }
+    .seg button.on { background: #1a1a1a; color: #fff; }
+    .hint { font-size: 12px; color: #777; line-height: 1.6; }
+    #status { font-size: 12px; color: #1D7A5C; font-weight: bold; min-width: 80px; }
+
+    .grid-wrap { overflow: auto; height: calc(100vh - 175px); margin: 0 16px 16px; background: #fff; border: 1px solid #d0d4d9; border-radius: 6px; user-select: none; }
+    table.g { border-collapse: separate; border-spacing: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+    table.g th, table.g td { border-right: 1px solid #e1e4e8; border-bottom: 1px solid #e1e4e8; white-space: nowrap; }
+    table.g thead th { position: sticky; background: #f0f2f5; z-index: 2; padding: 4px 6px; font-weight: 600; text-align: center; }
+    table.g thead tr.r1 th { top: 0; height: 24px; }
+    table.g thead tr.r2 th { top: 25px; height: 24px; background: #f6f7f9; font-weight: normal; color: #555; }
+    table.g thead tr.r3 th { top: 50px; min-width: 76px; max-width: 110px; white-space: normal; line-height: 1.25; font-size: 11.5px; }
+    table.g thead th .u { display: block; font-size: 10px; color: #888; font-weight: normal; }
+    table.g .dcol { position: sticky; left: 0; z-index: 1; background: #fafbfc; font-weight: 600; padding: 0 8px; text-align: left; min-width: 82px; }
+    table.g thead .dcol { z-index: 3; background: #f0f2f5; }
+    table.g tr.we .dcol { color: #c62828; }
+    table.g tr.today td { background: #fffbe6; }
+    table.g td.c { padding: 0 6px; height: 24px; text-align: right; cursor: cell; min-width: 76px; }
+    table.g td.c.t { text-align: center; }
+    table.g td.c.sel { background: #dbe9fb !important; }
+    table.g td.c.act { outline: 2px solid #1a73e8; outline-offset: -2px; }
+    table.g td.c.neg { color: #d93025; font-weight: bold; }
+    table.g td.c.saved { background: #e3f6ec; }
+    table.g td.c.err { background: #fde2e2; }
+    table.g td.c input { width: 100%; border: none; outline: none; font: inherit; text-align: right; background: #fff; padding: 0; }
+    .use-mode table.g td.c { color: #1D7A5C; cursor: default; }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="page-head">
+      <h1>📊 설비검침 표</h1>
+      <a href="./">📟 입력 화면으로</a>
+    </div>
+    <div class="toolbar">
+      <div class="month-nav"><button onclick="shiftMonth(-1)">◀</button><span id="ym"></span><button onclick="shiftMonth(1)">▶</button></div>
+      <div class="seg" id="tabseg"></div>
+      <div class="seg"><button id="m-val" class="on" onclick="setMode('val')">검침값</button><button id="m-use" onclick="setMode('use')">일 사용량</button></div>
+      <button class="btn secondary small" onclick="exportXlsx()">⬇ 엑셀</button>
+      <span id="status"></span>
+    </div>
+    <div class="hint" style="padding:0 16px 6px">끌어서 범위 선택 · <b>Ctrl+C</b> 복사 · 칸을 고르고 <b>Ctrl+V</b> 붙여넣기(엑셀에서 복사한 표 그대로) · 칸에서 바로 타이핑하거나 더블클릭해서 고치기 · <b>Delete</b> 지우기 · 방향키·Enter 이동. 고치면 바로 저장되고 입력 화면에도 반영됩니다.</div>
+    <div class="grid-wrap" id="wrap" tabindex="0"><div class="loading">불러오는 중...</div></div>
+  </div>
+
+  <script>
+    let sb = null, me = null;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = ymd(new Date());
+    const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+    const nf = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 });
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+
+    let FIELDS = [], DAYS = {}, ym = todayStr.slice(0, 7), tabFilter = '', mode = 'val';
+    let COLS = [], ROWS = [];           // 화면 칸 정의 / 날짜 목록
+    let anchor = null, focus = null, dragging = false, editing = null;
+
+    async function fetchAll(q) {
+      const out = []; let from = 0;
+      while (true) { const { data, error } = await q().range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; from += 1000; }
+      return out;
+    }
+    async function loadFields() {
+      FIELDS = (await fetchAll(() => sb.from('meter_fields').select('*').order('sort'))).filter(f => f.active);
+      const tabs = [...new Set(FIELDS.map(f => f.tab))];
+      document.getElementById('tabseg').innerHTML = [['', '전체'], ...tabs.map(t => [t, t])].map(([v, l]) => `<button data-t="${esc(v)}" class="${v === tabFilter ? 'on' : ''}">${esc(l)}</button>`).join('');
+      document.querySelectorAll('#tabseg button').forEach(b => b.onclick = () => { tabFilter = b.dataset.t; document.querySelectorAll('#tabseg button').forEach(x => x.classList.toggle('on', x === b)); render(); });
+    }
+    async function loadMonth() {
+      const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate();
+      const first = `${ym}-01`, last = `${ym}-${pad2(n)}`;
+      // 전월 마지막 며칠도 (사용량 계산·전날 비교용)
+      const rows = await fetchAll(() => sb.from('meter_daily').select('d, weather, temp_min, temp_max, v').gte('d', addDays(first, -10)).lte('d', addDays(last, 1)).order('d'));
+      DAYS = {}; rows.forEach(r => DAYS[r.d] = r);
+      ROWS = []; for (let d = 1; d <= n; d++) ROWS.push(`${ym}-${pad2(d)}`);
+    }
+
+    // 칸 값 읽기
+    function raw(ds, col) {
+      const r = DAYS[ds]; if (!r) return '';
+      if (col.kind === 'weather') return r.weather || '';
+      if (col.kind === 'tmin') return r.temp_min ?? '';
+      if (col.kind === 'tmax') return r.temp_max ?? '';
+      const v = (r.v || {})[col.id]; return v === undefined || v === null ? '' : v;
+    }
+    function prevReading(ds, id) { for (let i = 1; i <= 10; i++) { const r = DAYS[addDays(ds, -i)]; const v = r && (r.v || {})[id]; if (v !== undefined && v !== null && v !== '') return Number(v); } return null; }
+    function usage(ds, col) { // 일 사용량 = 다음날 지침 − 그날 지침 (유틸리티 분석과 같은 기준)
+      if (!col.cumulative) return raw(ds, col);
+      const a = raw(ds, col), r = DAYS[addDays(ds, 1)], b = r && (r.v || {})[col.id];
+      if (a === '' || b === undefined || b === null || b === '') return '';
+      return Math.round((Number(b) - Number(a)) * 1000) / 1000;
+    }
+    const shown = (ds, col) => mode === 'use' && col.id ? usage(ds, col) : raw(ds, col);
+    const fmt = v => (v === '' || v === null || v === undefined) ? '' : (typeof v === 'number' || !isNaN(Number(v))) && v !== '' ? nf.format(Number(v)) : esc(v);
+
+    function render() {
+      COLS = [{ kind: 'weather', name: '날씨', unit: '', tab: '날씨', section: '' }, { kind: 'tmin', name: '최저', unit: '°C', tab: '날씨', section: '' }, { kind: 'tmax', name: '최고', unit: '°C', tab: '날씨', section: '' }]
+        .filter(() => !tabFilter)
+        .concat(FIELDS.filter(f => !tabFilter || f.tab === tabFilter).map(f => ({ ...f, kind: 'f' })));
+      document.getElementById('ym').textContent = `${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월`;
+      document.getElementById('app').classList.toggle('use-mode', mode === 'use');
+      const span = key => { const out = []; COLS.forEach(c => { const k = key(c), l = out[out.length - 1]; if (l && l.k === k) l.n++; else out.push({ k, n: 1, c }); }); return out; };
+      let h = '<table class="g"><thead>';
+      h += '<tr class="r1"><th class="dcol" rowspan="3">날짜</th>' + span(c => c.tab).map(x => `<th colspan="${x.n}">${esc(x.c.tab)}</th>`).join('') + '</tr>';
+      h += '<tr class="r2">' + span(c => c.tab + '|' + c.section).map(x => `<th colspan="${x.n}">${esc(x.c.section)}</th>`).join('') + '</tr>';
+      h += '<tr class="r3">' + COLS.map(c => `<th>${esc(c.name)}<span class="u">${esc(c.unit)}${mode === 'use' && c.cumulative ? ' (사용량)' : ''}</span></th>`).join('') + '</tr></thead><tbody>';
+      ROWS.forEach((ds, ri) => {
+        const wd = new Date(ds + 'T00:00:00').getDay();
+        h += `<tr class="${wd === 0 || wd === 6 ? 'we' : ''} ${ds === todayStr ? 'today' : ''}"><td class="dcol">${Number(ds.slice(8))}일 (${WEEK[wd]})</td>`;
+        COLS.forEach((c, ci) => {
+          const v = shown(ds, c);
+          let neg = false;
+          if (c.cumulative && v !== '') { if (mode === 'use') neg = Number(v) < 0; else { const p = prevReading(ds, c.id); neg = p !== null && Number(v) < p; } }
+          h += `<td class="c ${c.kind === 'weather' ? 't' : ''} ${neg ? 'neg' : ''}" data-r="${ri}" data-c="${ci}">${fmt(v)}</td>`;
+        });
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+      const wrap = document.getElementById('wrap'); const sl = wrap.scrollLeft, st = wrap.scrollTop;
+      wrap.innerHTML = h; wrap.scrollLeft = sl; wrap.scrollTop = st;
+      paintSel();
+    }
+
+    // ---------------- 선택 ----------------
+    const cell = (r, c) => document.querySelector(`#wrap td.c[data-r="${r}"][data-c="${c}"]`);
+    function rect() { if (!anchor) return null; return { r1: Math.min(anchor.r, focus.r), r2: Math.max(anchor.r, focus.r), c1: Math.min(anchor.c, focus.c), c2: Math.max(anchor.c, focus.c) }; }
+    function paintSel() {
+      document.querySelectorAll('#wrap td.sel, #wrap td.act').forEach(td => td.classList.remove('sel', 'act'));
+      const R = rect(); if (!R) return;
+      for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) { const td = cell(r, c); if (td) td.classList.add('sel'); }
+      const a = cell(focus.r, focus.c); if (a) a.classList.add('act');
+    }
+    function moveTo(r, c, extend) {
+      r = Math.max(0, Math.min(ROWS.length - 1, r)); c = Math.max(0, Math.min(COLS.length - 1, c));
+      focus = { r, c }; if (!extend) anchor = { r, c };
+      paintSel(); const td = cell(r, c); if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    // ---------------- 저장 ----------------
+    let pending = 0;
+    function status(t) { document.getElementById('status').textContent = t; }
+    // changes: [{ ds, col, val }]  val: '' 이면 지움
+    async function saveChanges(changes) {
+      if (mode === 'use') { alert('일 사용량 보기에서는 고칠 수 없습니다. [검침값]으로 바꿔 주세요.'); return; }
+      const byDay = {};
+      for (const ch of changes) {
+        const b = byDay[ch.ds] = byDay[ch.ds] || { patch: {}, weather: null, tmin: null, tmax: null, cells: [] };
+        const s = String(ch.val ?? '').trim().replace(/,/g, '');
+        if (ch.col.kind === 'weather') { if (s) b.weather = s; }
+        else if (s !== '' && isNaN(Number(s))) { alert(`숫자가 아닌 값이 있습니다: "${ch.val}" (${ch.ds} ${ch.col.name})`); return; }
+        else if (ch.col.kind === 'tmin') { if (s !== '') b.tmin = Number(s); }
+        else if (ch.col.kind === 'tmax') { if (s !== '') b.tmax = Number(s); }
+        else b.patch[ch.col.id] = s === '' ? null : Number(s);
+        b.cells.push(ch);
+      }
+      pending++; status('저장 중...');
+      let fail = 0;
+      for (const [ds, b] of Object.entries(byDay)) {
+        const { data, error } = await sb.rpc('meter_save', { p_d: ds, p_weather: b.weather, p_tmin: b.tmin, p_tmax: b.tmax, p_patch: b.patch });
+        if (error) { fail++; status('⚠ ' + errMsg(error)); continue; }
+        DAYS[ds] = data;
+      }
+      pending--;
+      render();
+      changes.forEach(ch => { const td = cell(ROWS.indexOf(ch.ds), COLS.indexOf(ch.col)); if (td) { td.classList.add(fail ? 'err' : 'saved'); setTimeout(() => td.classList.remove('saved'), 1200); } });
+      if (!fail && !pending) status(`✓ ${changes.length}칸 저장됨`);
+    }
+
+    // ---------------- 편집 ----------------
+    function startEdit(initial) {
+      if (mode === 'use' || !focus) return;
+      const td = cell(focus.r, focus.c); if (!td) return;
+      const col = COLS[focus.c], ds = ROWS[focus.r];
+      editing = { td, col, ds };
+      td.innerHTML = `<input value="${esc(initial !== undefined ? initial : raw(ds, col))}">`;
+      const inp = td.querySelector('input'); inp.focus();
+      if (initial === undefined) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length);
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); commitEdit(); e.key === 'Tab' ? moveTo(focus.r, focus.c + (e.shiftKey ? -1 : 1)) : moveTo(focus.r + (e.shiftKey ? -1 : 1), focus.c); document.getElementById('wrap').focus(); }
+        else if (e.key === 'Escape') { e.stopPropagation(); cancelEdit(); }
+      });
+      inp.addEventListener('blur', () => { if (editing && editing.td === td) commitEdit(); });
+    }
+    function commitEdit() {
+      if (!editing) return; const { td, col, ds } = editing; editing = null;
+      const v = td.querySelector('input').value;
+      if (String(v).trim() === String(raw(ds, col))) { render(); return; }
+      saveChanges([{ ds, col, val: v }]);
+    }
+    function cancelEdit() { editing = null; render(); document.getElementById('wrap').focus(); }
+
+    // ---------------- 복사 / 붙여넣기 ----------------
+    function selectionTSV() {
+      const R = rect(); if (!R) return '';
+      const lines = [];
+      for (let r = R.r1; r <= R.r2; r++) { const row = []; for (let c = R.c1; c <= R.c2; c++) row.push(String(shown(ROWS[r], COLS[c]))); lines.push(row.join('\t')); }
+      return lines.join('\n');
+    }
+    function pasteTSV(text) {
+      if (!focus) return;
+      const R = rect();
+      const lines = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
+      const changes = [];
+      // 한 칸만 복사해서 범위에 붙이면 범위 전체에 채움
+      if (lines.length === 1 && lines[0].length === 1 && R && (R.r2 > R.r1 || R.c2 > R.c1)) {
+        for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) changes.push({ ds: ROWS[r], col: COLS[c], val: lines[0][0] });
+      } else {
+        const r0 = R ? R.r1 : focus.r, c0 = R ? R.c1 : focus.c;
+        lines.forEach((row, i) => row.forEach((v, j) => { const r = r0 + i, c = c0 + j; if (r < ROWS.length && c < COLS.length) changes.push({ ds: ROWS[r], col: COLS[c], val: v }); }));
+        anchor = { r: r0, c: c0 }; focus = { r: Math.min(ROWS.length - 1, r0 + lines.length - 1), c: Math.min(COLS.length - 1, c0 + Math.max(...lines.map(l => l.length)) - 1) };
+      }
+      if (changes.length > 300 && !confirm(`${changes.length}칸을 붙여넣을까요?`)) return;
+      saveChanges(changes);
+    }
+
+    // ---------------- 이벤트 ----------------
+    function bind() {
+      const wrap = document.getElementById('wrap');
+      wrap.addEventListener('mousedown', e => {
+        const td = e.target.closest('td.c'); if (!td || (editing && editing.td === td)) return;
+        if (editing) commitEdit();
+        const r = +td.dataset.r, c = +td.dataset.c;
+        if (e.shiftKey && anchor) focus = { r, c }; else { anchor = { r, c }; focus = { r, c }; }
+        dragging = true; paintSel(); wrap.focus(); e.preventDefault();
+      });
+      wrap.addEventListener('mouseover', e => { if (!dragging) return; const td = e.target.closest('td.c'); if (!td) return; focus = { r: +td.dataset.r, c: +td.dataset.c }; paintSel(); });
+      document.addEventListener('mouseup', () => dragging = false);
+      wrap.addEventListener('dblclick', e => { if (e.target.closest('td.c')) startEdit(); });
+      wrap.addEventListener('keydown', e => {
+        if (editing || !focus) return;
+        const k = e.key;
+        if (k === 'ArrowDown' || k === 'Enter') { e.preventDefault(); moveTo(focus.r + 1, focus.c, e.shiftKey && k !== 'Enter'); }
+        else if (k === 'ArrowUp') { e.preventDefault(); moveTo(focus.r - 1, focus.c, e.shiftKey); }
+        else if (k === 'ArrowRight' || k === 'Tab') { e.preventDefault(); moveTo(focus.r, focus.c + (k === 'Tab' && e.shiftKey ? -1 : 1), e.shiftKey && k !== 'Tab'); }
+        else if (k === 'ArrowLeft') { e.preventDefault(); moveTo(focus.r, focus.c - 1, e.shiftKey); }
+        else if (k === 'F2') { e.preventDefault(); startEdit(); }
+        else if (k === 'Delete' || k === 'Backspace') {
+          e.preventDefault(); const R = rect(); const n = (R.r2 - R.r1 + 1) * (R.c2 - R.c1 + 1);
+          if (n > 1 && !confirm(`선택한 ${n}칸을 지울까요?`)) return;
+          const ch = []; for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) if (COLS[c].kind === 'f') ch.push({ ds: ROWS[r], col: COLS[c], val: '' });
+          if (ch.length) saveChanges(ch);
+        }
+        else if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'a') { e.preventDefault(); anchor = { r: 0, c: 0 }; focus = { r: ROWS.length - 1, c: COLS.length - 1 }; paintSel(); }
+        else if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); anchor = { ...focus }; paintSel(); startEdit(k); }
+      });
+      document.addEventListener('copy', e => { if (editing || !anchor || document.activeElement !== wrap) return; e.clipboardData.setData('text/plain', selectionTSV()); e.preventDefault(); status('복사됨'); });
+      document.addEventListener('paste', e => { if (editing || document.activeElement !== wrap) return; const t = e.clipboardData.getData('text/plain'); if (t) { e.preventDefault(); pasteTSV(t); } });
+    }
+
+    async function shiftMonth(n) {
+      const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + n, 1);
+      ym = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; anchor = focus = null;
+      document.getElementById('wrap').innerHTML = '<div class="loading">불러오는 중...</div>';
+      await loadMonth(); render();
+    }
+    function setMode(m) { mode = m; document.getElementById('m-val').classList.toggle('on', m === 'val'); document.getElementById('m-use').classList.toggle('on', m === 'use'); render(); }
+
+    function exportXlsx() {
+      if (typeof XLSX === 'undefined') return alert('엑셀 기능을 불러오지 못했습니다.');
+      const head1 = ['날짜', ...COLS.map(c => c.tab)], head2 = ['', ...COLS.map(c => c.section)], head3 = ['', ...COLS.map(c => c.name + (c.unit ? ` (${c.unit})` : ''))];
+      const rows = ROWS.map(ds => [ds, ...COLS.map(c => { const v = shown(ds, c); return v === '' ? null : (isNaN(Number(v)) ? v : Number(v)); })]);
+      const ws = XLSX.utils.aoa_to_sheet([head1, head2, head3, ...rows]);
+      ws['!cols'] = [{ wch: 11 }, ...COLS.map(() => ({ wch: 11 }))]; ws['!freeze'] = { xSplit: 1, ySplit: 3 };
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, mode === 'use' ? '일사용량' : '검침값');
+      XLSX.writeFile(wb, `설비검침_${ym}${mode === 'use' ? '_사용량' : ''}.xlsx`);
+    }
+
+    Portal.start({
+      appId: 'meter',
+      title: '설비검침 표',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        bind();
+        try { await loadFields(); await loadMonth(); render(); }
+        catch (e) { document.getElementById('wrap').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}</div>`; }
+      }
+    });
+  </script>
+</body>
+</html>
