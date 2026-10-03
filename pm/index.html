@@ -88,7 +88,31 @@
     .item-row.status-임박 { border-left-color: #f29900; background: #fff8e8; }
     .item-row.status-정상 { border-left-color: #1e8e3e; }
 
-    .item-main { flex: 1; min-width: 220px; }
+    .item-main { flex: 1; min-width: 200px; }
+    .cyc { width: 64px; flex-shrink: 0; text-align: center; border-radius: 8px; padding: 6px 2px; line-height: 1.2; border: 1px solid; }
+    .cyc b { display: block; font-size: 16px; }
+    .cyc span { display: block; font-size: 11px; margin-top: 1px; }
+    .cyc-연간 { background: #f3ecfd; color: #6b3fb5; border-color: #d6c6f3; }
+    .cyc-월간 { background: #e8f0fb; color: #2c5aa0; border-color: #c4d6f0; }
+    .cyc-주간 { background: #e6f5ec; color: #1e7e43; border-color: #bfe3cc; }
+    .cyc-일일 { background: #fff3e0; color: #b25e00; border-color: #f3d3a5; }
+    /* 항목관리 표 */
+    .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; vertical-align: middle; }
+    .seg button { border: none; background: #fff; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+    .seg button.on { background: #2c5aa0; color: #fff; }
+    .pg-wrap { overflow: auto; max-height: calc(100vh - 260px); background: #fff; border: 1px solid #d0d4d9; border-radius: 6px; user-select: none; outline: none; }
+    table.pg { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+    table.pg th, table.pg td { border-right: 1px solid #e1e4e8; border-bottom: 1px solid #e1e4e8; white-space: nowrap; }
+    table.pg thead th { position: sticky; top: 0; background: #f0f2f5; z-index: 2; padding: 6px; text-align: left; font-weight: 600; }
+    table.pg thead th small { color: #999; font-weight: normal; }
+    table.pg td.pc { padding: 0 6px; height: 26px; cursor: cell; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+    table.pg td.pc.ro { color: #888; background: #fafafa; cursor: default; }
+    table.pg .pg-n { position: sticky; left: 0; background: #f6f7f9; color: #999; text-align: center; min-width: 34px; font-size: 11px; z-index: 1; }
+    table.pg thead .pg-n { z-index: 3; }
+    table.pg tr.status-지연 .pg-n { background: #fdeceb; color: #d93025; } table.pg tr.status-임박 .pg-n { background: #fff3d6; color: #b26a00; }
+    table.pg td.pc.sel { background: #dbe9fb; }
+    table.pg td.pc.act { outline: 2px solid #1a73e8; outline-offset: -2px; }
+    table.pg td.pc input { width: 100%; border: none; outline: none; font: inherit; padding: 0; background: #fff; }
     .item-main .equip { font-weight: bold; font-size: 14px; }
     .item-meta { font-size: 12px; color: #777; margin-top: 2px; }
     .badge {
@@ -295,6 +319,9 @@
       <!-- 항목관리 (관리자) -->
       <div id="tab-manage" class="tab">
         <button class="btn" onclick="openAddItemModal()">+ 새 점검·정비 항목 추가</button>
+        <span class="seg" style="margin-left:8px"><button id="mv-list" class="on" onclick="setManageView(false)">목록</button><button id="mv-grid" onclick="setManageView(true)">📊 표로 보기·수정</button></span>
+        <b id="pg-status" style="font-size:12px;color:#1e8e3e;margin-left:8px"></b>
+        <div class="hint" id="pg-hint" hidden style="font-size:12px;color:#777;margin-top:8px;line-height:1.6">끌어서 범위 선택 · <b>Ctrl+C</b> 복사 · <b>Ctrl+V</b> 붙여넣기(엑셀에서 복사한 표 그대로) · 칸에서 바로 타이핑하거나 더블클릭해서 고치기 · 방향키·Enter 이동 · 고치면 바로 저장. 주기·주기값·일정 방식·하루빼기·시작기준일을 고치면 다음예정일이 다시 계산됩니다. 새 항목 추가·중지는 [목록]에서 하세요.</div>
         <div class="filters" style="margin-top:14px;">
           <input type="text" id="manage-search" placeholder="설비명·항목 검색">
           <select id="manage-filter-cycle">
@@ -588,6 +615,13 @@
       return { status: '정상', daysLeft: diff };
     }
 
+    // 항목 왼쪽에 크게 보이는 주기 표시
+    function cycleBadge(i) {
+      const n = Number(i.cycleValue) || 1;
+      const sub = { 연간: n === 1 ? '매년' : n + '년마다', 월간: n === 1 ? '매월' : n + '개월마다', 주간: n === 1 ? '매주' : n + '주마다', 일일: n === 1 ? '매일' : n + '일마다' }[i.cycleType] || '';
+      return `<div class="cyc cyc-${esc(i.cycleType)}"><b>${esc(i.cycleType)}</b><span>${sub}</span></div>`;
+    }
+
     function cycleLabel_(주기구분, 주기값) {
       const n = Number(주기값) || 1;
       switch (주기구분) {
@@ -722,9 +756,10 @@
     function todayRow_(i) {
       return `
         <div class="item-row status-${i.status}">
+          ${cycleBadge(i)}
           <div class="item-main">
             <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
-            <div class="item-meta">${esc(i.cycleType)} 주기 · 담당: ${esc(i.assignee || '미지정')} · 예정일: ${i.nextDue}
+            <div class="item-meta">담당: ${esc(i.assignee || '미지정')} · 예정일: ${i.nextDue}
               ${i.daysLeft < 0 ? ` · <b style="color:#d93025;">${Math.abs(i.daysLeft)}일 밀림</b>`
                 : i.daysLeft === 0 ? ' · 오늘 마감' : ` · D-${i.daysLeft}`}
             </div>
@@ -795,9 +830,10 @@
       if (!filtered.length) { list.innerHTML = '<div class="empty-state">해당하는 항목이 없습니다.</div>'; return; }
       list.innerHTML = renderGroupedItems_(filtered, i => `
         <div class="item-row status-${i.status}">
+          ${cycleBadge(i)}
           <div class="item-main">
             <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
-            <div class="item-meta">${esc(i.cycleType)} 주기 · 담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
+            <div class="item-meta">담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
               ${i.daysLeft === null ? '' : (i.daysLeft >= 0 ? `(D-${i.daysLeft})` : `(${Math.abs(i.daysLeft)}일 지남)`)}
             </div>
           </div>
@@ -1206,11 +1242,13 @@
         (!searchF || (i.equipment + ' ' + i.task).toLowerCase().includes(searchF)));
       const list = document.getElementById('manage-list');
       if (!filtered.length) { list.innerHTML = '<div class="empty-state">해당하는 항목이 없습니다.</div>'; return; }
+      if (pmGridMode) return renderPmGrid(filtered);
       list.innerHTML = renderGroupedItems_(filtered, i => `
         <div class="item-row status-${i.status}">
+          ${cycleBadge(i)}
           <div class="item-main">
             <div class="equip">${esc(i.equipment)} — ${esc(i.task)}</div>
-            <div class="item-meta">${esc(i.id)} · ${esc(i.cycleType)}(${i.cycleValue}) · 담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
+            <div class="item-meta">담당: ${esc(i.assignee || '미지정')} · 다음예정일: ${i.nextDue}
               ${i.minusOneDay === 'Y' ? ' · <span style="color:#2c5aa0;">하루빼기 개별적용</span>' : ''}
               ${i.minusOneDay === 'N' ? ' · <span style="color:#d93025;">하루빼기 개별미적용</span>' : ''}
               ${i.scheduleMode === 'fixed' ? ' · <span style="color:#1e8e3e;font-weight:bold;">📌 원래 일정 유지</span>' : ''}
@@ -1219,6 +1257,176 @@
           <button class="btn secondary" onclick="openEditItemModal('${esc(i.id)}')">수정</button>
           <button class="btn danger" onclick="deactivate('${esc(i.id)}')">중지</button>
         </div>`);
+    }
+
+    // =====================================================================
+    // 항목관리 — 엑셀처럼 표로 보고 고치기 (관리자)
+    // =====================================================================
+    let pmGridMode = false, PG_ROWS = [], pgA = null, pgF = null, pgDrag = false, pgEdit = null;
+    const PG_COLS = [
+      { k: 'category', label: '분류', w: 110 },
+      { k: 'equipment', label: '설비명', w: 150 },
+      { k: 'task', label: '점검·정비 항목', w: 260 },
+      { k: 'cycleType', label: '주기', w: 60, db: 'cycle_type', hint: '연간/월간/주간/일일' },
+      { k: 'cycleValue', label: '주기값', w: 56, db: 'cycle_value', hint: '숫자 (예: 3 = 3개월마다)' },
+      { k: 'scheduleMode', label: '일정 방식', w: 110, db: 'schedule_mode', hint: '완료일 기준 / 원래 일정 유지' },
+      { k: 'minusOneDay', label: '하루빼기', w: 70, db: 'minus_one', hint: '기본 / 적용 / 미적용' },
+      { k: 'startDate', label: '시작기준일', w: 96, db: 'start_date', hint: '2026-10-03' },
+      { k: 'assignee', label: '담당', w: 80 },
+      { k: 'note', label: '비고', w: 180 },
+      { k: 'nextDue', label: '다음예정일', w: 96, ro: true },
+    ];
+    const pgShow = (i, c) => {
+      const v = i[c.k];
+      if (c.k === 'scheduleMode') return v === 'fixed' ? '원래 일정 유지' : '완료일 기준';
+      if (c.k === 'minusOneDay') return v === 'Y' ? '적용' : v === 'N' ? '미적용' : '기본';
+      return v ?? '';
+    };
+    // 입력값 → DB 값 (잘못된 값이면 throw)
+    function pgParse(c, s) {
+      s = String(s ?? '').trim();
+      switch (c.k) {
+        case 'cycleType': { const m = { 연: '연간', 년: '연간', 월: '월간', 주: '주간', 일: '일일', 매: '일일' }; const v = ['연간', '월간', '주간', '일일'].includes(s) ? s : m[s[0]]; if (!v) throw `주기는 연간/월간/주간/일일 중 하나로 적어 주세요 ("${s}")`; return v; }
+        case 'cycleValue': { const n = parseInt(s, 10); if (!(n >= 1)) throw `주기값은 1 이상의 숫자로 적어 주세요 ("${s}")`; return n; }
+        case 'scheduleMode': return /고정|유지|fixed|원래/i.test(s) ? 'fixed' : 'done';
+        case 'minusOneDay': return /^(y|적용|o|예)$/i.test(s) ? 'Y' : /^(n|미적용|x|아니오)$/i.test(s) ? 'N' : '';
+        case 'startDate': { const m = s.match(/^(\d{4})[-./ ]\s*(\d{1,2})[-./ ]\s*(\d{1,2})/); if (!m) throw `날짜는 2026-10-03 처럼 적어 주세요 ("${s}")`; return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`; }
+        default: return s;
+      }
+    }
+
+    function setManageView(grid) {
+      pmGridMode = grid;
+      document.getElementById('mv-list').classList.toggle('on', !grid); document.getElementById('mv-grid').classList.toggle('on', grid);
+      document.getElementById('pg-hint').hidden = !grid;
+      pgA = pgF = null; renderManageList();
+    }
+    function renderPmGrid(items) {
+      PG_ROWS = items.slice().sort((a, b) => (a.category + '\u0000' + a.equipment + '\u0000' + a.task).localeCompare(b.category + '\u0000' + b.equipment + '\u0000' + b.task, 'ko'));
+      let h = `<div class="pg-wrap" id="pg-wrap" tabindex="0"><table class="pg"><thead><tr><th class="pg-n">#</th>${PG_COLS.map(c => `<th style="min-width:${c.w}px" title="${esc(c.hint || '')}">${c.label}${c.ro ? ' <small>(자동)</small>' : ''}</th>`).join('')}</tr></thead><tbody>`;
+      PG_ROWS.forEach((i, r) => {
+        h += `<tr class="status-${i.status}"><td class="pg-n">${r + 1}</td>` + PG_COLS.map((c, ci) => `<td class="pc ${c.ro ? 'ro' : ''}" data-r="${r}" data-c="${ci}">${esc(pgShow(i, c))}</td>`).join('') + '</tr>';
+      });
+      h += '</tbody></table></div>';
+      const old = document.getElementById('pg-wrap'); const sl = old ? old.scrollLeft : 0, st = old ? old.scrollTop : 0;
+      document.getElementById('manage-list').innerHTML = h;
+      const w = document.getElementById('pg-wrap'); w.scrollLeft = sl; w.scrollTop = st;
+      bindPmGrid(w); pgPaint();
+    }
+    const pgCell = (r, c) => document.querySelector(`#pg-wrap td.pc[data-r="${r}"][data-c="${c}"]`);
+    const pgRect = () => pgA && { r1: Math.min(pgA.r, pgF.r), r2: Math.max(pgA.r, pgF.r), c1: Math.min(pgA.c, pgF.c), c2: Math.max(pgA.c, pgF.c) };
+    function pgPaint() {
+      document.querySelectorAll('#pg-wrap td.sel, #pg-wrap td.act').forEach(td => td.classList.remove('sel', 'act'));
+      const R = pgRect(); if (!R) return;
+      for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) { const td = pgCell(r, c); if (td) td.classList.add('sel'); }
+      const a = pgCell(pgF.r, pgF.c); if (a) a.classList.add('act');
+    }
+    function pgMove(r, c, ext) {
+      r = Math.max(0, Math.min(PG_ROWS.length - 1, r)); c = Math.max(0, Math.min(PG_COLS.length - 1, c));
+      pgF = { r, c }; if (!ext) pgA = { r, c }; pgPaint(); const td = pgCell(r, c); if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    function pgStatus(t) { document.getElementById('pg-status').textContent = t; }
+
+    // changes: [{ r, c, val }]
+    async function pgSave(changes) {
+      const byItem = {};
+      try {
+        for (const ch of changes) {
+          const col = PG_COLS[ch.c], it = PG_ROWS[ch.r]; if (!col || !it || col.ro) continue;
+          const v = pgParse(col, ch.val);
+          (byItem[it.id] = byItem[it.id] || { it, patch: {} }).patch[col.k] = v;
+        }
+      } catch (msg) { alert(msg); return; }
+      const list = Object.values(byItem); if (!list.length) return;
+      pgStatus('저장 중...');
+      const c = await getCore();
+      let fail = 0;
+      for (const { it, patch } of list) {
+        const m = { ...it, ...patch };
+        const row = {};
+        PG_COLS.forEach(col => { if (!col.ro && col.k in patch) row[col.db || col.k] = patch[col.k]; });
+        if (['cycleType', 'cycleValue', 'scheduleMode', 'minusOneDay', 'startDate'].some(k => k in patch) && m.startDate) {
+          // 항목 수정 창과 같은 방식으로 다음예정일 다시 계산
+          row.next_due = toYMD(m.scheduleMode === 'fixed'
+            ? addPeriod_(parseYMD(m.startDate), m.cycleType, m.cycleValue)
+            : calcNextDue_(parseYMD(m.startDate), m.cycleType, m.cycleValue, resolveMinusOneDay_(m.minusOneDay, c.settings)));
+        }
+        const res = await sb.from('pm_items').update(row).eq('id', it.id).select();
+        if (res.error || !res.data || !res.data.length) { fail++; pgStatus('⚠ 저장 실패: ' + (res.error ? errMsg(res.error) : '권한 없음')); }
+      }
+      await refreshDash(true);
+      renderManageList();
+      if (!fail) pgStatus(`✓ ${list.length}개 항목 저장됨`);
+    }
+    function pgStartEdit(initial) {
+      if (!pgF) return; const col = PG_COLS[pgF.c]; if (col.ro) return;
+      const td = pgCell(pgF.r, pgF.c); if (!td) return;
+      const it = PG_ROWS[pgF.r], cur = col.k === 'startDate' ? (it.startDate || '') : pgShow(it, col);
+      pgEdit = { td, r: pgF.r, c: pgF.c, cur: String(cur) };
+      td.innerHTML = `<input value="${esc(initial !== undefined ? initial : cur)}">`;
+      const inp = td.querySelector('input'); inp.focus();
+      if (initial === undefined) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length);
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); const k = e.key, sh = e.shiftKey; pgCommit(); k === 'Tab' ? pgMove(pgF.r, pgF.c + (sh ? -1 : 1)) : pgMove(pgF.r + (sh ? -1 : 1), pgF.c); document.getElementById('pg-wrap').focus(); }
+        else if (e.key === 'Escape') { e.stopPropagation(); pgEdit = null; renderManageList(); document.getElementById('pg-wrap').focus(); }
+      });
+      inp.addEventListener('blur', () => { if (pgEdit && pgEdit.td === td) pgCommit(); });
+    }
+    function pgCommit() {
+      if (!pgEdit) return; const { td, r, c, cur } = pgEdit; pgEdit = null;
+      const v = td.querySelector('input').value;
+      if (v.trim() === cur.trim()) { td.textContent = cur; return; }
+      td.textContent = v; pgSave([{ r, c, val: v }]);
+    }
+    function pgTSV() {
+      const R = pgRect(); if (!R) return '';
+      const out = []; for (let r = R.r1; r <= R.r2; r++) { const row = []; for (let c = R.c1; c <= R.c2; c++) row.push(String(pgShow(PG_ROWS[r], PG_COLS[c])).replace(/[\t\n]/g, ' ')); out.push(row.join('\t')); }
+      return out.join('\n');
+    }
+    function pgPaste(text) {
+      if (!pgF) return; const R = pgRect();
+      const lines = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
+      const ch = [];
+      if (lines.length === 1 && lines[0].length === 1 && R && (R.r2 > R.r1 || R.c2 > R.c1)) {
+        for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) ch.push({ r, c, val: lines[0][0] });
+      } else {
+        const r0 = R ? R.r1 : pgF.r, c0 = R ? R.c1 : pgF.c;
+        lines.forEach((row, i) => row.forEach((v, j) => { if (r0 + i < PG_ROWS.length && c0 + j < PG_COLS.length) ch.push({ r: r0 + i, c: c0 + j, val: v }); }));
+      }
+      if (ch.length > 1 && !confirm(`${ch.length}칸을 붙여넣을까요?`)) return;
+      pgSave(ch);
+    }
+    let pgBound = false;
+    function bindPmGrid(w) {
+      w.addEventListener('mousedown', e => {
+        const td = e.target.closest('td.pc'); if (!td || (pgEdit && pgEdit.td === td)) return;
+        if (pgEdit) pgCommit();
+        const r = +td.dataset.r, c = +td.dataset.c;
+        if (e.shiftKey && pgA) pgF = { r, c }; else { pgA = { r, c }; pgF = { r, c }; }
+        pgDrag = true; pgPaint(); w.focus(); e.preventDefault();
+      });
+      w.addEventListener('mouseover', e => { if (!pgDrag) return; const td = e.target.closest('td.pc'); if (td) { pgF = { r: +td.dataset.r, c: +td.dataset.c }; pgPaint(); } });
+      w.addEventListener('dblclick', e => { if (e.target.closest('td.pc')) pgStartEdit(); });
+      w.addEventListener('keydown', e => {
+        if (pgEdit || !pgF) return; const k = e.key;
+        if (k === 'ArrowDown' || k === 'Enter') { e.preventDefault(); pgMove(pgF.r + 1, pgF.c, e.shiftKey && k !== 'Enter'); }
+        else if (k === 'ArrowUp') { e.preventDefault(); pgMove(pgF.r - 1, pgF.c, e.shiftKey); }
+        else if (k === 'ArrowRight' || k === 'Tab') { e.preventDefault(); pgMove(pgF.r, pgF.c + (k === 'Tab' && e.shiftKey ? -1 : 1), e.shiftKey && k !== 'Tab'); }
+        else if (k === 'ArrowLeft') { e.preventDefault(); pgMove(pgF.r, pgF.c - 1, e.shiftKey); }
+        else if (k === 'F2') { e.preventDefault(); pgStartEdit(); }
+        else if (k === 'Delete' || k === 'Backspace') {
+          e.preventDefault(); const R = pgRect(); const ch = [];
+          for (let r = R.r1; r <= R.r2; r++) for (let c = R.c1; c <= R.c2; c++) if (['category', 'assignee', 'note', 'minusOneDay'].includes(PG_COLS[c].k)) ch.push({ r, c, val: '' });
+          if (!ch.length) return alert('분류·담당·비고·하루빼기만 지울 수 있습니다.');
+          if (ch.length > 1 && !confirm(`선택한 ${ch.length}칸을 지울까요?`)) return;
+          pgSave(ch);
+        }
+        else if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); pgA = { ...pgF }; pgPaint(); pgStartEdit(k); }
+      });
+      if (pgBound) return; pgBound = true;
+      document.addEventListener('mouseup', () => pgDrag = false);
+      document.addEventListener('copy', e => { const w = document.getElementById('pg-wrap'); if (!pmGridMode || pgEdit || !pgA || document.activeElement !== w) return; e.clipboardData.setData('text/plain', pgTSV()); e.preventDefault(); pgStatus('복사됨'); });
+      document.addEventListener('paste', e => { const w = document.getElementById('pg-wrap'); if (!pmGridMode || pgEdit || document.activeElement !== w) return; const t = e.clipboardData.getData('text/plain'); if (t) { e.preventDefault(); pgPaste(t); } });
     }
 
     let editingItemId = null;
@@ -1240,7 +1448,7 @@
       const item = core && core.itemById[id];
       if (!item) return alert('항목을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.');
       editingItemId = id;
-      document.getElementById('item-modal-title').textContent = '항목 수정 (' + id + ')';
+      document.getElementById('item-modal-title').textContent = '항목 수정';
       document.getElementById('i-category').value = item.category;
       document.getElementById('i-equipment').value = item.equipment;
       document.getElementById('i-task').value = item.task;
