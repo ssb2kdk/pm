@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>설비점검일지</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root {
+      --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888; --hint: #bbb;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB;
+      --blue: #185FA5; --blue-bg: #E6F1FB; --violet: #5B3FA8; --violet-bg: #EEE8FA; --radius: 12px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 560px; margin: 0 auto; }
+    .wrap.wide { max-width: 1100px; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .title { font-size: 17px; font-weight: 700; }
+    .vtabs { display: flex; gap: 6px; }
+    .vtab { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .vtab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .date-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+    .date-row button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 14px; cursor: pointer; }
+    .date-row input { flex: 1; font-size: 15px; font-weight: 600; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; text-align: center; background: var(--card); color: var(--text); }
+    .date-row .today { width: auto; padding: 0 10px; font-size: 12px; }
+    .content { padding: 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 140px; }
+    .sec { font-size: 13px; font-weight: 700; color: var(--muted); padding: 10px 2px 0; display: flex; justify-content: space-between; align-items: center; }
+    .sec button { font-size: 12px; padding: 4px 10px; border: 1px solid var(--teal); color: var(--teal); background: var(--teal-bg); border-radius: 20px; cursor: pointer; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .card.bad { border-color: var(--red); }
+    .card .eq { font-size: 12px; color: var(--muted); }
+    .card .ct { font-size: 15px; font-weight: 600; margin: 2px 0; }
+    .card .std { font-size: 12px; color: var(--blue); }
+    .card .ref { font-size: 12px; color: var(--teal); font-weight: 600; margin-top: 2px; }
+    .res { display: flex; gap: 6px; margin-top: 8px; }
+    .res button { flex: 1; height: 42px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 18px; cursor: pointer; color: var(--muted); }
+    .res button small { display: block; font-size: 10px; margin-top: -2px; }
+    .res button.on.r1 { background: var(--teal-bg); color: var(--teal); border-color: var(--teal); }
+    .res button.on.r2 { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+    .res button.on.r3 { background: var(--amber-bg); color: var(--amber); border-color: var(--amber); }
+    .res button.on.r4 { background: var(--violet-bg); color: var(--violet); border-color: var(--violet); }
+    .note { width: 100%; font-size: 13px; border: none; border-bottom: 1px solid var(--border); background: transparent; padding: 6px 2px; outline: none; margin-top: 6px; color: var(--text); }
+    textarea.remark { width: 100%; min-height: 80px; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-family: inherit; }
+    .insp-row { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+    .insp-row input { flex: 1; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    .footer { background: var(--card); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; }
+    .footer-in { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+    .prog { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--teal); transition: width .3s; }
+    .save { width: 100%; padding: 14px; background: var(--primary); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; cursor: pointer; }
+    .save.has { background: var(--blue); } .save.done { background: var(--teal); } .save.saving { background: #888; }
+    .toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 100; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+    .loading { text-align: center; padding: 40px 0; color: var(--muted); }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 12px; }
+    .panel .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+    .panel input[type=date] { font-size: 14px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    table.edit { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+    table.edit th { background: #f0f2f5; padding: 6px; border: 1px solid #ddd; font-weight: 600; }
+    table.edit td { border: 1px solid #ddd; padding: 2px; }
+    table.edit input, table.edit select { width: 100%; border: none; padding: 6px; font-size: 13px; background: transparent; }
+    table.edit td.btns { white-space: nowrap; width: 1%; }
+    .mini { min-width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); cursor: pointer; font-size: 12px; }
+    .mini.red { color: var(--red); border-color: var(--red); }
+
+    /* ---------- 출력 (A4) ---------- */
+    #print-area { display: none; }
+    .sheet { width: 190mm; margin: 0 auto 10mm; background: #fff; padding: 0; font-family: 'Malgun Gothic', sans-serif; color: #000; }
+    .sheet h1 { text-align: center; font-size: 22pt; margin: 0 0 6mm; letter-spacing: 4px; }
+    .sheet .top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2mm; font-size: 11pt; }
+    .sheet .sign { border-collapse: collapse; font-size: 9pt; }
+    .sheet .sign td { border: 1px solid #000; width: 18mm; text-align: center; height: 5mm; }
+    .sheet .sign td.box { height: 14mm; }
+    .sheet table.f { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    .sheet table.f th, .sheet table.f td { border: 1px solid #000; padding: 1.6mm 1.5mm; }
+    .sheet table.f th { background: #e8e8e8; }
+    .sheet table.f td.c { text-align: center; }
+    .sheet table.f td.rs { text-align: center; font-size: 13pt; width: 13mm; }
+    .sheet .legend { font-size: 9pt; }
+    .sheet .remark { height: 38mm; vertical-align: top; white-space: pre-wrap; }
+    @media screen { .preview #print-area { display: block; background: #888; padding: 10mm 0; } .preview .sheet { padding: 10mm; box-shadow: 0 2px 8px rgba(0,0,0,.3); } }
+    @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      body { background: #fff; }
+      #app > :not(#print-area), .toast, .footer { display: none !important; }
+      #print-area { display: block !important; }
+      .sheet { page-break-after: always; margin: 0; }
+      .sheet:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="head">
+      <div class="wrap">
+        <div class="head-row">
+          <span class="title">📋 설비점검일지</span>
+          <div class="vtabs">
+            <button class="vtab on" data-v="input" onclick="setView('input')">점검</button>
+            <button class="vtab" data-v="print" onclick="setView('print')">출력</button>
+            <button class="vtab" data-v="items" onclick="setView('items')" id="items-tab" hidden>항목 관리</button>
+          </div>
+        </div>
+        <div class="date-row" id="date-row">
+          <button onclick="shiftDate(-1)">◀</button>
+          <input type="date" id="work-date" onchange="changeDate(this.value)">
+          <button onclick="shiftDate(1)">▶</button>
+          <button class="today" onclick="changeDate(todayStr())">오늘</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 점검 입력 -->
+    <div id="v-input">
+      <div class="wrap"><div class="content" id="content"><div class="loading">불러오는 중...</div></div></div>
+      <div class="footer">
+        <div class="footer-in">
+          <div class="prog"><div class="bar"><div id="prog-fill" style="width:0%"></div></div><span id="prog-text">0 / 0</span></div>
+          <button class="save" id="save-btn" onclick="saveDay()">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 출력 -->
+    <div id="v-print" hidden>
+      <div class="wrap">
+        <div class="panel">
+          <div class="row">
+            <input type="date" id="p-from"> ~ <input type="date" id="p-to">
+            <label><input type="checkbox" id="p-only" checked> 기록 있는 날만</label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" onclick="buildPrint(true)">미리보기</button>
+            <button class="btn" onclick="buildPrint(false)">🖨 인쇄</button>
+          </div>
+          <div class="hint" style="margin-top:8px">· 하루씩 A4 한 장으로 나옵니다. 기간을 고르면 여러 장을 한 번에 인쇄합니다.<br>· 비고가 비어 있는 "전일 사용량 비교" 항목은 설비검침 값으로 사용량을 자동으로 적습니다.<br>· 인쇄 창에서 "PDF로 저장"을 고르면 파일로 보관할 수 있습니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 항목 관리 -->
+    <div id="v-items" hidden>
+      <div class="wrap wide" style="padding:12px">
+        <div class="hint" style="margin-bottom:8px">구분·설비가 위 칸과 같으면 출력할 때 칸이 합쳐집니다. "전일 사용량" 칸을 고르면 비고에 설비검침 사용량이 자동으로 들어갑니다. 삭제한 항목의 예전 기록은 남습니다.</div>
+        <div style="overflow-x:auto"><table class="edit" id="items-table"></table></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn secondary" onclick="addItemRow()">＋ 항목 추가</button>
+          <button class="btn" onclick="saveItems()">✓ 항목 저장</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="print-area"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let sb = null, me = null;
+    const isAdmin = () => !!(me && me.role === 'admin');
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = () => ymd(new Date());
+    const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+    const nf = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+    const korDate = ds => { const d = new Date(ds + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. (${WEEK[d.getDay()]})`; };
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+
+    const MARKS = [['○', '양호', 'r1'], ['Ⅹ', '불량', 'r2'], ['△', '정비필요', 'r3'], ['◎', '정비완료', 'r4']];
+    const REFS = { '': '-', water: '상수도 (40A+50A)', boiler_feed: '보일러 급수 (1+2호)', elec: '전력사용량' };
+
+    let ITEMS = [], ALLITEMS = [];
+    let curDate = todayStr();
+    let rec = null;            // 화면의 현재 기록 { results, notes, remark, inspector }
+    let saved = null;          // 저장된 기록 (비교용)
+    let METER = {};            // d -> v (설비검침 값, 비고 자동 계산용)
+
+    async function fetchAll(q) {
+      const out = []; let from = 0;
+      while (true) { const { data, error } = await q().range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; from += 1000; }
+      return out;
+    }
+    async function loadItems() {
+      ALLITEMS = await fetchAll(() => sb.from('insp_items').select('*').order('sort'));
+      ITEMS = ALLITEMS.filter(i => i.active);
+    }
+    async function loadMeter(from, to) {
+      const rows = await fetchAll(() => sb.from('meter_daily').select('d, v').gte('d', addDays(from, -10)).lte('d', to).order('d'));
+      rows.forEach(r => METER[r.d] = r.v || {});
+    }
+
+    // 전일 사용량 (그날 지침 − 그 전 가장 가까운 지침)
+    function readingBefore(ds, ids, back) {
+      for (let i = back ? 1 : 0; i <= 10; i++) {
+        const d = addDays(ds, -i), v = METER[d];
+        if (v && ids.every(k => v[k] !== undefined && v[k] !== null && v[k] !== '')) return { d, sum: ids.reduce((s, k) => s + Number(v[k]), 0) };
+      }
+      return null;
+    }
+    function refText(key, ds) {
+      if (!key) return '';
+      if (key === 'elec') { const v = (METER[ds] || {})['전력사용량']; return v === undefined || v === null ? '' : `전력사용량 ${nf.format(v)} kWh`; }
+      const ids = key === 'water' ? ['상수도40A', '상수도50A'] : ['보일러1급수', '보일러2급수'];
+      const a = readingBefore(ds, ids, false); if (!a || a.d !== ds) return '';
+      const b = readingBefore(ds, ids, true); if (!b) return '';
+      const u = Math.round((a.sum - b.sum) * 1000) / 1000;
+      return `전일 사용량 ${nf.format(u)} ㎥`;
+    }
+
+    // ---------------- 점검 입력 ----------------
+    const isDirty = () => saved && JSON.stringify(rec) !== JSON.stringify(saved);
+    function confirmLeave() { return !isDirty() || confirm('저장하지 않은 점검 결과가 있습니다. 버리고 이동할까요?'); }
+    function shiftDate(n) { changeDate(addDays(curDate, n)); }
+    async function changeDate(ds) {
+      if (!ds) return;
+      if (ds !== curDate && !confirmLeave()) { document.getElementById('work-date').value = curDate; return; }
+      curDate = ds; await loadDay();
+    }
+    async function loadDay() {
+      document.getElementById('work-date').value = curDate;
+      document.getElementById('content').innerHTML = '<div class="loading">불러오는 중...</div>';
+      const [{ data, error }] = await Promise.all([
+        sb.from('insp_daily').select('*').eq('d', curDate).maybeSingle(),
+        loadMeter(curDate, curDate).catch(() => {})
+      ]);
+      if (error) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(error))}</div>`; return; }
+      const r = data || {};
+      rec = { results: { ...(r.results || {}) }, notes: { ...(r.notes || {}) }, remark: r.remark || '', inspector: r.inspector || '' };
+      saved = JSON.parse(JSON.stringify(rec));
+      if (!rec.inspector) { rec.inspector = me.name; saved.inspector = me.name; } // 기본 점검자 = 로그인한 사람
+      renderInput();
+    }
+    function renderInput() {
+      const c = document.getElementById('content');
+      if (!ITEMS.length) { c.innerHTML = '<div class="loading">점검 항목이 없습니다.' + (isAdmin() ? ' [항목 관리]에서 추가하세요.' : '') + '</div>'; renderFooter(); return; }
+      let h = '', lastArea = null;
+      ITEMS.forEach(it => {
+        if (it.area !== lastArea) { h += `<div class="sec">${esc(it.area || '기타')}<button onclick="allGood('${esc(it.area)}')">모두 ○</button></div>`; lastArea = it.area; }
+        const v = rec.results[it.id] || '';
+        const ref = refText(it.ref_key, curDate);
+        h += `<div class="card ${v === 'Ⅹ' || v === '△' ? 'bad' : ''}" id="card-${esc(it.id)}">
+          <div class="eq">${esc(it.equipment)}</div>
+          <div class="ct">${esc(it.content)}</div>
+          <div class="std">기준: ${esc(it.standard)}</div>
+          ${ref ? `<div class="ref">${esc(ref)}</div>` : ''}
+          <div class="res">${MARKS.map(([m, l, cls]) => `<button class="${cls} ${v === m ? 'on' : ''}" onclick="mark('${esc(it.id)}','${m}')">${m}<small>${l}</small></button>`).join('')}</div>
+          <input class="note" placeholder="비고 (선택)" value="${esc(rec.notes[it.id] || '')}" oninput="rec.notes['${esc(it.id)}']=this.value;renderFooter()">
+        </div>`;
+      });
+      h += `<div class="sec">특이사항</div><textarea class="remark" placeholder="특이사항이 있으면 적어 주세요" oninput="rec.remark=this.value;renderFooter()">${esc(rec.remark)}</textarea>`;
+      h += `<div class="insp-row" style="margin-top:6px">점검자 <input value="${esc(rec.inspector)}" oninput="rec.inspector=this.value;renderFooter()"></div>`;
+      c.innerHTML = h;
+      renderFooter();
+    }
+    function mark(id, m) {
+      rec.results[id] = rec.results[id] === m ? '' : m;
+      if (!rec.results[id]) delete rec.results[id];
+      const card = document.getElementById('card-' + id);
+      card.querySelectorAll('.res button').forEach((b, i) => b.classList.toggle('on', MARKS[i][0] === rec.results[id]));
+      card.classList.toggle('bad', rec.results[id] === 'Ⅹ' || rec.results[id] === '△');
+      renderFooter();
+    }
+    function allGood(area) {
+      ITEMS.filter(i => i.area === area && !rec.results[i.id]).forEach(i => rec.results[i.id] = '○');
+      renderInput();
+    }
+    function renderFooter() {
+      const total = ITEMS.length, done = ITEMS.filter(i => rec && rec.results[i.id]).length;
+      document.getElementById('prog-fill').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+      document.getElementById('prog-text').textContent = `${done} / ${total}`;
+      const btn = document.getElementById('save-btn');
+      if (btn.classList.contains('saving')) return;
+      btn.className = 'save' + (isDirty() ? ' has' : '');
+      btn.textContent = isDirty() ? '저장' : (saved && Object.keys(saved.results).length ? '✓ 저장된 기록' : '저장');
+    }
+    async function saveDay() {
+      const btn = document.getElementById('save-btn');
+      if (!isDirty()) { toast('바뀐 내용이 없습니다'); return; }
+      btn.classList.add('saving'); btn.textContent = '저장 중...';
+      const notes = Object.fromEntries(Object.entries(rec.notes).filter(([, v]) => v && v.trim()));
+      const { error } = await sb.from('insp_daily').upsert({ d: curDate, results: rec.results, notes, remark: rec.remark, inspector: rec.inspector }, { onConflict: 'd' });
+      btn.classList.remove('saving');
+      if (error) { btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ ' + errMsg(error)); return; }
+      rec.notes = notes; saved = JSON.parse(JSON.stringify(rec));
+      btn.className = 'save done'; btn.textContent = '✓ 저장 완료';
+      toast(`${curDate.slice(5).replace('-', '/')} 점검 저장됨`);
+      setTimeout(renderFooter, 1500);
+    }
+
+    // ---------------- 보기 전환 ----------------
+    function setView(v) {
+      if (v !== 'input' && isDirty() && !confirm('저장하지 않은 점검 결과가 있습니다. 그래도 이동할까요?')) return;
+      document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+      ['input', 'print', 'items'].forEach(k => document.getElementById('v-' + k).hidden = k !== v);
+      document.getElementById('date-row').hidden = v !== 'input';
+      document.body.classList.remove('preview'); document.getElementById('print-area').innerHTML = '';
+      if (v === 'input') loadDay();
+      if (v === 'items') renderItemsTable();
+    }
+
+    // ---------------- 출력 ----------------
+    function sheetHtml(ds, r) {
+      r = r || { results: {}, notes: {}, remark: '', inspector: '' };
+      // 구분·설비 칸 합치기
+      const rows = ITEMS.map(it => ({ it }));
+      rows.forEach((x, i) => {
+        if (i && rows[i - 1].it.area === x.it.area) x.areaSpan = 0; else { let n = 1; while (rows[i + n] && rows[i + n].it.area === x.it.area) n++; x.areaSpan = n; }
+        if (i && rows[i - 1].it.area === x.it.area && rows[i - 1].it.equipment === x.it.equipment) x.eqSpan = 0;
+        else { let n = 1; while (rows[i + n] && rows[i + n].it.area === x.it.area && rows[i + n].it.equipment === x.it.equipment) n++; x.eqSpan = n; }
+      });
+      const body = rows.map(({ it, areaSpan, eqSpan }) => `<tr>
+        ${areaSpan ? `<td class="c" rowspan="${areaSpan}"><b>${esc(it.area)}</b></td>` : ''}
+        ${eqSpan ? `<td class="c" rowspan="${eqSpan}">${esc(it.equipment)}</td>` : ''}
+        <td>${esc(it.content)}</td><td>${esc(it.standard)}</td>
+        <td class="rs">${esc((r.results || {})[it.id] || '')}</td>
+        <td style="font-size:8.5pt">${esc((r.notes || {})[it.id] || refText(it.ref_key, ds))}</td></tr>`).join('');
+      return `<div class="sheet">
+        <h1>유틸리티 일일 점검일지</h1>
+        <div class="top">
+          <div><b>점검일자 :</b> ${korDate(ds)}<br><span class="legend">양호 : ○ &nbsp; 불량 : Ⅹ &nbsp; 정비필요 : △ &nbsp; 정비완료 : ◎</span></div>
+          <table class="sign"><tr><td>점검자</td><td>확 인</td></tr><tr><td class="box">${esc(r.inspector || '')}</td><td class="box"></td></tr></table>
+        </div>
+        <table class="f">
+          <colgroup><col style="width:15mm"><col style="width:24mm"><col><col style="width:38mm"><col style="width:13mm"><col style="width:34mm"></colgroup>
+          <tr><th>구 분</th><th>설 비</th><th>점검내용</th><th>기 준</th><th>결과</th><th>비 고</th></tr>
+          ${body}
+          <tr><th>특이사항</th><td colspan="5" class="remark">${esc(r.remark || '')}</td></tr>
+        </table>
+      </div>`;
+    }
+    async function buildPrint(previewOnly) {
+      const from = document.getElementById('p-from').value, to = document.getElementById('p-to').value || from;
+      if (!from) return alert('날짜를 고르세요.');
+      if (to < from) return alert('끝 날짜가 시작 날짜보다 빠릅니다.');
+      const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+      if (days.length > 62) return alert('한 번에 62일까지 인쇄할 수 있습니다.');
+      const [recs] = await Promise.all([
+        fetchAll(() => sb.from('insp_daily').select('*').gte('d', from).lte('d', to).order('d')),
+        loadMeter(from, to)
+      ]);
+      const byD = Object.fromEntries(recs.map(r => [r.d, r]));
+      const only = document.getElementById('p-only').checked;
+      const list = days.filter(d => !only || byD[d]);
+      if (!list.length) return alert('이 기간에 저장된 점검 기록이 없습니다. "기록 있는 날만"을 끄면 빈 양식으로 인쇄합니다.');
+      document.getElementById('print-area').innerHTML = list.map(d => sheetHtml(d, byD[d])).join('');
+      if (previewOnly) { document.body.classList.add('preview'); document.getElementById('print-area').scrollIntoView(); }
+      else { document.body.classList.remove('preview'); setTimeout(() => window.print(), 100); }
+    }
+
+    // ---------------- 항목 관리 (관리자) ----------------
+    let EDIT = [];
+    function renderItemsTable() {
+      EDIT = ALLITEMS.filter(i => i.active).map(i => ({ ...i }));
+      drawItems();
+    }
+    function drawItems() {
+      const refOpts = k => Object.entries(REFS).map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${l}</option>`).join('');
+      document.getElementById('items-table').innerHTML = `<tr><th>구분</th><th>설비</th><th>점검내용</th><th>기준</th><th>비고 자동 (전일 사용량)</th><th></th></tr>` +
+        EDIT.map((it, i) => `<tr>
+          <td><input value="${esc(it.area)}" onchange="EDIT[${i}].area=this.value"></td>
+          <td><input value="${esc(it.equipment)}" onchange="EDIT[${i}].equipment=this.value"></td>
+          <td><input value="${esc(it.content)}" onchange="EDIT[${i}].content=this.value"></td>
+          <td><input value="${esc(it.standard)}" onchange="EDIT[${i}].standard=this.value"></td>
+          <td><select onchange="EDIT[${i}].ref_key=this.value">${refOpts(it.ref_key)}</select></td>
+          <td class="btns"><button class="mini" onclick="mvItem(${i},-1)">▲</button><button class="mini" onclick="mvItem(${i},1)">▼</button> <button class="mini red" onclick="EDIT.splice(${i},1);drawItems()">삭제</button></td>
+        </tr>`).join('');
+    }
+    function mvItem(i, d) { const j = i + d; if (j < 0 || j >= EDIT.length) return; [EDIT[i], EDIT[j]] = [EDIT[j], EDIT[i]]; drawItems(); }
+    function addItemRow() {
+      const last = EDIT[EDIT.length - 1] || {};
+      EDIT.push({ id: 'U' + Date.now().toString(36), area: last.area || '', equipment: '', content: '', standard: '', ref_key: '', active: true });
+      drawItems();
+    }
+    async function saveItems() {
+      const rows = EDIT.map((it, i) => ({ id: it.id, area: (it.area || '').trim(), equipment: (it.equipment || '').trim(), content: (it.content || '').trim(), standard: (it.standard || '').trim(), ref_key: it.ref_key || '', sort: (i + 1) * 10, active: true }));
+      const keep = new Set(rows.map(r => r.id));
+      const removed = ALLITEMS.filter(i => i.active && !keep.has(i.id)).map(i => i.id);
+      try {
+        if (rows.length) { const { error } = await sb.from('insp_items').upsert(rows, { onConflict: 'id' }); if (error) throw error; }
+        if (removed.length) { const { error } = await sb.from('insp_items').update({ active: false }).in('id', removed); if (error) throw error; }
+        await loadItems(); renderItemsTable(); toast('항목을 저장했습니다');
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
+
+    // ---------------- 시작 ----------------
+    window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+    Portal.start({
+      appId: 'insp',
+      title: '설비점검일지',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        document.getElementById('items-tab').hidden = !isAdmin();
+        const t = todayStr(); document.getElementById('p-from').value = t; document.getElementById('p-to').value = t;
+        try { await loadItems(); await loadDay(); }
+        catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 11번·12번 SQL을 실행했는지 확인해 주세요.</div>`; }
+      }
+    });
+  </script>
+</body>
+</html>
