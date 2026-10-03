@@ -73,6 +73,7 @@
     .set-preview .sheet { padding: 10mm; margin: 0 auto 8mm; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
     .sheet input.ed { font: inherit; color: #000; background: #fff3b0; border: 1px dashed #d4a800; padding: 1px 2px; width: 100%; min-width: 0; text-align: inherit; box-sizing: border-box; }
     .sheet input.ed:focus { outline: 2px solid #1D9E75; background: #fff; }
+    .sheet input.dhw { width: 100%; margin-top: 2px; text-align: center; font-size: 8pt; }
     .sheet input.dh { width: 100%; margin-top: 2px; text-align: center; font-size: 8pt; }
     @media print { .no-print { display: none !important; } }
     .sheet input.ed[data-h] { width: 28mm; margin-top: 2px; text-align: center; }
@@ -151,7 +152,7 @@
             <button class="btn" onclick="printForm('ww', true)">미리보기</button>
             <button class="btn" onclick="printForm('ww', false)">🖨 인쇄</button>
           </div>
-          <div class="hint">· 하루가 A4 두 장(앞·뒤 쪽)으로 나옵니다. 기간을 고르면 한 번에 인쇄합니다.<br>
+          <div class="hint">· 하루가 A4 두 장(앞·뒤 쪽)으로 나옵니다. 기간을 고르면 한 번에 인쇄합니다.<br>· <b>가동시간대</b>: [미리보기]를 누르면 1·2번 표에 노란 칸이 나옵니다. 설정의 기본값이 들어가 있고, 그날만 다르면 고치세요 (바로 저장). 비우면 그 줄은 화살표 없이 나옵니다.<br>
             · 날씨·온도·상수도·방류량·폐수 전력은 <b>설비검침</b>, 슬러지·약품·폭기조는 <b>다온산업 장부</b>, 나머지 고정 문구와 수질 측정값은 <b>설정</b>에서 가져옵니다.<br>
             · 지침은 그날 08시 검침값(전일지침)과 다음날 08시 검침값(금일지침)으로 계산합니다. 폐수 전력 사용량도 같은 기준입니다.</div>
         </div>
@@ -303,7 +304,7 @@
       document.getElementById('book-month').textContent = `${y}년 ${m}월`;
       const n = new Date(y, m, 0).getDate();
       const first = `${bookYm}-01`, last = `${bookYm}-${pad2(n)}`;
-      const showAuto = !isPartner();
+      const showAuto = true;
       if (showAuto) { try { await loadMeter(first, last); } catch (e) { } }
       const cols = bookCols();
       const groups = [];
@@ -420,8 +421,9 @@
         try { const rows = await fetchAll(() => sb.from('air_daily').select('d, hours').gte('d', from).lte('d', to).order('d')); rows.forEach(r => AIR[r.d] = r.hours || {}); }
         catch (e) { return alert('보일러 가동시간을 불러오지 못했습니다: ' + errMsg(e)); }
       }
-      document.getElementById('print-area').innerHTML = days.map(d => kind === 'ww' ? wwSheet(d) : airSheet(d, SET, false, preview)).join('');
+      document.getElementById('print-area').innerHTML = days.map(d => kind === 'ww' ? wwSheet(d, SET, false, preview) : airSheet(d, SET, false, preview)).join('');
       if (kind === 'air' && preview) bindAirHours();
+      if (kind === 'ww' && preview) bindWwHours();
       if (preview) { document.body.classList.add('preview'); document.getElementById('print-area').scrollIntoView(); }
       else { document.body.classList.remove('preview'); setTimeout(() => window.print(), 100); }
     }
@@ -436,7 +438,42 @@
     }
     const M = (path, fallback = '') => `<span data-m="${path}">${esc(getP(CUR, path) ?? fallback)}</span>`; // 같은 값을 여러 칸에 보여줄 때
 
-    function wwSheet(ds, S = SET, edit = false) {
+    // 폐수일지 가동시간대: 그날 고친 값(ww_daily.hours)이 있으면 그 값, 없으면 설정의 기본값 (배출시설은 조업일만)
+    const WWH = ['fac', 'phys', 'chem', 'bio'];
+    function wwDefault(ds, k, S = SET) { const op = (WW[ds] || {}).op !== false; return (k === 'fac' && !op) ? '' : (((S.ww || {})[k + '_hours']) || ''); }
+    function wwHours(ds, k) { const o = (WW[ds] || {}).hours || {}; return (k in o) ? (o[k] || '') : wwDefault(ds, k); }
+    function redrawHourRows(sel, spec) {
+      document.querySelectorAll(sel).forEach(tr => { tr.querySelectorAll('td.hr').forEach(td => td.remove()); tr.insertAdjacentHTML('beforeend', hourCells(spec, true)); });
+    }
+    function saveWwHours(ds) {
+      const st = document.getElementById('wwst-' + ds); st.textContent = '저장 중...';
+      clearTimeout(saveTimers['ww' + ds]);
+      saveTimers['ww' + ds] = setTimeout(async () => {
+        const { error } = await sb.from('ww_daily').upsert({ d: ds, hours: (WW[ds] || {}).hours || {} }, { onConflict: 'd' });
+        st.textContent = error ? '⚠ 저장 실패: ' + errMsg(error) : '✓ 저장됨';
+      }, 600);
+    }
+    function bindWwHours() {
+      document.querySelectorAll('#print-area input.dhw').forEach(el => el.addEventListener('input', () => {
+        const ds = el.dataset.d, k = el.dataset.k;
+        WW[ds] = WW[ds] || { d: ds };
+        WW[ds].hours = { ...(WW[ds].hours || {}), [k]: el.value };
+        redrawHourRows(`#print-area tr[data-dk="${ds}|${k}"]`, el.value);
+        saveWwHours(ds);
+      }));
+      document.querySelectorAll('#print-area button.wwreset').forEach(b => b.addEventListener('click', () => {
+        const ds = b.dataset.d;
+        WW[ds] = WW[ds] || { d: ds }; WW[ds].hours = {};
+        WWH.forEach(k => {
+          const v = wwDefault(ds, k);
+          const el = document.querySelector(`#print-area input.dhw[data-d="${ds}"][data-k="${k}"]`); if (el) el.value = v;
+          redrawHourRows(`#print-area tr[data-dk="${ds}|${k}"]`, v);
+        });
+        saveWwHours(ds);
+      }));
+    }
+
+    function wwSheet(ds, S = SET, edit = false, dayEdit = false) {
       ED = edit; CUR = S;
       const W = S.ww || {}, r = WW[ds] || {}, b = BAL[ds] || {}, wt = weatherOf(ds);
       const ct = num(W.ct) || 40, mt = esc(W.meter_time || '08:00');
@@ -447,6 +484,10 @@
       const pct = p => rest === null ? '' : nf(rest * (num(p) || 0) / 100, 3);
       const power = pw.use === null ? null : round(pw.use * ct, 1);
       const op = r.op !== false;
+      // 설정 화면: 기본값 칸 / 미리보기: 그날 칸 / 인쇄: 글자 없이 화살표만
+      const hs = k => ED ? (W[k + '_hours'] || '') : wwHours(ds, k);
+      const hrIn = k => ED ? '<br>' + F(`ww.${k}_hours`, { h: 1, ph: k === 'bio' ? '예: 1-24' : '예: 7-16' })
+        : dayEdit ? `<br><input class="ed dhw" data-d="${ds}" data-k="${k}" value="${esc(wwHours(ds, k))}" placeholder="비움 = 없음">` : '';
       const H = '<tr><th colspan="3">시간대 구분</th>' + Array.from({ length: 24 }, (_, i) => `<th class="hr">${i + 1}</th>`).join('') + '</tr>';
       const colg = '<colgroup><col span="3" style="width:13mm">' + '<col>'.repeat(24) + '</colgroup>';
       const ch = S.chems || [];
@@ -459,14 +500,15 @@
         <div class="dl"><span>${korDate(ds)}</span><span>날씨 : ${esc(wt.w)}</span><span>온도 : ${esc(wt.t)}${wt.t !== '' ? '℃' : ''}</span></div>
         <h3>1. 폐수배출시설 가동(조업)시간대</h3>
         <table class="f">${colg}${H}
-          <tr data-hr="ww.fac_hours"><td colspan="3" class="l">13)기타 식품제조시설${ED ? '<br>' + F('ww.fac_hours', { h: 1, ph: '예: 7-16' }) : ''}</td>${hourCells(W.fac_hours, op || ED)}</tr>
-          <tr data-hr="ww.fac_hours"><td colspan="3" class="l" style="font-size:7pt">82)1호부터 81호까지의 분류에 속하지아니하는시설</td>${hourCells(W.fac_hours, op || ED)}</tr></table>
+          <tr data-hr="ww.fac_hours" data-dk="${ds}|fac"><td colspan="3" class="l">13)기타 식품제조시설${hrIn('fac')}</td>${hourCells(hs('fac'), true)}</tr>
+          <tr data-hr="ww.fac_hours" data-dk="${ds}|fac"><td colspan="3" class="l" style="font-size:7pt">82)1호부터 81호까지의 분류에 속하지아니하는시설</td>${hourCells(hs('fac'), true)}</tr></table>
         <h3>2. 수질오염방지시설 가동시간대(처리방법 : 물리적 + 화학적 + 생물학적 처리)</h3>
         <table class="f">${colg}${H}
-          <tr data-hr="ww.phys_hours"><td colspan="3">물리적 처리${ED ? '<br>' + F('ww.phys_hours', { h: 1, ph: '예: 1-24' }) : ''}</td>${hourCells(W.phys_hours, true)}</tr>
-          <tr data-hr="ww.chem_hours"><td colspan="3">화학적 처리${ED ? '<br>' + F('ww.chem_hours', { h: 1, ph: '예: 1-24' }) : ''}</td>${hourCells(W.chem_hours, true)}</tr>
-          <tr data-hr="ww.bio_hours"><td colspan="3">생물학적 처리${ED ? '<br>' + F('ww.bio_hours', { h: 1, ph: '예: 1-24' }) : ''}</td>${hourCells(W.bio_hours, true)}</tr>
+          <tr data-hr="ww.phys_hours" data-dk="${ds}|phys"><td colspan="3">물리적 처리${hrIn('phys')}</td>${hourCells(hs('phys'), true)}</tr>
+          <tr data-hr="ww.chem_hours" data-dk="${ds}|chem"><td colspan="3">화학적 처리${hrIn('chem')}</td>${hourCells(hs('chem'), true)}</tr>
+          <tr data-hr="ww.bio_hours" data-dk="${ds}|bio"><td colspan="3">생물학적 처리${hrIn('bio')}</td>${hourCells(hs('bio'), true)}</tr>
           <tr><td colspan="3" style="font-size:7.5pt">시간대별 근무자 직·성명</td><td colspan="24" class="l">※ 근무자 : ${F('ww.worker', { w: '60mm' })}</td></tr></table>
+        ${dayEdit ? `<div class="note no-print" style="color:#1D7A5C">노란 칸 = 이날 가동시간대 (설정의 기본값이 들어가 있음). 고치면 이날만 바뀌고 바로 저장됩니다. <button class="wwreset" data-d="${ds}" style="font-size:8pt">기본값으로</button> <b id="wwst-${ds}"></b></div>` : ''}
         <h3>3. 용수 공급원별 사용량과 폐수배출량</h3>
         <table class="f"><colgroup><col style="width:12mm"><col style="width:8mm"><col><col><col><col style="width:16mm"><col style="width:22mm"><col><col><col></colgroup>
           <tr><th colspan="2">항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>사용량(㎥/일)</th><th>검침<br>시간대</th><th>항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>배출량 및 사용량(㎥/일)</th></tr>
@@ -643,7 +685,6 @@
       title: '환경일지',
       onReady: async P => {
         sb = P.sb; me = P.me;
-        document.querySelectorAll('.tab-btn.staff').forEach(b => b.hidden = isPartner());
         document.querySelectorAll('.tab-btn.admin').forEach(b => b.hidden = !isAdmin());
         ['ww', 'air'].forEach(k => { document.getElementById(k + '-from').value = todayStr; document.getElementById(k + '-to').value = todayStr; });
         try { await loadAll(); if (window.innerWidth < 700) setMode('day'); else renderBook(); }
