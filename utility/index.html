@@ -1310,7 +1310,7 @@
       const yt = ytd(y, brYm);
       const uc = x => ratio(x.total, x.production);
       const tile = (lab, val, sub) => `<div class="br-kpi"><div class="l">${lab}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
-      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : (s.status === '가마감' ? ' · 일부 가마감(고지서 전)' : '')}</div></div>
+      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : (s.status === '가마감' ? ' · 일부 가마감(고지서 전)' : '')}</div></div>
         <table class="br-sign"><tr><td>작성</td><td>검토</td><td>승인</td></tr><tr><td></td><td></td><td></td></tr></table></div>`;
       h += `<div class="br-kpis">` +
         tile('유틸리티 총비용', man(s.total), `전월 ${pctTxt(s.total, prev.total)} · 전년 ${pctTxt(s.total, ly.total)}`) +
@@ -1919,7 +1919,7 @@
         ['합계', '', null, '', s.exvat, s.total, s.status]
       ];
       let h = (fc ? `<div class="fc-note no-print">🔮 아직 진행 중인 달이라 <b>${fc.forecast.asOf.slice(5).replace('-', '/')}까지 검침(${fc.forecast.days}일)으로 월말까지 추정한 예측값</b>입니다. 남은 날은 평일·주말 평균 사용량으로 채웠습니다.</div>` : '') +
-        `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} 시설팀 · 작성일 ${todayStr}</span></h3>`;
+        `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성일 ${todayStr}</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
       reportRows.forEach(r => {
         const isSum = r[0] === '합계', isSub = !r[0] && !isSum;

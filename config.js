@@ -1,5 +1,5 @@
 // =====================================================================
-// 순수본 2공장 시설팀 웹페이지 — 공통 설정 (이 파일 하나만 고치면 모든 앱에 적용)
+// 순수본 2공장 시설관리시스템 — 공통 설정 (이 파일 하나만 고치면 모든 앱에 적용)
 // =====================================================================
 // SUPABASE_KEY: Supabase → Project Settings → API Keys 의 "Publishable key" (sb_publishable_...)
 // ※ secret key(sb_secret_...)는 절대 넣으면 안 됩니다.
@@ -8,7 +8,7 @@ window.APP_CONFIG = {
   SUPABASE_KEY: 'sb_publishable_mYUd7LbTsbvg5lvAohRiTw_KL0T0eKD',
   EMAIL_DOMAIN: 'ssb2.local',   // 사용자 관리 함수(admin-users)와 같아야 함
   PLANT_NAME: '순수본 2공장',
-  TEAM_NAME: '시설팀',
+  TEAM_NAME: '운영팀',          // 보고서 작성 부서
   SYSTEM_NAME: '순수본 2공장 시설관리시스템',   // 화면 왼쪽 위·로그인 화면·브라우저 탭에 나오는 이름
 
   // 홈 화면에 보이는 앱 목록. 새 앱이 생기면 여기에 한 줄 추가하고 ready를 true로.
