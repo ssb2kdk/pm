@@ -1692,6 +1692,21 @@
       return { sub, vat: Math.round(sub * 0.1), fund, late, total: T };
     }
 
+    // 가스 보일러/식당 나누기: 가마감은 계산값 그대로, 확정(고지서)은 계산 비율대로 청구액을 나눔 (합계가 고지서와 꼭 맞게)
+    function gasSplit(s) {
+      const g = s.gas.calc; if (!g) return [];
+      const parts = [['보일러', g.boiler], ['식당', g.rest]].filter(([, x]) => x).map(([name, x]) => ({ name, m3: x.m3, exvat: x.cost + x.fee, total: x.total }));
+      if (s.gas.status !== '확정' || !parts.length) return parts;
+      const fit = (key, target) => {
+        const sum = parts.reduce((a, p) => a + (p[key] || 0), 0);
+        if (target === null || !sum) return;
+        parts.forEach(p => p[key] = Math.round(p[key] * target / sum));
+        parts[0][key] += target - parts.reduce((a, p) => a + p[key], 0); // 끝전은 보일러에
+      };
+      fit('total', s.gas.cost); fit('exvat', s.gas.exvat);
+      return parts;
+    }
+
     // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
     function renderReport() {
       if (!reportYm) reportYm = UT.prevYm(thisYm);
@@ -1708,8 +1723,7 @@
           ...(ep.late ? [['', '연체료', null, '', ep.late, ep.late, '']] : [])
         ] : []),
         ['가스', '', s.gas.m3, '㎥', s.gas.exvat, s.gas.cost, s.gas.status],
-        ...(g && g.boiler ? [['', '보일러', g.boiler.m3, '㎥', gasConf ? null : g.boiler.cost + g.boiler.fee, gasConf ? null : g.boiler.total, '']] : []),
-        ...(g && g.rest ? [['', '식당', g.rest.m3, '㎥', gasConf ? null : g.rest.cost + g.rest.fee, gasConf ? null : g.rest.total, '']] : []),
+        ...gasSplit(s).map(x => ['', x.name, x.m3, '㎥', x.exvat, x.total, '']),
         ['용수', '', s.water.usage, '㎥', s.water.exvat, s.water.cost, s.water.status],
         ['', '40A', s.water.w40 ? s.water.w40.usage : null, '㎥', s.water.w40cost, s.water.w40cost, ''],
         ['', '50A', s.water.w50 ? s.water.w50.usage : null, '㎥', s.water.w50cost, s.water.w50cost, ''],
