@@ -1915,7 +1915,7 @@
           if (f.options) {
             input = `<select data-k="${f.k}" ${ro ? 'disabled' : ''}><option value="">${ph ? `(${esc(ph)})` : '-'}</option>${f.options.map(o => `<option ${v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
           } else {
-            input = `<input ${f.text ? 'type="text"' : 'type="number" step="any" inputmode="decimal"'} data-k="${f.k}" class="${filled ? 'filled' : ''}" value="${filled ? esc(v) : ''}" placeholder="${esc(ph)}" ${ro ? 'disabled' : ''}>`;
+            input = `<input ${f.text ? 'type="text"' : 'type="number" step="any" inputmode="decimal"'} data-k="${f.k}" class="${filled ? 'filled' : ''}" value="${filled ? esc(typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v) : ''}" placeholder="${esc(ph)}" ${ro ? 'disabled' : ''}>`;
           }
           h += `<div class="f"><label>${esc(f.label)} <span class="u">${esc(f.unit)}</span></label>${input}<div class="src">${srcTxt}</div></div>`;
         });
@@ -1982,7 +1982,7 @@
       btn.disabled = true;
       try {
         const data = {};
-        Object.entries(monthlyDraft).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined && !(typeof v === 'number' && isNaN(v))) data[k] = v; });
+        Object.entries(monthlyDraft).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined && !(typeof v === 'number' && isNaN(v))) data[k] = typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v; });
         const { error } = await sb.from('ut_monthly').upsert({ ym: monthlyYm, data }, { onConflict: 'ym' });
         if (error) throw error;
         MONTHLY[monthlyYm] = data;
