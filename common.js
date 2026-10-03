@@ -65,8 +65,7 @@
     visibleApps: () => (CFG.APPS || []).filter(a => !(Portal.me && Portal.me.role === 'partner') || a.partner),
     appUrl: app => ROOT + app.path,
     start,
-    callAdmin,
-    enableAI
+    callAdmin
   };
   window.Portal = Portal;
 
@@ -169,7 +168,6 @@
     document.getElementById('pt-bar').hidden = false;
     const a = appEl(); if (a) a.hidden = false;
     if (!readyCalled && opts.onReady) { readyCalled = true; opts.onReady(Portal); }
-    document.dispatchEvent(new Event('portal-ready'));
   }
 
   function renderBar() {
@@ -207,91 +205,6 @@
   }
 
   // 관리자 전용 서버 기능(admin-users) 호출: 계정 만들기 / 비밀번호 초기화 / 삭제
-  // ---------------- AI에게 묻기 (관리자 전용) ----------------
-  // 페이지에서 Portal.enableAI({ page: '유틸리티', context: () => '데이터 요약 글', suggestions: [...] }) 로 켬
-  function mdLite(t) { // 간단한 마크다운 → HTML (굵게, 목록, 표, 줄바꿈)
-    const lines = esc(t).split('\n'); let out = '', inTable = false, inList = false;
-    const inline = x => x.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
-    for (const ln of lines) {
-      if (/^\s*\|.*\|\s*$/.test(ln)) {
-        if (/^\s*\|[\s:\-|]+\|\s*$/.test(ln)) continue;
-        const cells = ln.trim().slice(1, -1).split('|').map(c => inline(c.trim()));
-        if (!inTable) { out += '<table class="ai-t"><tr>' + cells.map(c => `<th>${c}</th>`).join('') + '</tr>'; inTable = true; }
-        else out += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
-        continue;
-      }
-      if (inTable) { out += '</table>'; inTable = false; }
-      const li = ln.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/);
-      if (li) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${inline(li[1])}</li>`; continue; }
-      if (inList) { out += '</ul>'; inList = false; }
-      const h = ln.match(/^#{1,4}\s+(.*)$/);
-      out += h ? `<div class="ai-h">${inline(h[1])}</div>` : (ln.trim() ? `<div>${inline(ln)}</div>` : '<div class="ai-gap"></div>');
-    }
-    if (inTable) out += '</table>'; if (inList) out += '</ul>';
-    return out;
-  }
-  function enableAI(o) {
-    const go = () => {
-      if (!Portal.me || Portal.me.role !== 'admin') return;
-      if (document.getElementById('ai-fab')) return;
-      const st = document.createElement('style');
-      st.textContent = `
-        #ai-fab { position: fixed; right: 18px; bottom: 18px; z-index: 90; background: #5b3fa8; color: #fff; border: none; border-radius: 26px; padding: 12px 18px; font-size: 14px; font-weight: bold; box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
-        #ai-panel { position: fixed; right: 18px; bottom: 76px; z-index: 91; width: min(440px, calc(100vw - 24px)); height: min(620px, calc(100vh - 110px)); background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.3); display: flex; flex-direction: column; overflow: hidden; font-size: 13px; }
-        #ai-panel .hd { background: #5b3fa8; color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
-        #ai-panel .hd b { flex: 1; } #ai-panel .hd button { background: transparent; border: 1px solid rgba(255,255,255,.5); color: #fff; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
-        #ai-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: #f7f6fb; }
-        .ai-m { max-width: 92%; padding: 9px 12px; border-radius: 10px; line-height: 1.6; word-break: break-word; }
-        .ai-m.u { align-self: flex-end; background: #5b3fa8; color: #fff; white-space: pre-wrap; }
-        .ai-m.a { align-self: flex-start; background: #fff; border: 1px solid #e4e0f0; }
-        .ai-m.e { align-self: flex-start; background: #fdeceb; color: #a32d2d; }
-        .ai-m ul { margin: 4px 0; padding-left: 18px; } .ai-m .ai-h { font-weight: bold; margin-top: 4px; color: #3d2a78; } .ai-m .ai-gap { height: 6px; }
-        .ai-t { border-collapse: collapse; margin: 6px 0; font-size: 12px; } .ai-t th, .ai-t td { border: 1px solid #ddd; padding: 3px 6px; text-align: right; } .ai-t th { background: #f0edf8; text-align: center; }
-        .ai-sug { display: flex; flex-wrap: wrap; gap: 6px; } .ai-sug button { border: 1px solid #cfc6ea; background: #fff; color: #5b3fa8; border-radius: 14px; padding: 5px 10px; font-size: 12px; cursor: pointer; text-align: left; }
-        #ai-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #eee; }
-        #ai-q { flex: 1; resize: none; height: 44px; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font: inherit; }
-        #ai-send { background: #5b3fa8; color: #fff; border: none; border-radius: 8px; padding: 0 14px; cursor: pointer; font-weight: bold; }
-        #ai-send:disabled { opacity: .5; }
-        @media print { #ai-fab, #ai-panel { display: none !important; } }`;
-      document.head.appendChild(st);
-      document.body.insertAdjacentHTML('beforeend', `<button id="ai-fab">🤖 AI에게 묻기</button>
-        <div id="ai-panel" hidden><div class="hd"><b>🤖 AI에게 묻기 · ${esc(o.page || '')}</b><button id="ai-new">새 대화</button><button id="ai-close">✕</button></div>
-        <div id="ai-msgs"></div>
-        <form id="ai-form"><textarea id="ai-q" placeholder="예) 9월 가스가 왜 늘었어?  (Enter 보내기, Shift+Enter 줄바꿈)"></textarea><button id="ai-send">보내기</button></form></div>`);
-      const panel = document.getElementById('ai-panel'), msgs = document.getElementById('ai-msgs'), q = document.getElementById('ai-q'), send = document.getElementById('ai-send');
-      let history = [];
-      const intro = () => {
-        msgs.innerHTML = `<div class="ai-m a">지금 화면의 데이터(월별 사용량·비용·원단위, 목표, 최근 일별 검침·기온, 이상 사용)를 보고 답합니다. 데이터에 없는 내용은 답하지 못해요.</div>
-          <div class="ai-sug">${(o.suggestions || []).map(x => `<button type="button">${esc(x)}</button>`).join('')}</div>`;
-        msgs.querySelectorAll('.ai-sug button').forEach(b => b.onclick = () => { q.value = b.textContent; ask(); });
-      };
-      const add = (cls, html) => { const d = document.createElement('div'); d.className = 'ai-m ' + cls; d.innerHTML = html; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
-      async function ask() {
-        const question = q.value.trim(); if (!question || send.disabled) return;
-        q.value = ''; send.disabled = true;
-        add('u', esc(question));
-        const wait = add('a', '생각하는 중… (10~30초)');
-        try {
-          let ctx = ''; try { ctx = await o.context(); } catch (e) { ctx = '(데이터 요약 실패: ' + e.message + ')'; }
-          const { data, error } = await Portal.sb.functions.invoke('ask-ai', { body: { question, context: ctx, page: o.page || '', history } });
-          let msg = null;
-          if (error) { msg = error.message; try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (_) { } if (/Failed to send|fetch/i.test(msg)) msg = 'AI 기능(ask-ai)에 연결할 수 없습니다. Supabase Edge Functions 설정을 확인해 주세요.'; }
-          else if (data && data.error) msg = data.error;
-          if (msg) { wait.className = 'ai-m e'; wait.textContent = '⚠ ' + msg; return; }
-          wait.innerHTML = mdLite(data.answer || '(빈 답변)') + (data.left !== undefined ? `<div style="font-size:11px;color:#999;margin-top:6px">오늘 남은 질문 ${data.left}회</div>` : '');
-          history.push({ role: 'user', content: question }, { role: 'assistant', content: data.answer || '' });
-        } catch (e) { wait.className = 'ai-m e'; wait.textContent = '⚠ ' + e.message; }
-        finally { send.disabled = false; q.focus(); }
-      }
-      document.getElementById('ai-fab').onclick = () => { panel.hidden = !panel.hidden; if (!panel.hidden) { if (!msgs.children.length) intro(); q.focus(); } };
-      document.getElementById('ai-close').onclick = () => panel.hidden = true;
-      document.getElementById('ai-new').onclick = () => { history = []; intro(); };
-      document.getElementById('ai-form').onsubmit = e => { e.preventDefault(); ask(); };
-      q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
-    };
-    if (Portal.me) go(); else document.addEventListener('portal-ready', go, { once: true });
-  }
-
   async function callAdmin(body) {
     const { data, error } = await Portal.sb.functions.invoke('admin-users', { body });
     if (error) {

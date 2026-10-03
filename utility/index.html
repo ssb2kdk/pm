@@ -1163,49 +1163,6 @@
       catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
 
-    // =====================================================================
-    // AI에게 묻기: 화면 데이터를 글로 요약해서 함께 보냄
-    // =====================================================================
-    async function aiContext() {
-      try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
-      const L = [];
-      const r = v => v === null || v === undefined || isNaN(v) ? '' : (Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100);
-      L.push(`오늘: ${todayStr}. 공장: ${Portal.config.PLANT_NAME}. 금액은 원(VAT 포함), 가스 사용량은 MJ(괄호 안 ㎥), 용수·폐수는 ㎥, 전기는 kWh.`);
-      // 월별 (최근 24개월)
-      L.push('\n## 월별 실적 (상태: 확정=고지서, 가마감=자체계산)');
-      L.push('월|상태|생산량kg|총비용|원/kg|전기kWh|전기비용|가스MJ(㎥)|가스비용|용수㎥|용수비용|폐수㎥|폐수비용|최대전력kW|공조냉동kWh|폐수동kWh');
-      let ym = UT.ym(Number(thisYm.slice(0, 4)) - 2, Number(thisYm.slice(5)));
-      for (; ym <= thisYm; ym = UT.nextYm(ym)) {
-        const s = S(ym); if (s.total === null && !s.production) continue;
-        const m = s.m || {};
-        L.push([ym, s.status || '', r(s.production), r(s.total), r(ratio(s.total, s.production)), r(s.elec.usage), r(s.elec.cost),
-          `${r(s.gas.usage)}(${r(s.gas.m3)})`, r(s.gas.cost), r(s.water.usage), r(s.water.cost), r(s.ww.usage), r(s.ww.cost),
-          r(s.elec.maxKw), r(Number(m.elec_hvac_kwh) || null), r(Number(m.elec_ww_kwh) || null)].join('|'));
-      }
-      // 이번 달 예측
-      const f = FC(thisYm);
-      if (f && f.forecast) L.push(`\n## ${thisYm} 월말 예측 (${f.forecast.asOf}까지 ${f.forecast.days}일 검침 기준)\n총비용 ${r(f.total)}, 전기 ${r(f.elec.usage)}kWh/${r(f.elec.cost)}원, 가스 ${r(f.gas.usage)}MJ/${r(f.gas.cost)}원, 용수 ${r(f.water.usage)}㎥/${r(f.water.cost)}원, 폐수 ${r(f.ww.usage)}㎥/${r(f.ww.cost)}원`);
-      // 목표
-      Object.keys(YEARDATA).sort().forEach(y => { const t = tgt(y); if (!Object.keys(t).length) return;
-        L.push(`\n## ${y}년 목표: 합계 원단위 ${t.total_unit ?? '-'}원/kg, ` + UT.UTILS.map(u => `${u.name} 원단위 ${t[u.k + '_unit'] ?? '-'}${u.unit}/kg·연간비용 ${t[u.k + '_cost'] ?? '-'}원`).join(', ') + `, 생산계획 ${t.production ?? '-'}kg`); });
-      // 일별 (최근 60일)
-      L.push('\n## 일별 사용량 (최근 60일, 그날 사용량 = 다음날 지침 − 그날 지침, 가동=전기로 판단한 가동일)');
-      L.push('날짜|요일|가동|평균기온℃|전기kWh|최대수요kW|가스㎥|용수㎥|폐수㎥');
-      const W = ['일', '월', '화', '수', '목', '금', '토'];
-      for (let i = 60; i >= 1; i--) {
-        const ds = UT.addDays(todayStr, -i), u = UT.dailyUsage(DAILY, ds), d = DAILY[ds] || {};
-        if (u.elec === null && u.gas === null && u.water === null) continue;
-        L.push([ds.slice(5), W[new Date(ds + 'T00:00:00').getDay()], UT.isWorkDay(DAILY, ds) ? 'O' : 'X', TEMPS[ds] === undefined ? '' : r(TEMPS[ds]), r(u.elec), r(Number(d.elec_peak_kw) || null), r(u.gas), r(u.water), r(u.ww)].join('|'));
-      }
-      // 이상 사용
-      const an = UT.anomalies(DAILY, UT.addDays(todayStr, -90), UT.addDays(todayStr, -1));
-      L.push('\n## 이상 사용 감지 (최근 90일, 평소=최근 4주 같은 종류 날 중앙값, 40% 이상 많으면 과다)');
-      L.push(an.length ? an.map(a => `${a.d} ${UT.DAILY_UTILS.find(x => x.k === a.u).name} ${r(a.v)} (평소 ${r(a.base)}) ${a.kind}${a.work ? '' : ' 쉬는날'}`).join('\n') : '없음');
-      // 지금 보고 있는 화면
-      const act = document.querySelector('.tab-btn.active'); L.push(`\n지금 보고 있는 탭: ${act ? act.textContent : ''}, 분석 기준월: ${dashYm || ''}`);
-      return L.join('\n');
-    }
-
   </script>
   <script>
     // =====================================================================
@@ -1813,12 +1770,6 @@
         try {
           await loadAll();
           switchTab('dash');
-          Portal.enableAI({ page: '유틸리티 분석', context: aiContext, suggestions: [
-            '지난달 유틸리티 비용을 요약하고 전월·전년과 비교해줘',
-            '가스 원단위가 왜 바뀌었는지 원인을 분석해줘',
-            '최근 이상 사용이 있었던 날과 확인할 점 알려줘',
-            '이번 달 월말 예상 비용과 목표 대비 상황은?',
-            '내년 원단위 목표를 어느 정도로 잡는 게 좋을까?' ] });
         } catch (e) {
           document.getElementById('kpis').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 7번·8번 SQL을 실행했는지 확인해 주세요.</div>`;
         }
