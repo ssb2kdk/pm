@@ -45,7 +45,14 @@
     .pt-login-box .btn { width: 100%; padding: 10px; font-size: 14px; margin-top: 6px; }
     .pt-login-error { color: #d93025; font-size: 13px; min-height: 18px; margin-top: 10px; }
     @media print { .pt-bar, #pt-login { display: none !important; } }
+    /* 숫자 칸의 위아래 화살표 없애기 (잘못 눌러 값이 바뀌지 않게) */
+    input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   `;
+
+  // 숫자 칸: 마우스 휠·키보드 ↑↓로 값이 바뀌지 않게
+  document.addEventListener('wheel', e => { const t = e.target; if (t && t.type === 'number' && document.activeElement === t) t.blur(); }, { passive: true });
+  document.addEventListener('keydown', e => { const t = e.target; if (t && t.type === 'number' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) e.preventDefault(); }, true);
 
   const Portal = {
     config: CFG,
