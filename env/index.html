@@ -481,7 +481,7 @@
       const fl = pair(ds, g('폐수방류량')), pw = pair(ds, g('폐수전력'));
       const used = wt0.use, out = fl.use;
       const rest = (used !== null && out !== null) ? Math.max(0, used - out) : null;
-      const pct = p => rest === null ? '' : nf(rest * (num(p) || 0) / 100, 3);
+      const pct = p => rest === null ? '' : nf(rest * (num(p) || 0) / 100, 0); // 소수점 반올림
       const power = pw.use === null ? null : round(pw.use * ct, 1);
       const op = r.op !== false;
       // 설정 화면: 기본값 칸 / 미리보기: 그날 칸 / 인쇄: 글자 없이 화살표만
@@ -512,9 +512,9 @@
         <h3>3. 용수 공급원별 사용량과 폐수배출량</h3>
         <table class="f"><colgroup><col style="width:12mm"><col style="width:8mm"><col><col><col><col style="width:16mm"><col style="width:22mm"><col><col><col></colgroup>
           <tr><th colspan="2">항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>사용량(㎥/일)</th><th>검침<br>시간대</th><th>항목 구분</th><th>전일지침(㎥)</th><th>금일지침(㎥)</th><th>배출량 및 사용량(㎥/일)</th></tr>
-          <tr><td colspan="2">계</td><td class="r">${nf(wt0.prev, 3)}</td><td class="r">${nf(wt0.cur, 3)}</td><td class="r">${nf(used, 3)}</td><td>${ED ? F('ww.meter_time') : mt}</td><td>폐수발생량</td><td></td><td></td><td></td></tr>
-          <tr><td rowspan="2">상수도</td><td>1호</td><td class="r">${nf(w1.prev, 3)}</td><td class="r">${nf(w1.cur, 3)}</td><td class="r">${nf(w1.use, 3)}</td><td>${ED ? M('ww.meter_time') : mt}</td><td rowspan="2">폐수배출량</td><td class="r" rowspan="2">${nf(fl.prev, 3)}</td><td class="r" rowspan="2">${nf(fl.cur, 3)}</td><td class="r" rowspan="2">${nf(out, 3)}</td></tr>
-          <tr><td>2호</td><td class="r">${nf(w2.prev, 3)}</td><td class="r">${nf(w2.cur, 3)}</td><td class="r">${nf(w2.use, 3)}</td><td>${ED ? M('ww.meter_time') : mt}</td></tr>
+          <tr><td colspan="2">계</td><td class="r">${nf(wt0.prev, 0)}</td><td class="r">${nf(wt0.cur, 0)}</td><td class="r">${nf(used, 0)}</td><td>${ED ? F('ww.meter_time') : mt}</td><td>폐수발생량</td><td></td><td></td><td></td></tr>
+          <tr><td rowspan="2">상수도</td><td>1호</td><td class="r">${nf(w1.prev, 0)}</td><td class="r">${nf(w1.cur, 0)}</td><td class="r">${nf(w1.use, 0)}</td><td>${ED ? M('ww.meter_time') : mt}</td><td rowspan="2">폐수배출량</td><td class="r" rowspan="2">${nf(fl.prev, 0)}</td><td class="r" rowspan="2">${nf(fl.cur, 0)}</td><td class="r" rowspan="2">${nf(out, 0)}</td></tr>
+          <tr><td>2호</td><td class="r">${nf(w2.prev, 0)}</td><td class="r">${nf(w2.cur, 0)}</td><td class="r">${nf(w2.use, 0)}</td><td>${ED ? M('ww.meter_time') : mt}</td></tr>
           <tr><td rowspan="2">공업<br>용수</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">냉각수량</td><td colspan="2" rowspan="2"></td><td rowspan="2"></td></tr>
           <tr><td>2호</td><td></td><td></td><td></td><td></td></tr>
           <tr><td rowspan="2">지하수</td><td>1호</td><td></td><td></td><td></td><td></td><td rowspan="2">${F('ww.evap_label')}</td><td colspan="2" rowspan="2"></td><td class="r" rowspan="2">${ED ? F('ww.cool_pct', { n: 1, w: '12mm' }) + ' %' : pct(W.cool_pct)}</td></tr>
