@@ -67,6 +67,16 @@
     .zoom-hd button { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
     .zoom-chart { position: relative; flex: 1; min-height: 300px; }
     .zoom-table { max-height: 34%; overflow: auto; }
+    .cz-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.3fr; gap: 16px; align-items: start; }
+    .cz-chart { height: 300px; }
+    .cz-text { font-size: 14px; line-height: 1.7; }
+    .cz-text .lead { font-size: 15px; margin-bottom: 8px; }
+    .cz-text table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+    .cz-text td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: top; } .cz-text td.v { text-align: right; white-space: nowrap; font-weight: 600; }
+    .cz-text tr.key td { background: #fff8e1; } .cz-text .concl { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #f2f6ff; }
+    .cz-more summary { cursor: pointer; font-size: 14px; }
+    .cz-memo-ta { width: 100%; min-height: 90px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; line-height: 1.6; font-family: inherit; }
+    @media (max-width: 900px) { .cz-wrap { grid-template-columns: 1fr; } }
     .per-range { font-size: 13px; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
     .per-range input, .per-range select { padding: 5px 6px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
     .anom-note { width: 100%; min-width: 180px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 5px; font-size: 12px; }
@@ -324,24 +334,43 @@
 
       <!-- ================= 원인분석 ================= -->
       <div id="tab-cause" class="tab">
-        <div class="toolbar"><span class="chips" id="cause-chips"></span></div>
-        <div class="charts">
-          <div class="card">
-            <h3>기온과 하루 사용량 <span class="sub">평일만 · 점 하나 = 하루</span></h3>
-            <div class="chart-box"><canvas id="chart-temp"></canvas></div>
-            <div class="hint" id="temp-note" style="margin-top:6px"></div>
-          </div>
-          <div class="card">
-            <h3>원육 투입량과 원단위 <span class="sub">점 하나 = 한 달 · 전년·올해</span></h3>
-            <div class="chart-box"><canvas id="chart-produnit"></canvas></div>
-            <div class="hint" id="produnit-note" style="margin-top:6px"></div>
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftCauseMonth(-1)">◀</button><span id="cause-month"></span><button onclick="shiftCauseMonth(1)">▶</button></div>
+          <span class="chips" id="cause-chips"></span>
+        </div>
+        <div class="card">
+          <h3 id="cz-title">사용량이 왜 늘었나·줄었나</h3>
+          <div class="hint" style="margin:-6px 0 10px">비교 달과의 차이를 <b>가동일·원육 투입량·날씨</b> 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
+          <div class="cz-wrap">
+            <div class="cz-text" id="cz-text"></div>
+            <div class="chart-box cz-chart"><canvas id="chart-cz"></canvas></div>
           </div>
         </div>
         <div class="card">
-          <h3>전력 사용 구성 <span class="month-nav" style="font-size:13px"><button onclick="causeYear--;renderCause()">◀</button><span id="cause-year"></span><button onclick="causeYear++;renderCause()">▶</button></span>
-            <span class="sub">공조냉동·폐수동 = 설비검침 계량기 / 그 외 = 전체 − 두 항목</span></h3>
-          <div class="chart-box"><canvas id="chart-elecmix"></canvas></div>
+          <h3>이 달 이상 사용일 <span class="sub">이상감지에서 찾은 날 · 메모는 이상감지 탭과 같이 저장됩니다</span></h3>
+          <div class="tbl-wrap" id="cz-anom"></div>
         </div>
+        <div class="card">
+          <h3>이 달 원인 정리 <span class="sub">여기 쓴 내용은 월간보고서 「특이사항 및 조치 계획」에 그대로 들어갑니다</span></h3>
+          <div id="cz-memo"></div>
+        </div>
+        <details class="card cz-more">
+          <summary><b>참고 그래프</b> <span class="hint">— 위 계산의 근거 (날씨·원육 투입량이 사용량에 주는 영향, 전력 구성)</span></summary>
+          <div class="charts" style="margin-top:10px">
+            <div>
+              <h3>기온에 따라 하루에 얼마나 더 쓰나 <span class="sub">평일만 · 점 하나 = 하루 · 최근 <span id="cz-days"></span></span></h3>
+              <div class="chart-box"><canvas id="chart-temp"></canvas></div>
+              <div class="hint" id="temp-note" style="margin-top:6px"></div>
+            </div>
+            <div>
+              <h3>원육을 많이 넣은 달은 kg당 얼마나 덜 쓰나 <span class="sub">점 하나 = 한 달</span></h3>
+              <div class="chart-box"><canvas id="chart-produnit"></canvas></div>
+              <div class="hint" id="produnit-note" style="margin-top:6px"></div>
+            </div>
+          </div>
+          <h3 style="margin-top:14px">전력 사용 구성 <span class="sub">공조냉동·폐수동 = 설비검침 계량기 / 그 외 = 전체 − 두 항목</span></h3>
+          <div class="chart-box"><canvas id="chart-elecmix"></canvas></div>
+        </details>
       </div>
 
       <!-- ================= 이상감지 ================= -->
@@ -1288,21 +1317,150 @@
       const rows = await fetchAll('meter_daily', 'd, temp_min, temp_max', 'd');
       TEMPS = {}; rows.forEach(r => { if (r.temp_min !== null && r.temp_max !== null) TEMPS[r.d] = (Number(r.temp_min) + Number(r.temp_max)) / 2; });
     }
-    let causeDays = 120, causeUtil = 'gas', causeYear = null;
+    let causeDays = 120, causeUtil = 'elec', causeYm = null, causeCmp = 'prev';
+    function shiftCauseMonth(d) { causeYm = d > 0 ? UT.nextYm(causeYm) : UT.prevYm(causeYm); renderCause(); }
+    // 그 달 이상 사용일 (과다만)
+    function monthAnoms(ym, uk) {
+      const first = UT.dateStr(ym, 1), last0 = UT.dateStr(ym, UT.daysIn(ym)), y1 = UT.addDays(todayStr, -1);
+      const last = last0 < y1 ? last0 : y1; if (first > last) return [];
+      return UT.anomalies(DAILY, first, last, { ratio: 1.4 }).filter(a => a.u === uk && a.kind === '과다');
+    }
+    // 하루 단위(가스 ㎥) → 월 단위(가스 MJ) 환산
+    function dailyToMonthly(ym, uk, v) {
+      if (uk !== 'gas') return v;
+      const m = UT.effective(ym, MONTHLY, DAILY, {}); const h = Number(m.gas_heat) || 42.5, c = Number(m.gas_boiler_corr) || 1;
+      return v * h * c;
+    }
+    // 증감 원인 나누기
+    function decompose(ym, ym0, uk) {
+      const y = Number(ym.slice(0, 4)), t = tgt(y);
+      const models = fitModels(t, y), mdl = models[uk];
+      const r = monthRow(ym), r0 = monthRow(ym0);
+      const fill = x => { if (x.hdd === null) { const nm = normals()[Number(x.ym.slice(5))]; if (nm) { x.hdd = nm.hdd; x.cdd = nm.cdd; x.wxGuess = true; } } };
+      fill(r); fill(r0);
+      const act = r[uk], act0 = r0[uk];
+      if (act === null || act0 === null || act === undefined || act0 === undefined) return { err: '두 달 중 사용량이 없는 달이 있습니다.' };
+      const out = { act, act0, diff: act - act0, r, r0, mdl, parts: [] };
+      if (!mdl) { out.err = '예상 사용량 식을 만들 기준 달이 부족합니다 (목표 탭 ①).'; return out; }
+      const miss = mdl.feats.filter(f => r[f] === null || r[f] === undefined || r0[f] === null || r0[f] === undefined || (f === 'prod' && (!r.prod || !r0.prod)));
+      if (miss.length) { out.err = `${miss.includes('prod') ? '원육 투입량' : '기온'} 기록이 없는 달이 있어 요인별로 나눌 수 없습니다. (가동 초기 달이면 비교 달을 '전월'로 바꿔 보세요)`; out.mdl = null; return out; }
+      const grp = { days: '가동일·날수', op: '가동일·날수', prod: '원육 투입량', hdd: '날씨 (기온)', cdd: '날씨 (기온)' };
+      const by = {};
+      mdl.feats.forEach((f, i) => { if (r[f] === null || r0[f] === null) return; const v = mdl.coef[i] * (r[f] - r0[f]); by[grp[f]] = (by[grp[f]] || 0) + v; });
+      const explained = Object.values(by).reduce((a, b) => a + b, 0);
+      // 이상 사용일: 평소보다 더 쓴 양 (이번 달 − 비교 달)
+      const an = monthAnoms(ym, uk), an0 = monthAnoms(ym0, uk);
+      const ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
+      const anomPart = ex(an) - ex(an0);
+      const rest = out.diff - explained - anomPart;
+      out.parts = [['가동일·날수', by['가동일·날수'] || 0], ['원육 투입량', by['원육 투입량'] || 0], ['날씨 (기온)', by['날씨 (기온)'] || 0], ['이상 사용일', anomPart], ['운전·관리 차이', rest]];
+      out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
+      return out;
+    }
+    function causeSentences(ym, ym0, uk, D, short) {
+      const U = UT.UTILS.find(u => u.k === uk), un = U.unit, fx = v => `${v >= 0 ? '+' : '−'}${f0(Math.abs(v))} ${un}`;
+      const ml = x => `${Number(x.slice(5))}월`, cmpName = ym0.slice(0, 4) === ym.slice(0, 4) ? ml(ym0) : `작년 ${ml(ym0)}`;
+      const pct = D.act0 ? D.diff / D.act0 * 100 : null;
+      const lead = `${ml(ym)} ${U.name} 사용량은 <b>${f0(D.act)} ${un}</b>로 ${cmpName}(${f0(D.act0)})보다 <b class="${D.diff > 0 ? 'up' : 'down'}">${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${nf1.format(Math.abs(pct))}%)` : ''} ${D.diff > 0 ? '늘었습니다' : '줄었습니다'}</b>.`;
+      if (D.err && !D.mdl) return { lead, rows: [], concl: D.err, plain: `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}` };
+      const r = D.r, r0 = D.r0, rows = [];
+      const opF = D.mdl.feats.includes('op');
+      const dTxt = opF ? `가동일 ${r0.op}일 → ${r.op}일` : `날수 ${r0.days}일 → ${r.days}일`;
+      rows.push(['가동일·날수', dTxt, D.parts[0][1]]);
+      rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})`, D.parts[1][1]]);
+      const wf = D.mdl.feats.find(f => f === 'hdd' || f === 'cdd');
+      if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}`, D.parts[2][1]]);
+      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, D.parts[3][1]]);
+      rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
+      let ref = '';
+      if (uk === 'elec') {
+        const hv = x => Number((x.s.m || {}).elec_hvac_kwh) || UT.effective(x.ym, MONTHLY, DAILY, {}).elec_hvac_kwh, wv = x => Number((x.s.m || {}).elec_ww_kwh) || UT.effective(x.ym, MONTHLY, DAILY, {}).elec_ww_kwh;
+        const h1 = Number(hv(r)), h0 = Number(hv(r0)), w1 = Number(wv(r)), w0 = Number(wv(r0));
+        if (h1 && h0) ref = `참고(실제 계량기): 공조냉동 ${f0(h0)} → ${f0(h1)} kWh (${h1 - h0 >= 0 ? '+' : '−'}${f0(Math.abs(h1 - h0))})` + (w1 && w0 ? `, 폐수동 ${f0(w0)} → ${f0(w1)} kWh (${w1 - w0 >= 0 ? '+' : '−'}${f0(Math.abs(w1 - w0))})` : '') + ' — 날씨 몫은 식으로 추정한 값이라 실제 공조냉동 변화와 차이가 날 수 있습니다.';
+      }
+      const tol = D.mdl.mape || 5, restPct = D.act ? D.rest / D.act * 100 : 0;
+      const big = rows.slice(0, 4).filter(x => Math.abs(x[2]) >= Math.abs(D.diff) * 0.3 && Math.abs(x[2]) > 0).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2]));
+      let concl = big.length ? `주된 이유는 <b>${big.map(x => x[0]).join(', ')}</b>입니다. ` : '';
+      concl += Math.abs(restPct) <= tol ? `가동일·원육·날씨·이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
+        : D.rest < 0 ? `그걸 빼고도 <b class="down">${f0(-D.rest)} ${un} (${nf1.format(-restPct)}%) 덜 썼습니다 → 실제 절감</b>으로 볼 수 있습니다.`
+        : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
+      const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` +
+        rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
+      if (ref) concl += `<div class="hint" style="margin-top:6px">${ref}</div>`;
+      concl += `<div class="hint" style="margin-top:4px">※ 가동일·원육·날씨 몫은 목표 탭 ①의 예상 사용량 식(월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
+      return { lead, rows, concl, plain };
+    }
     async function renderCause() {
       if (!window.Chart) return;
-      if (!causeYear) causeYear = Number((dashYm || thisYm).slice(0, 4));
-      document.getElementById('cause-year').textContent = `${causeYear}년`;
       try { await loadTemps(); } catch (e) { TEMPS = {}; }
-      // 1) 기온 vs 일 사용량 (평일만)
-      document.getElementById('cause-chips').innerHTML = UT.DAILY_UTILS.map(u => `<button class="chip ${causeUtil === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderCause()">${u.name}</button>`).join('') +
-        ' ' + [60, 120, 365].map(n => `<button class="chip ${causeDays === n ? 'on' : ''}" onclick="causeDays=${n};renderCause()">${n === 365 ? '1년' : n + '일'}</button>`).join('');
-      const U = UT.DAILY_UTILS.find(u => u.k === causeUtil);
+      if (!causeYm) causeYm = lastCompleteYm();
+      const ym = causeYm, y = Number(ym.slice(0, 4)), ym0 = causeCmp === 'prev' ? UT.prevYm(ym) : UT.ym(y - 1, Number(ym.slice(5)));
+      document.getElementById('cause-month').textContent = ymLabel(ym);
+      document.getElementById('cause-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${causeUtil === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderCause()">${u.name}</button>`).join('') +
+        ' &nbsp; 비교: ' + [['prev', '전월'], ['ly', '작년 같은 달']].map(([k, n]) => `<button class="chip ${causeCmp === k ? 'on' : ''}" onclick="causeCmp='${k}';renderCause()">${n}</button>`).join('');
+      const uk = causeUtil, U = UT.UTILS.find(u => u.k === uk);
+      const D = decompose(ym, ym0, uk);
+      document.getElementById('cz-title').textContent = `${U.name} 사용량이 왜 ${D.diff > 0 ? '늘었나' : '줄었나'} — ${ymLabel(ym)} vs ${ymLabel(ym0)}`;
+      const T = D.act !== undefined ? causeSentences(ym, ym0, uk, D) : null;
+      const fx = v => `${v >= 0 ? '+' : '−'}${f0(Math.abs(v))}`;
+      document.getElementById('cz-text').innerHTML = !T ? `<div class="empty">${esc(D.err || '자료가 없습니다.')}</div>` :
+        `<div class="lead">${T.lead}</div>` + (T.rows.length ? `<table>${T.rows.map(x => `<tr class="${x[3] ? 'key' : ''}"><td><b>${x[0]}</b><div class="hint">${x[1]}</div></td><td class="v ${x[2] > 0.5 ? 'up' : x[2] < -0.5 ? 'down' : ''}">${fx(x[2])} ${U.unit}</td></tr>`).join('')}</table>` : '') +
+        `<div class="concl">${T.concl}</div>`;
+      // 폭포 그래프: 비교 달 → 요인들 → 이번 달
+      if (T && T.rows.length) {
+        const labels = [ymLabel(ym0).replace('년 ', '.').replace('월', ''), ...D.parts.map(p => p[0]), ymLabel(ym).replace('년 ', '.').replace('월', '')];
+        const bars = []; let run = D.act0; bars.push([0, D.act0]);
+        D.parts.forEach(p => { bars.push([run, run + p[1]].sort((a, b) => a - b)); run += p[1]; });
+        bars.push([0, D.act]);
+        const col = [ '#a3a29d', ...D.parts.map(p => p[1] >= 0 ? '#e5534b' : '#2e9e5b'), U.color ];
+        const lo = Math.min(...bars.map(b => b[0]).filter((v, i) => i > 0 && i < bars.length - 1), D.act0, D.act) * 0.9;
+        mkChart('chart-cz', { type: 'bar', data: { labels, datasets: [{ label: U.unit, data: bars, backgroundColor: col, maxBarThickness: 46 }] },
+          options: (() => { const o = baseOpts(U.unit); o.scales.y.min = Math.max(0, Math.floor(lo / 1000) * 1000); o.scales.x.ticks.maxRotation = 0;
+            o.plugins.tooltip.callbacks.label = c => { const i = c.dataIndex; if (i === 0) return ` 비교 달: ${f0(D.act0)} ${U.unit}`; if (i === bars.length - 1) return ` 이번 달: ${f0(D.act)} ${U.unit}`; return ` ${fx(D.parts[i - 1][1])} ${U.unit}`; }; return o; })() });
+      } else mkChart('chart-cz', { type: 'bar', data: { labels: [], datasets: [] }, options: baseOpts('') });
+
+      // 이상 사용일 + 메모
+      const W = ['일', '월', '화', '수', '목', '금', '토'];
+      const an = monthAnoms(ym, uk), DU = UT.DAILY_UTILS.find(u => u.k === uk);
+      document.getElementById('cz-anom').innerHTML = !DU ? '' : !an.length ? `<div class="empty">${ymLabel(ym)}에 ${U.name} 이상 사용일이 없습니다 👍</div>` :
+        `<table class="t"><tr><th>날짜</th><th>그날 사용량</th><th>평소</th><th>더 쓴 양</th><th class="l">구분</th><th class="l" style="min-width:240px">원인·조치 메모</th></tr>` +
+        an.map(a => `<tr><td>${a.d.slice(5).replace('-', '/')} (${W[new Date(a.d + 'T00:00:00').getDay()]})</td><td>${f1(a.v)} ${DU.unit}</td><td>${a.base === null ? '-' : f1(a.base)}</td><td class="up">+${f1(a.v - (a.base || 0))} ${DU.unit}</td>
+          <td class="l">${a.work ? '가동일 과다' : '쉬는 날 사용'}</td><td class="l">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="원인·조치를 적어 주세요">` : esc(anomNote(a.d, a.u)) || '-'}</td></tr>`).join('') + '</table>' +
+        (uk === 'gas' ? '<div class="hint" style="margin-top:4px">가스 하루 사용량은 ㎥, 위 계산에서는 열량(MJ)으로 바꿔 합칩니다.</div>' : '');
+      bindAnomNotes('#cz-anom');
+
+      // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
+      const cmt = (yd(y).comments || {})[ym] || '';
+      document.getElementById('cz-memo').innerHTML = isAdmin()
+        ? `<textarea id="cz-memo-ta" class="cz-memo-ta" placeholder="예) 9월 전기: 냉방 부하 감소로 −6,000kWh, 원육 투입 증가 +2,800kWh. 운전·관리 차이 +600kWh는 오차 범위.">${esc(cmt)}</textarea>
+           <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 4개 항목 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
+        : `<div style="white-space:pre-wrap">${esc(cmt) || '<span class="hint">-</span>'}</div>`;
+
+      renderCauseRef();
+    }
+    function czAutoText() {
+      const ym = causeYm, y = Number(ym.slice(0, 4)), ym0 = causeCmp === 'prev' ? UT.prevYm(ym) : UT.ym(y - 1, Number(ym.slice(5)));
+      const lines = UT.UTILS.map(u => { const D = decompose(ym, ym0, u.k); if (D.act === undefined) return null; const T = causeSentences(ym, ym0, u.k, D);
+        const notes = (D.an || []).map(a => anomNote(a.d, a.u)).filter(Boolean);
+        return '· ' + T.plain + (notes.length ? ` (이상 사용: ${notes.join(' / ')})` : ''); }).filter(Boolean);
+      const ta = document.getElementById('cz-memo-ta');
+      ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + lines.join('\n');
+      document.getElementById('cz-memo-st').textContent = '문장을 넣었습니다. 고친 뒤 [저장]을 누르세요.';
+    }
+    async function czSaveMemo() {
+      const ym = causeYm, y = Number(ym.slice(0, 4));
+      try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [ym]: document.getElementById('cz-memo-ta').value } }); document.getElementById('cz-memo-st').textContent = '저장됨 ✓ (월간보고서에 반영)'; }
+      catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
+    // 참고 그래프 (기존 3개)
+    function renderCauseRef() {
+      const du = UT.DAILY_UTILS.find(u => u.k === causeUtil) || UT.DAILY_UTILS[0], U = du, causeYear = Number(causeYm.slice(0, 4));
+      document.getElementById('cz-days').textContent = causeDays + '일';
       const pts = [];
       for (let i = causeDays; i >= 1; i--) {
         const ds = UT.addDays(todayStr, -i);
         if (UT.isWeekend(ds) || TEMPS[ds] === undefined) continue;
-        const v = UT.dailyUsage(DAILY, ds)[causeUtil];
+        const v = UT.dailyUsage(DAILY, ds)[U.k];
         if (v !== null && v >= 0) pts.push({ x: Math.round(TEMPS[ds] * 10) / 10, y: v, d: ds });
       }
       const lr = UT.linreg(pts.map(p => [p.x, p.y]));
@@ -1312,24 +1470,20 @@
         ...(lr ? [{ type: 'line', label: '추세', data: [{ x: x0, y: lr.a * x0 + lr.b }, { x: x1, y: lr.a * x1 + lr.b }], borderColor: '#333', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }] : [])
       ] }, options: (() => { const o = baseOpts(`${U.unit}/일`); o.scales.x = { type: 'linear', title: { display: true, text: '평균기온 (℃)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.interaction = { mode: 'nearest', intersect: true };
         o.plugins.tooltip.callbacks.label = c => c.raw.d ? ` ${c.raw.d.slice(5)} · ${c.raw.x}℃ · ${f1(c.raw.y)} ${U.unit}` : ''; return o; })() });
-      const strength = lr ? (lr.r2 >= 0.5 ? '강함' : lr.r2 >= 0.25 ? '보통' : '약함') : '';
+      const strength = lr ? (lr.r2 >= 0.5 ? '뚜렷함' : lr.r2 >= 0.25 ? '보통' : '약함 — 기온보다 다른 요인이 큼') : '';
       document.getElementById('temp-note').innerHTML = !lr ? '기온 기록이 부족합니다. (설비검침의 최저·최고온도 사용)' :
-        `기온이 1℃ <b>${lr.a < 0 ? '내려가면' : '올라가면'}</b> ${U.name} 사용량이 하루 약 <b>${f1(Math.abs(lr.a))} ${U.unit}</b> 늘어나는 경향 (관련성 ${strength}, R²=${lr.r2.toFixed(2)}, 평일 ${pts.length}일)`;
-
-      // 2) 생산량 vs 원단위 (월별, 최근 24개월)
+        `읽는 법: 오른쪽(더운 날)으로 갈수록 점이 위에 있으면 더울수록 더 쓴다는 뜻.<br>→ 기온이 1℃ ${lr.a < 0 ? '내려가면' : '올라가면'} ${U.name}를 하루 약 <b>${f1(Math.abs(lr.a))} ${U.unit}</b> 더 씁니다 (관련성 ${strength}).`;
       const months = []; for (let ym = UT.ym(causeYear - 1, 1); ym <= UT.ym(causeYear, 12) && ym <= thisYm; ym = UT.nextYm(ym)) months.push(ym);
-      const mp = months.map(ym => { const s = S(ym); return { ym, x: s.production, y: causeUtil === 'gas' ? ratio(s.gas.usage, s.production) : ratio(s[causeUtil].usage, s.production) }; }).filter(p => p.x && p.y);
+      const ck = causeUtil, mp = months.map(ym => { const s = S(ym); return { ym, x: s.production, y: ratio(s[ck].usage, s.production) }; }).filter(p => p.x && p.y);
       const lr2 = UT.linreg(mp.map(p => [p.x, p.y]));
-      const unit2 = `${UT.UTILS.find(u => u.k === causeUtil).unit}/kg`;
+      const unit2 = `${UT.UTILS.find(u => u.k === ck).unit}/kg`, UC = UT.UTILS.find(u => u.k === ck);
       mkChart('chart-produnit', { type: 'scatter', data: { datasets: [
         { label: `${causeYear - 1}년`, data: mp.filter(p => p.ym < `${causeYear}`), backgroundColor: '#a3a29d', pointRadius: 5 },
-        { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: U.color, pointRadius: 6 }
+        { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: UC.color, pointRadius: 6 }
       ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '원육 투입량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
         o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 원육 ${f0(c.raw.x)}kg · ${f2(c.raw.y)} ${unit2}`; return o; })() });
       document.getElementById('produnit-note').innerHTML = !lr2 ? '원육 투입량을 넣은 달이 부족합니다.' :
-        `원육 투입량이 많은 달일수록 원단위가 ${lr2.a < 0 ? '<b>낮아지는</b>(고정 사용량이 나뉘는)' : '<b>높아지는</b>'} 경향 (R²=${lr2.r2.toFixed(2)}). 같은 원육 투입량인데 점이 위에 있는 달은 낭비를 의심해 볼 달입니다.`;
-
-      // 3) 전력 구성 (월별)
+        `읽는 법: 오른쪽(원육 많이 넣은 달)으로 갈수록 점이 아래로 내려가면, 많이 넣을수록 kg당 덜 쓴다는 뜻.<br>→ 원육을 많이 넣은 달일수록 kg당 사용량이 ${lr2.a < 0 ? '<b>낮아집니다</b> (기본으로 쓰는 양이 나뉘기 때문)' : '<b>높아집니다</b>'}. 비슷한 원육 투입량인데 혼자 위에 떠 있는 점은 낭비를 의심해 볼 달입니다.`;
       const ms = yearMonths(causeYear), es = ms.map(ym => { const s = S(ym); const m = s.m || {}; const tot = s.elec.usage; const hv = Number(m.elec_hvac_kwh) || null, ww = Number(m.elec_ww_kwh) || null; return { tot, hv, ww, etc: tot ? Math.max(0, tot - (hv || 0) - (ww || 0)) : null }; });
       mkChart('chart-elecmix', { type: 'bar', data: { labels: monthLabels, datasets: [
         { label: '공조냉동', data: es.map(e => e.hv), backgroundColor: '#5b8def', stack: 'e', maxBarThickness: 34 },
@@ -1353,18 +1507,13 @@
       const list = anomList.filter(a => anomUtil === 'all' || a.u === anomUtil);
       const W = ['일', '월', '화', '수', '목', '금', '토'];
       document.getElementById('anom-table').innerHTML = !list.length ? '<div class="empty">이 기간에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>' :
-        `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th></tr>` +
+        `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th><th></th></tr>` +
         list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
           return `<tr class="anom-row" onclick="anomUtil='${a.u}';anomFocus='${a.d}';renderAnomChart()"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
             <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '가동일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
-            <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td></tr>`; }).join('') + '</table>';
-      document.querySelectorAll('#anom-table .anom-note').forEach(el => {
-        let t = null;
-        const go = () => { clearTimeout(t); t = null; saveAnomNote(el); };
-        el.addEventListener('input', () => { el.classList.remove('saved'); clearTimeout(t); t = setTimeout(go, 1200); });
-        el.addEventListener('change', go);
-        el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
-      });
+            <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td>
+            <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인분석 →</button></td></tr>`; }).join('') + '</table>';
+      bindAnomNotes('#anom-table');
       renderAnomChart();
     }
     // 이상감지 메모: 연 설정(YYYY-00)의 anom_notes 에 "날짜|항목" 키로 저장
@@ -1377,6 +1526,17 @@
       try { await saveYear(y, { anom_notes: notes }); el.classList.toggle('saved', !!v); }
       catch (e) { alert('메모 저장 실패: ' + errMsg(e)); }
     }
+    function bindAnomNotes(sel) {
+      document.querySelectorAll(sel + ' .anom-note').forEach(el => {
+        let t = null;
+        const go = () => { clearTimeout(t); t = null; saveAnomNote(el); };
+        el.addEventListener('input', () => { el.classList.remove('saved'); clearTimeout(t); t = setTimeout(go, 1200); });
+        el.addEventListener('change', go);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
+      });
+    }
+    // 이상감지 → 그 달 원인분석으로
+    function goCause(d, u) { causeYm = d.slice(0, 7); causeUtil = u; switchTab('cause'); }
     let anomFocus = null;
     function renderAnomChart() {
       if (!window.Chart) return;
