@@ -183,10 +183,21 @@
         if (error) { fail++; status('⚠ ' + errMsg(error)); continue; }
         DAYS[ds] = data;
       }
+      // 쉬는 날 빈칸 채우기 (가스식당·상수도·폐수방류량·가스보일러)
+      let filled = [];
+      const fd = Object.entries(byDay).filter(([, b]) => Object.keys(b.patch).some(id => Portal.FILL_METERS.includes(id) && b.patch[id] !== null)).map(([d]) => d).sort();
+      if (!fail && fd.length) {
+        try {
+          const from = new Date(fd[0] + 'T00:00:00'); from.setDate(from.getDate() - 7);
+          const fs = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+          filled = await Portal.fillMeterGaps(fs, fd[fd.length - 1]);
+          filled.forEach(x => { DAYS[x.d] = DAYS[x.d] || { d: x.d, v: {} }; DAYS[x.d].v = { ...(DAYS[x.d].v || {}), [x.id]: x.v }; });
+        } catch (e) { console.warn('빈칸 채우기 실패', e); }
+      }
       pending--;
       render();
       changes.forEach(ch => { const td = cell(ROWS.indexOf(ch.ds), COLS.indexOf(ch.col)); if (td) { td.classList.add(fail ? 'err' : 'saved'); setTimeout(() => td.classList.remove('saved'), 1200); } });
-      if (!fail && !pending) status(`✓ ${changes.length}칸 저장됨`);
+      if (!fail && !pending) status(`✓ ${changes.length}칸 저장됨${filled.length ? ` · 쉬는 날 빈칸 ${filled.length}칸 자동 채움` : ''}`);
     }
 
     // ---------------- 편집 ----------------

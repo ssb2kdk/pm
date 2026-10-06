@@ -55,6 +55,40 @@
   document.addEventListener('wheel', e => { const t = e.target; if (t && t.type === 'number' && document.activeElement === t) t.blur(); }, { passive: true });
   document.addEventListener('keydown', e => { const t = e.target; if (t && t.type === 'number' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) e.preventDefault(); }, true);
 
+  // ---------------- 휴일 빈칸 채우기 (검침) ----------------
+  // 쉬는 날(주말·공휴일)에 못 읽은 지침은, 다시 읽은 날의 값을 그 사이 빈 날에 그대로 넣는다 (엑셀에서 복사해 붙이던 방식)
+  //  → 쉬는 동안 쓴 양은 쉬기 전 마지막 날 사용량으로 잡힘. 빈칸만 채우고 이미 있는 값은 안 건드림.
+  const FILL_METERS = ['가스식당', '상수도40A', '상수도50A', '폐수방류량', '가스보일러'];
+  const FILL_MAX_GAP = 6; // 이보다 긴 공백은 채우지 않음 (검침을 오래 빠뜨린 경우)
+  const addDaysStr = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  // from~to 사이 빈 날을 채움. 반환: [{d, id, v}]
+  async function fillMeterGaps(from, to, ids = FILL_METERS) {
+    const sb = Portal.sb, start = addDaysStr(from, -(FILL_MAX_GAP + 1));
+    const { data, error } = await sb.from('meter_daily').select('d, v').gte('d', start).lte('d', to).order('d');
+    if (error) throw error;
+    const map = {}; (data || []).forEach(r => { map[r.d] = r.v || {}; });
+    const has = (ds, id) => map[ds] && map[ds][id] !== undefined && map[ds][id] !== null && map[ds][id] !== '';
+    const patches = {}, out = [];
+    ids.forEach(id => {
+      let last = null;
+      for (let ds = start; ds <= to; ds = addDaysStr(ds, 1)) {
+        if (!has(ds, id)) continue;
+        const v = Number(map[ds][id]);
+        if (last) {
+          const gap = []; for (let x = addDaysStr(last, 1); x < ds; x = addDaysStr(x, 1)) gap.push(x);
+          if (gap.length && gap.length <= FILL_MAX_GAP && v >= Number(map[last][id]))
+            gap.forEach(x => { if (x >= from) { (patches[x] = patches[x] || {})[id] = v; out.push({ d: x, id, v }); } });
+        }
+        last = ds;
+      }
+    });
+    for (const [ds, patch] of Object.entries(patches)) {
+      const { error: e2 } = await sb.rpc('meter_save', { p_d: ds, p_weather: null, p_tmin: null, p_tmax: null, p_patch: patch });
+      if (e2) throw e2;
+    }
+    return out;
+  }
+
   const Portal = {
     config: CFG,
     root: ROOT,
@@ -66,7 +100,9 @@
     visibleApps: () => (CFG.APPS || []).filter(a => !(Portal.me && Portal.me.role === 'partner') || a.partner),
     appUrl: app => ROOT + app.path,
     start,
-    callAdmin
+    callAdmin,
+    FILL_METERS,
+    fillMeterGaps
   };
   window.Portal = Portal;
 

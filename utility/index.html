@@ -390,7 +390,8 @@
         <div class="toolbar">
           <div class="month-nav"><button onclick="shiftDailyMonth(-1)">◀</button><span id="daily-month"></span><button onclick="shiftDailyMonth(1)">▶</button></div>
           <button class="btn secondary" onclick="jumpToday()">오늘로</button>
-          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다.</span>
+          <button class="btn secondary" onclick="dailyFillMonth()" title="쉬는 날 못 읽은 지침을 다시 읽은 날 값으로 채움">📋 쉬는 날 빈칸 채우기</button>
+          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다. 쉬는 날 다음에 지침을 넣으면 그 사이 빈 날(최대 6일)은 같은 지침으로 자동으로 채워집니다 (가스 식당·보일러, 용수, 폐수 유량계).</span>
         </div>
         <div class="daily-wrap" id="daily-wrap"><div class="loading">불러오는 중...</div></div>
       </div>
@@ -2972,6 +2973,26 @@
       [d, prevDate(d)].forEach(ds => { const el = document.getElementById(`use-${ds}-${k}`); if (el) el.textContent = useText(ds, col); });
       const prevV = dval(prevDate(d), k);
       inp.classList.toggle('warn', col.kind === 'reading' && v !== null && prevV !== null && v < prevV);
+      if (v !== null && Portal.FILL_METERS.includes(METER_ID[k])) {
+        const from = new Date(d + 'T00:00:00'); from.setDate(from.getDate() - 7);
+        await dailyFill(`${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`, d, true);
+      }
+    }
+    // 쉬는 날 빈칸 채우기 → 화면 갱신
+    const METER_KEY = Object.fromEntries(Object.entries(METER_ID).map(([k, id]) => [id, k]));
+    async function dailyFill(from, to, quiet) {
+      try {
+        const f = await Portal.fillMeterGaps(from, to);
+        f.forEach(x => { const k = METER_KEY[x.id]; if (k) DAILY[x.d] = { ...(DAILY[x.d] || {}), [k]: x.v }; });
+        if (f.length) { resetCache(); renderDaily(); }
+        if (!quiet) alert(f.length ? `쉬는 날 빈칸 ${f.length}칸을 채웠습니다.\n\n` + [...new Set(f.map(x => x.d))].map(ds => `${ds.slice(5).replace('-', '/')}: ${f.filter(x => x.d === ds).map(x => x.id).join(', ')}`).join('\n') : '채울 빈칸이 없습니다.');
+        return f;
+      } catch (e) { if (!quiet) alert('빈칸 채우기 실패: ' + errMsg(e)); return []; }
+    }
+    function dailyFillMonth() {
+      if (!confirm(`${ymLabel(dailyYm)} 쉬는 날 빈칸을 채울까요?\n\n가스 식당·가스 보일러·용수 40A/50A·폐수 유량계의 빈 날에 다시 검침한 날의 지침을 그대로 넣습니다. (이미 입력된 칸은 그대로)`)) return;
+      const last = UT.dateStr(dailyYm, UT.daysIn(dailyYm));
+      dailyFill(UT.dateStr(dailyYm, 1), last < todayStr ? UT.addDays(last, 7) : todayStr);
     }
 
     // =====================================================================

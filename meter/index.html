@@ -338,6 +338,7 @@
       btn.textContent = adminMode ? '✓ 항목 구성 저장' : (n ? `저장 (${n}개 변경)` : (weatherDirty ? '저장 (날씨)' : '저장'));
     }
 
+    const addDaysStr = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     async function saveDay() {
       if (adminMode) return saveStructure();
       const btn = document.getElementById('save-btn');
@@ -360,7 +361,16 @@
       DAYS[curDate] = data;
       dirty = new Set(); weatherDirty = false;
       btn.className = 'save done'; btn.textContent = '✓ 저장 완료';
-      toast(`${curDate.slice(5).replace('-', '/')} 저장됨`);
+      let filledMsg = '';
+      if (Object.keys(patch).some(id => Portal.FILL_METERS.includes(id) && patch[id] !== null)) {
+        try {
+          const f = await Portal.fillMeterGaps(addDaysStr(curDate, -7), curDate);
+          f.forEach(x => { DAYS[x.d] = DAYS[x.d] || { d: x.d, v: {} }; DAYS[x.d].v = { ...(DAYS[x.d].v || {}), [x.id]: x.v }; if (!SORTED_DAYS.includes(x.d)) { SORTED_DAYS.push(x.d); SORTED_DAYS.sort(); } });
+          const dd = [...new Set(f.map(x => x.d))];
+          if (dd.length) filledMsg = ` · 쉬는 날 ${dd.map(x => x.slice(8).replace(/^0/, '') + '일').join(',')} 빈칸 채움`;
+        } catch (e) { console.warn('빈칸 채우기 실패', e); }
+      }
+      toast(`${curDate.slice(5).replace('-', '/')} 저장됨${filledMsg}`);
       setTimeout(() => { renderFooter(); }, 1800);
       renderTabs(); renderContent();
     }
