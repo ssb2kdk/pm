@@ -1596,7 +1596,7 @@
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${f2(un)} <span class="hint">${u.unit}/kg</span></td>
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
         `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
-      h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (만원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
+      h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
       // 이상 사용 요약
       const first = UT.dateStr(brYm, 1), last = UT.dateStr(brYm, UT.daysIn(brYm));
       const an = UT.anomalies(DAILY, first, last < todayStr ? last : UT.addDays(todayStr, -1), { ratio: 1.4 }).filter(a => a.kind === '과다');
@@ -1612,7 +1612,7 @@
       // 차트
       if (!window.Chart) return;
       const ms = yearMonths(y), cs = ms.map(ym => ym === brYm && fc ? fc : S(ym)), ps = yearMonths(y - 1).map(S);
-      mkChart('br-cost', { type: 'bar', data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({ label: u.name, data: cs.map(x => x[u.k].cost === null ? null : x[u.k].cost / 10000), backgroundColor: u.color, stack: 'c', maxBarThickness: 22 })) },
+      mkChart('br-cost', { type: 'bar', data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({ label: u.name, data: cs.map(x => x[u.k].cost === null ? null : x[u.k].cost / 1000), backgroundColor: u.color, stack: 'c', maxBarThickness: 22 })) },
         options: (() => { const o = baseOpts(''); o.scales.x.stacked = o.scales.y.stacked = true; o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return o; })() });
       mkChart('br-unit', { type: 'line', data: { labels: monthLabels, datasets: [
         { label: `${y}년`, data: cs.map(uc), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 3 },
@@ -2687,7 +2687,7 @@
     const f1 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf1.format(v);
     const f2 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf2.format(v);
     const won = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v) + '원';
-    const man = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v / 10000) + '만원';
+    const man = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v / 1000) + '천원'; // 금액은 천원 단위 (반올림)
     const ratio = (a, b) => (a === null || b === null || !b) ? null : a / b;
     const pctTxt = (cur, prev) => {
       if (cur === null || prev === null || !prev) return '<span class="hint">비교 없음</span>';
@@ -2835,17 +2835,17 @@
       const cs = ms.map(S), ps = pms.map(S);
 
       // 1) 월별 비용 (항목별 누적 막대)
-      document.getElementById('cost-chart-sub').textContent = `${y}년 · 만원 · VAT 포함`;
+      document.getElementById('cost-chart-sub').textContent = `${y}년 · 천원 · VAT 포함`;
       document.getElementById('cost-legend').innerHTML = UT.UTILS.map(u => `<span><i class="dot" style="background:${u.color}"></i>${u.name}</span>`).join('');
       mkChart('chart-cost', {
         type: 'bar',
         data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({
-          label: u.name, data: cs.map(s => s[u.k].cost === null ? null : s[u.k].cost / 10000),
+          label: u.name, data: cs.map(s => s[u.k].cost === null ? null : s[u.k].cost / 1000),
           backgroundColor: u.color, borderColor: '#fff', borderWidth: { top: 2 }, borderRadius: 0, stack: 'c', maxBarThickness: 34
         })) },
-        options: (() => { const o = baseOpts('만원'); o.scales.x.stacked = true; o.scales.y.stacked = true;
-          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)}만원`;
-          o.plugins.tooltip.callbacks.footer = items => { const t = items.reduce((a, i) => a + (i.raw || 0), 0); return `합계 ${f0(t)}만원`; };
+        options: (() => { const o = baseOpts('천원'); o.scales.x.stacked = true; o.scales.y.stacked = true;
+          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)}천원`;
+          o.plugins.tooltip.callbacks.footer = items => { const t = items.reduce((a, i) => a + (i.raw || 0), 0); return `합계 ${f0(t)}천원`; };
           return o; })()
       });
 
@@ -2865,9 +2865,9 @@
       const metrics = [['usage', '사용량'], ['unit', '원단위'], ['cost', '비용']];
       document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSel === k ? 'on' : ''}" onclick="metricSel='${k}';renderCharts()">${n}</button>`).join('');
       const U = UT.UTILS.find(u => u.k === utilSel);
-      const pick = s => metricSel === 'usage' ? s[U.k].usage : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 10000);
-      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'unit' ? `${U.unit}/kg` : '만원';
-      const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 10000 : null; })
+      const pick = s => metricSel === 'usage' ? s[U.k].usage : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'unit' ? `${U.unit}/kg` : '천원';
+      const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 1000 : null; })
         : metricSel === 'usage' ? ms.map(ym => (MONTHLY[ym] || {})['plan_' + U.k + '_usage'] ?? null) : null;
       const ds = [
         { label: `${y}년`, data: cs.map(pick), borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 4 },
