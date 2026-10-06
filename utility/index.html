@@ -68,6 +68,8 @@
     .zoom-sum { font-size: 15px; font-weight: 600; color: #333; min-height: 0; } .zoom-sum:empty { display: none; }
     .zoom-chart { position: relative; flex: 1; min-height: 300px; }
     .zoom-table { max-height: 34%; overflow: auto; }
+    .zoom-table table.zal { table-layout: fixed; border-collapse: collapse; } .zoom-table table.zal td, .zoom-table table.zal th { padding: 5px 4px; text-align: center; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+    .zoom-table table.zal td.l, .zoom-table table.zal th.l { text-align: left; white-space: normal; word-break: keep-all; }
     .cz-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.3fr; gap: 16px; align-items: start; }
     .cz-chart { height: 300px; }
     .cz-text { font-size: 14px; line-height: 1.7; }
@@ -1670,6 +1672,17 @@
         g.restore();
       }
     };
+    // 아래 값 표의 월 칸을 그래프 x축 위치와 맞춤
+    const ZSUMW = 78;
+    function alignZoomTable(chart) {
+      const t = document.querySelector('#zoom-table table.t.zal'); if (!t || !chart.scales.x) return;
+      const xs = chart.scales.x, n = (chart.data.labels || []).length, W = chart.width;
+      const cw = xs.width / n;
+      const cols = [xs.left, ...Array(n).fill(cw), (W - xs.right) / 2, (W - xs.right) / 2];
+      t.style.width = W + 'px';
+      t.querySelector('colgroup').innerHTML = cols.map(w => `<col style="width:${w}px">`).join('');
+    }
+    const ZALIGN = { id: 'zalign', afterLayout(chart) { requestAnimationFrame(() => alignZoomTable(chart)); } };
     function toggleZoomLabels() { zoomLabels = !zoomLabels; if (zoomId) openZoom(zoomId); }
     function openZoom(id) {
       const cfg = CHART_CFG[id]; if (!cfg) return;
@@ -1685,9 +1698,10 @@
       c.options = c.options || {}; c.options.maintainAspectRatio = false; c.options.animation = false;
       c.options.plugins = c.options.plugins || {}; c.options.plugins.legend = { ...(c.options.plugins.legend || {}), display: true, position: 'top' };
       c.options.plugins.zlabels = { on: zoomLabels };
-      c.options.layout = { padding: { top: 24, left: 4, right: 12 } };
+      const aligned = c.type !== 'scatter' && (c.data.labels || []).length > 0 && (c.data.labels || []).length <= 40;
+      c.options.layout = { padding: { top: 24, left: 4, right: aligned ? ZSUMW * 2 + 8 : 12 } }; // 오른쪽 = 표의 합계·평균 칸 자리
       if (c.options.scales && c.options.scales.x && c.type !== 'scatter') c.options.scales.x.offset = true; // 첫·끝 점 수치가 잘리지 않게
-      c.plugins = [...(c.plugins || []), ZLABEL];
+      c.plugins = [...(c.plugins || []), ZLABEL, ...(aligned ? [ZALIGN] : [])];
       // 수치가 위로 잘리지 않게 위쪽 여유
       document.getElementById('zoom').hidden = false;
       if (zoomChart) zoomChart.destroy();
@@ -1707,18 +1721,20 @@
         }
       }
       document.getElementById('zoom-sum').innerHTML = sum;
-      // 값 표
+      // 값 표 (kg당·㎥당처럼 비율 값은 합계가 의미 없어 '-')
+      const isRatio = /\//.test(unit) || /%/.test(unit);
       const ds = (cfg.data.datasets || []).filter(d => d.label);
       let h = '';
       if (cfg.type === 'scatter' || (ds[0] && ds[0].data && ds[0].data[0] && typeof ds[0].data[0] === 'object')) {
         h = '<div class="hint">점 그래프는 점에 마우스를 올리면 값이 보입니다.</div>';
       } else {
         const fmt = v => v === null || v === undefined || isNaN(v) ? '-' : (Math.abs(v) >= 100 ? f0(v) : f2(v));
-        h = `<table class="t"><tr><th class="l">구분</th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}<th>합계</th><th>평균</th></tr>` +
+        h = `<table class="t zal"><colgroup></colgroup><tr><th class="l">구분</th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}<th>합계</th><th>평균</th></tr>` +
           ds.map(d => { const vals = (d.data || []).map(x => x === null || x === undefined ? null : Number(x)); const ok = vals.filter(x => x !== null && !isNaN(x));
-            return `<tr><td class="l">${esc(d.label)}</td>${vals.map(v => `<td>${fmt(v)}</td>`).join('')}<td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0)) : '-'}</td><td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0) / ok.length) : '-'}</td></tr>`; }).join('') + '</table>';
+            return `<tr><td class="l">${esc(d.label)}</td>${vals.map(v => `<td>${fmt(v)}</td>`).join('')}<td>${ok.length && !isRatio ? fmt(ok.reduce((a, b) => a + b, 0)) : '-'}</td><td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0) / ok.length) : '-'}</td></tr>`; }).join('') + '</table>';
       }
       document.getElementById('zoom-table').innerHTML = h;
+      if (zoomChart) alignZoomTable(zoomChart);
     }
     function closeZoom() { document.getElementById('zoom').hidden = true; if (zoomChart) { zoomChart.destroy(); zoomChart = null; } }
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('zoom').hidden) closeZoom(); });
