@@ -183,7 +183,7 @@
         if (error) { fail++; status('⚠ ' + errMsg(error)); continue; }
         DAYS[ds] = data;
       }
-      // 쉬는 날 빈칸 채우기 (가스식당·상수도·폐수방류량·가스보일러)
+      // 쉬는 날 빈칸 채우기 (가스식당·상수도·폐수방류량)
       let filled = [];
       const fd = Object.entries(byDay).filter(([, b]) => Object.keys(b.patch).some(id => Portal.FILL_METERS.includes(id) && b.patch[id] !== null)).map(([d]) => d).sort();
       if (!fail && fd.length) {

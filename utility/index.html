@@ -391,7 +391,7 @@
           <div class="month-nav"><button onclick="shiftDailyMonth(-1)">◀</button><span id="daily-month"></span><button onclick="shiftDailyMonth(1)">▶</button></div>
           <button class="btn secondary" onclick="jumpToday()">오늘로</button>
           <button class="btn secondary" onclick="dailyFillMonth()" title="쉬는 날 못 읽은 지침을 다시 읽은 날 값으로 채움">📋 쉬는 날 빈칸 채우기</button>
-          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다. 쉬는 날 다음에 지침을 넣으면 그 사이 빈 날(최대 6일)은 같은 지침으로 자동으로 채워집니다 (가스 식당·보일러, 용수, 폐수 유량계).</span>
+          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다. 쉬는 날 다음에 지침을 넣으면 그 사이 빈 날(최대 6일)은 같은 지침으로 자동으로 채워집니다 (가스 식당, 용수 40A·50A, 폐수 유량계 — 가스 보일러는 제외).</span>
         </div>
         <div class="daily-wrap" id="daily-wrap"><div class="loading">불러오는 중...</div></div>
       </div>
@@ -2990,7 +2990,7 @@
       } catch (e) { if (!quiet) alert('빈칸 채우기 실패: ' + errMsg(e)); return []; }
     }
     function dailyFillMonth() {
-      if (!confirm(`${ymLabel(dailyYm)} 쉬는 날 빈칸을 채울까요?\n\n가스 식당·가스 보일러·용수 40A/50A·폐수 유량계의 빈 날에 다시 검침한 날의 지침을 그대로 넣습니다. (이미 입력된 칸은 그대로)`)) return;
+      if (!confirm(`${ymLabel(dailyYm)} 쉬는 날 빈칸을 채울까요?\n\n가스 식당·용수 40A/50A·폐수 유량계의 빈 날에 다시 검침한 날의 지침을 그대로 넣습니다. (이미 입력된 칸은 그대로)`)) return;
       const last = UT.dateStr(dailyYm, UT.daysIn(dailyYm));
       dailyFill(UT.dateStr(dailyYm, 1), last < todayStr ? UT.addDays(last, 7) : todayStr);
     }

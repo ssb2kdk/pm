@@ -58,7 +58,7 @@
   // ---------------- 휴일 빈칸 채우기 (검침) ----------------
   // 쉬는 날(주말·공휴일)에 못 읽은 지침은, 다시 읽은 날의 값을 그 사이 빈 날에 그대로 넣는다 (엑셀에서 복사해 붙이던 방식)
   //  → 쉬는 동안 쓴 양은 쉬기 전 마지막 날 사용량으로 잡힘. 빈칸만 채우고 이미 있는 값은 안 건드림.
-  const FILL_METERS = ['가스식당', '상수도40A', '상수도50A', '폐수방류량', '가스보일러'];
+  const FILL_METERS = ['가스식당', '상수도40A', '상수도50A', '폐수방류량']; // 가스보일러는 휴일 지침을 따로 확인해 넣으므로 제외
   const FILL_MAX_GAP = 6; // 이보다 긴 공백은 채우지 않음 (검침을 오래 빠뜨린 경우)
   const addDaysStr = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   // from~to 사이 빈 날을 채움. 반환: [{d, id, v}]
