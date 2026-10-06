@@ -65,6 +65,7 @@
     .zoom-box { background: #fff; border-radius: 12px; width: min(1400px, 100%); height: min(900px, 100%); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
     .zoom-hd { display: flex; align-items: center; gap: 12px; } .zoom-hd b { font-size: 16px; color: var(--brand); } .zoom-hd .hint { flex: 1; }
     .zoom-hd button { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    .zoom-sum { font-size: 15px; font-weight: 600; color: #333; min-height: 0; } .zoom-sum:empty { display: none; }
     .zoom-chart { position: relative; flex: 1; min-height: 300px; }
     .zoom-table { max-height: 34%; overflow: auto; }
     .cz-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.3fr; gap: 16px; align-items: start; }
@@ -435,7 +436,8 @@
 
   <div id="zoom" hidden onclick="if (event.target.id === 'zoom') closeZoom()">
     <div class="zoom-box">
-      <div class="zoom-hd"><b id="zoom-title"></b><span class="hint">범례를 누르면 그 항목을 숨기거나 보일 수 있습니다 · Esc 닫기</span><button onclick="closeZoom()">✕ 닫기</button></div>
+      <div class="zoom-hd"><b id="zoom-title"></b><span class="hint">범례를 누르면 그 항목을 숨기거나 보일 수 있습니다 · Esc 닫기</span><button id="zoom-lbl" onclick="toggleZoomLabels()">수치 숨기기</button><button onclick="closeZoom()">✕ 닫기</button></div>
+      <div id="zoom-sum" class="zoom-sum"></div>
       <div class="zoom-chart"><canvas id="zoom-canvas"></canvas></div>
       <div class="zoom-table tbl-wrap" id="zoom-table"></div>
     </div>
@@ -1631,25 +1633,86 @@
       if (v && typeof v === 'object' && !(v instanceof Date)) { const o = {}; for (const k in v) o[k] = cloneCfg(v[k]); return o; }
       return v;
     }
-    let zoomChart = null;
+    let zoomChart = null, zoomId = null, zoomLabels = true;
+    // 차트에 수치 표시 (크게 보기 화면)
+    const zfmtFor = vals => { const mx = Math.max(0, ...vals.filter(v => v !== null && v !== undefined && isFinite(v)).map(v => Math.abs(v))); return mx >= 100 ? (v => f0(v)) : mx >= 1 ? (v => nf1.format(v)) : (v => Number(v).toFixed(3)); };
+    const ZLABEL = {
+      id: 'zlabels',
+      afterDatasetsDraw(chart, a, opt) {
+        if (!opt || !opt.on) return;
+        const g = chart.ctx, sets = chart.data.datasets;
+        const n = (chart.data.labels || []).length;
+        if (!n || n > 40 || chart.config.type === 'scatter') return;
+        g.save(); g.textAlign = 'center'; g.font = '600 12px "Pretendard", "Malgun Gothic", sans-serif';
+        const stacked = chart.options.scales && chart.options.scales.y && chart.options.scales.y.stacked;
+        const tot = {}, top = {};
+        sets.forEach((d, di) => {
+          const meta = chart.getDatasetMeta(di); if (meta.hidden || !chart.isDatasetVisible(di)) return;
+          const isLine = (d.type || chart.config.type) === 'line';
+          if (isLine && d.pointRadius === 0) return; // 계획선 등
+          const vals = (d.data || []).map(v => v === null || v === undefined ? null : Number(v)), fmt = zfmtFor(vals);
+          meta.data.forEach((el, i) => {
+            const v = vals[i]; if (v === null || isNaN(v)) return;
+            if (!isLine && stacked) {
+              tot[i] = (tot[i] || 0) + v; top[i] = Math.min(top[i] ?? Infinity, el.y);
+              const h = Math.abs(el.base - el.y); if (h < 16) return;
+              g.fillStyle = '#fff'; g.font = '11px "Malgun Gothic", sans-serif'; g.fillText(fmt(v), el.x, (el.y + el.base) / 2 + 4); return;
+            }
+            const main = di === 0;
+            g.font = main ? '700 13px "Malgun Gothic", sans-serif' : '11px "Malgun Gothic", sans-serif';
+            g.fillStyle = main ? '#222' : '#8a8f98';
+            const y = isLine ? (main ? el.y - 12 : el.y + 19) : el.y - 6;
+            g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.9)'; g.strokeText(fmt(v), el.x, y);
+            g.fillText(fmt(v), el.x, y);
+          });
+        });
+        if (stacked) { const fmt = zfmtFor(Object.values(tot)); g.font = '700 13px "Malgun Gothic", sans-serif'; g.fillStyle = '#222'; Object.keys(tot).forEach(i => { const el = chart.getDatasetMeta(0).data[i] || {}; g.fillText(fmt(tot[i]), el.x, top[i] - 6); }); }
+        g.restore();
+      }
+    };
+    function toggleZoomLabels() { zoomLabels = !zoomLabels; if (zoomId) openZoom(zoomId); }
     function openZoom(id) {
       const cfg = CHART_CFG[id]; if (!cfg) return;
+      zoomId = id;
       const card = document.getElementById(id).closest('.card');
       const h3 = card ? card.querySelector('h3') : null;
-      document.getElementById('zoom-title').textContent = h3 ? (h3.childNodes[0].textContent || '').trim() || h3.textContent.trim().split('\n')[0] : '';
+      const unit = (((cfg.options || {}).scales || {}).y || {}).title ? cfg.options.scales.y.title.text || '' : '';
+      const ttl = h3 ? (h3.childNodes[0].textContent || '').trim() || h3.textContent.trim().split('\n')[0] : '';
+      let ttl2 = ttl;
+      if (id === 'chart-util') { const U = UT.UTILS.find(u => u.k === utilSel); ttl2 = `${U.name} ${{ usage: '사용량', unit: '원단위 (원육 kg당 사용량)', cost: '비용' }[metricSel]}`; }
+      document.getElementById('zoom-title').textContent = ttl2 + (unit ? ` (단위: ${unit})` : '');
       const c = cloneCfg(cfg);
       c.options = c.options || {}; c.options.maintainAspectRatio = false; c.options.animation = false;
       c.options.plugins = c.options.plugins || {}; c.options.plugins.legend = { ...(c.options.plugins.legend || {}), display: true, position: 'top' };
+      c.options.plugins.zlabels = { on: zoomLabels };
+      c.options.layout = { padding: { top: 24, left: 4, right: 12 } };
+      if (c.options.scales && c.options.scales.x && c.type !== 'scatter') c.options.scales.x.offset = true; // 첫·끝 점 수치가 잘리지 않게
+      c.plugins = [...(c.plugins || []), ZLABEL];
+      // 수치가 위로 잘리지 않게 위쪽 여유
       document.getElementById('zoom').hidden = false;
       if (zoomChart) zoomChart.destroy();
       zoomChart = new Chart(document.getElementById('zoom-canvas'), c);
+      const btn = document.getElementById('zoom-lbl'); btn.textContent = zoomLabels ? '수치 숨기기' : '수치 보이기';
+      // 전월 대비 (월별 차트일 때: 첫 번째 항목의 마지막 달 vs 그 전 달)
+      const labels = cfg.data.labels || [], ds0 = (cfg.data.datasets || [])[0];
+      let sum = '';
+      if (labels.length === 12 && /월$/.test(labels[0]) && ds0) {
+        const stackedC = cfg.options && cfg.options.scales && cfg.options.scales.y && cfg.options.scales.y.stacked;
+        const vals = stackedC ? labels.map((_, i) => { const xs = cfg.data.datasets.map(d => d.data[i]).filter(v => v !== null && v !== undefined); return xs.length ? xs.reduce((a, b) => a + Number(b), 0) : null; }) : ds0.data.map(v => v === null || v === undefined ? null : Number(v));
+        const yy = Number((dashYm || thisYm).slice(0, 4));
+        let i = -1; vals.forEach((v, k) => { const ym = UT.ym(yy, k + 1); if (v !== null && !isNaN(v) && !(ym >= thisYm && !UT.monthComplete(DAILY, ym))) i = k; }); // 진행 중인 달은 빼고 비교
+        if (i > 0 && vals[i - 1]) {
+          const fmt = zfmtFor(vals), p = (vals[i] / vals[i - 1] - 1) * 100;
+          sum = `▶ 전월 대비 증감률 · ${labels[i]} ${fmt(vals[i])}${unit ? ' ' + unit : ''} (${labels[i - 1]} ${fmt(vals[i - 1])}) : <b class="${p > 0 ? 'up' : 'down'}">${p > 0 ? '+' : ''}${nf1.format(p)}% ${p > 0 ? '증가' : '감소'}</b>`;
+        }
+      }
+      document.getElementById('zoom-sum').innerHTML = sum;
       // 값 표
       const ds = (cfg.data.datasets || []).filter(d => d.label);
       let h = '';
       if (cfg.type === 'scatter' || (ds[0] && ds[0].data && ds[0].data[0] && typeof ds[0].data[0] === 'object')) {
         h = '<div class="hint">점 그래프는 점에 마우스를 올리면 값이 보입니다.</div>';
       } else {
-        const labels = cfg.data.labels || [];
         const fmt = v => v === null || v === undefined || isNaN(v) ? '-' : (Math.abs(v) >= 100 ? f0(v) : f2(v));
         h = `<table class="t"><tr><th class="l">구분</th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}<th>합계</th><th>평균</th></tr>` +
           ds.map(d => { const vals = (d.data || []).map(x => x === null || x === undefined ? null : Number(x)); const ok = vals.filter(x => x !== null && !isNaN(x));
