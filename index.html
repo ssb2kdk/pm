@@ -22,6 +22,11 @@
     .app-card .desc { font-size: 12px; color: #666; line-height: 1.5; }
     .app-card.soon { opacity: 0.55; cursor: default; }
     .app-card.soon .name { color: #666; }
+    .sec-title { font-size: 16px; margin: 26px 0 10px; color: #333; }
+    .link-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    .link-card { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #dde3ee; border-radius: 10px; padding: 10px 14px; text-decoration: none; color: #222; min-width: 240px; }
+    .link-card:hover { border-color: #2f5aa8; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .link-card .i { font-size: 22px; } .link-card .n { font-weight: 600; font-size: 14px; } .link-card .d { font-size: 12px; color: #888; } .link-card .ext { margin-left: auto; color: #999; }
     .soon-tag { align-self: flex-start; font-size: 11px; background: #eee; color: #777; padding: 2px 8px; border-radius: 10px; }
 
     .admin-section { background: #fff; border-radius: 10px; padding: 16px; margin-top: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
@@ -41,6 +46,10 @@
     <div class="container">
       <div class="welcome" id="welcome"></div>
       <div class="app-grid" id="app-grid"></div>
+      <div id="link-section" hidden>
+        <h2 class="sec-title">🔗 바로가기</h2>
+        <div class="link-grid" id="link-grid"></div>
+      </div>
 
       <div class="admin-section" id="user-section" hidden>
         <h3>👤 사용자 관리 <span style="font-size:12px;color:#888;font-weight:normal;">(모든 앱에 공통으로 적용)</span></h3>
@@ -101,6 +110,12 @@
           <div class="desc">${esc(a.desc)}</div>
           <span class="soon-tag">준비 중</span>
         </div>`).join('');
+      const links = Portal.me && Portal.me.role === 'partner' ? [] : (Portal.config.LINKS || []);
+      document.getElementById('link-section').hidden = !links.length;
+      document.getElementById('link-grid').innerHTML = links.map(l => `
+        <a class="link-card" href="${esc(l.url)}" target="_blank" rel="noopener">
+          <span class="i">${l.icon || '🔗'}</span><span><div class="n">${esc(l.name)}</div><div class="d">${esc(l.desc || '')}</div></span><span class="ext">↗</span>
+        </a>`).join('');
     }
 
     // ---------------- 사용자 관리 (관리자) ----------------

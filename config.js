@@ -19,5 +19,9 @@ window.APP_CONFIG = {
     { id: 'env',     icon: '🌿', name: '환경일지',                  desc: '다온산업 장부 입력 · 폐수일지 · 대기일지 출력',                     path: 'env/',     ready: true, partner: true },
     { id: 'utility', icon: '📊', name: '유틸리티 사용량·비용 분석', desc: '전기·가스·용수·폐수 월별 사용량과 금액, 목표 대비, 원단위 추이',   path: 'utility/', ready: true },
     { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: false }
+  ],
+  // 홈 화면 '바로가기' (다른 사이트 — 새 창으로 열림, 협력업체 계정에는 안 보임)
+  LINKS: [
+    { icon: '🗂️', name: '그룹웨어 현장 작업내역', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1595/home' }
   ]
 };

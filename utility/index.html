@@ -401,6 +401,7 @@
           <div class="month-nav"><button onclick="shiftMonthlyMonth(-1)">◀</button><span id="monthly-month"></span><button onclick="shiftMonthlyMonth(1)">▶</button></div>
           <button class="btn" id="monthly-save" onclick="saveMonthly()">저장</button>
           <button class="btn secondary" id="monthly-bill" onclick="openBill()">📄 고지서로 채우기</button>
+          <button class="btn secondary" id="monthly-prod" onclick="openProdImport()">🏭 생산팀 실적 가져오기</button>
           <span class="hint" id="monthly-note"></span>
         </div>
         <div class="mgrid">
@@ -466,7 +467,7 @@
   // carry: 값이 없으면 이전 달 값을 그대로 씀 (단가·계수처럼 자주 안 바뀌는 값)
   UT.FIELDS = [
     { g: '원육 투입', k: 'production_kg', label: '원육 투입량', unit: 'kg' },
-    { g: '원육 투입', k: 'prod_days', label: '생산일수', unit: '일', hint: '비우면 보일러 가스를 하루 50㎥ 넘게 쓴 날 수로 자동 계산' },
+    { g: '원육 투입', k: 'prod_days', label: '생산일수', unit: '일', hint: '[생산팀 실적 가져오기]로 채우기 · 비우면 보일러 가스를 하루 50㎥ 넘게 쓴 날로 추정' },
 
     { g: '전기', k: 'elec_kwh_light', label: '경부하 사용량', unit: 'kWh', hint: '비우면 일별 사용량 × 전월 비율로 추정' },
     { g: '전기', k: 'elec_kwh_mid', label: '중간부하 사용량', unit: 'kWh' },
@@ -2424,7 +2425,7 @@
           <button class="bx" onclick="billRemove(${pi})">✕ 빼기</button></div>`;
         if (p.warn && p.warn.length) h += `<div class="bwarn">${p.warn.map(w => '⚠ ' + esc(w)).join('<br>')}</div>`;
         if (p.check) h += `<div class="${p.check.ok ? 'bok' : 'bwarn'}">${p.check.ok ? '✓' : '⚠'} ${esc(p.check.t)}</div>`;
-        h += `<div class="bbody"><table class="btbl"><thead><tr><th></th><th>항목</th><th>고지서에서 읽은 값</th><th>지금 값</th><th>고지서 원본</th></tr></thead><tbody>`;
+        h += `<div class="bbody"><table class="btbl"><thead><tr><th></th><th>항목</th><th>읽어 온 값</th><th>지금 값</th><th>원본</th></tr></thead><tbody>`;
         (p.out || []).forEach((o, oi) => {
           const f = UT.FIELD[o.k] || { label: o.k, unit: '' };
           const cur = billCurVal(target, o.k);
@@ -2441,7 +2442,7 @@
             <td class="crop">${img ? `<img src="${img}" onclick="billShowPage(${pi})" title="눌러서 전체 보기">` : ''}</td></tr>`;
         });
         if (!(p.out || []).length) h += `<tr><td colspan="5" class="hint">읽은 값이 없습니다.</td></tr>`;
-        h += `</tbody></table><div class="bthumb"><img src="${p.prev ? p.prev.toDataURL('image/jpeg', .6) : ''}" onclick="billShowPage(${pi})"></div></div></div>`;
+        h += `</tbody></table>${p.prev ? `<div class="bthumb"><img src="${p.prev.toDataURL('image/jpeg', .6)}" onclick="billShowPage(${pi})"></div>` : ''}</div></div>`;
       });
       list.innerHTML = h;
       const n = billPages.reduce((a, p) => a + (p.out || []).filter(o => o.on && o.v != null && o.v !== '').length, 0);
@@ -2506,6 +2507,68 @@
       };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready); else ready();
     })();
+
+    // =====================================================================
+    // 월간입력 · 생산팀 스마트팩토리(Firebase)에서 원육 투입량·생산일수 가져오기 (읽기 전용)
+    //  - 생산팀 웹 '분석 → 월별현황'의 총 원육 사용량·작업일 = monthly_summary/{YYYY-MM}
+    //  - 그 문서가 없으면 생산일수만 내포장 기록 날짜로 계산
+    // =====================================================================
+    const SSB = {
+      cfg: { apiKey: 'AIzaSyA0Y6VK8EOahDE607LEWtyG9-U8YP3yqDE', authDomain: 'ssbon-factory.firebaseapp.com', projectId: 'ssbon-factory', appId: '1:815013258298:web:a80156143cf742ece8c103' },
+      sdk: ['https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'],
+      url: 'https://wooms19-del.github.io/ssbon-2factory/',
+      db: null
+    };
+    async function ssbDb() {
+      if (SSB.db) return SSB.db;
+      for (const u of SSB.sdk) await loadScript(u);
+      const app = firebase.apps.find(a => a.name === 'ssbon') || firebase.initializeApp(SSB.cfg, 'ssbon');
+      const auth = app.auth();
+      if (!auth.currentUser) await auth.signInAnonymously();
+      SSB.db = app.firestore();
+      return SSB.db;
+    }
+    async function ssbMonth(ym) {
+      const db = await ssbDb();
+      const res = { ym, rm: null, days: null, src: '', updatedAt: null };
+      const doc = await db.collection('monthly_summary').doc(ym).get();
+      if (doc.exists) {
+        const d = doc.data() || {};
+        if (d.rawMeatKg != null) res.rm = Number(d.rawMeatKg);
+        if (d.workDays != null) res.days = Number(d.workDays);
+        res.updatedAt = d.updatedAt || null; res.src = 'summary';
+      }
+      if (res.days === null) { // 요약이 없으면 내포장 기록이 있는 날 수 (시운전·테스트 제외)
+        const from = ym + '-01', to = ym + '-' + String(UT.daysIn(ym)).padStart(2, '0');
+        const snap = await db.collection('packing').where('date', '>=', from).where('date', '<=', to + '').get();
+        const days = new Set();
+        snap.docs.forEach(x => { const r = x.data() || {}; if (r.testRun || r.isTest) return; const d = String(r.date || '').slice(0, 10); if (d) days.add(d); });
+        if (days.size) { res.days = days.size; res.src = res.src || 'packing'; }
+      }
+      return res;
+    }
+    async function openProdImport() {
+      if (!isAdmin()) return;
+      const ym = monthlyYm;
+      openBill();
+      billStatus(`생산팀 웹에서 ${ymLabel(ym)} 실적 읽는 중…`);
+      try {
+        const r = await ssbMonth(ym);
+        const out = [], warn = [];
+        out.push({ k: 'production_kg', label: '원육 투입량 (생산팀 월별현황 · 총 원육 사용량)', v: r.rm, raw: '' });
+        out.push({ k: 'prod_days', label: `생산일수 (${r.src === 'summary' ? '생산팀 월별현황 · 작업일' : '내포장 기록이 있는 날'})`, v: r.days, raw: '' });
+        if (r.rm === null) warn.push(`생산팀 웹에 ${ymLabel(ym)} 월별 요약이 아직 없습니다. 생산팀 웹 '분석 → 월별현황'에서 ${ymLabel(ym)}을 한 번 열면 생깁니다. (생산팀 웹에 요약 저장 기능이 들어가 있어야 함)`);
+        if (r.src === 'packing') warn.push('생산일수는 내포장 기록 날짜로 셌습니다. 월별 요약이 생기면 생산팀 화면의 작업일 수로 바뀝니다.');
+        if (ym === thisYm) warn.push('이번 달은 아직 진행 중이라 값이 계속 바뀝니다.');
+        if (r.updatedAt) warn.push(`생산팀 요약 갱신: ${String(r.updatedAt).slice(0, 16).replace('T', ' ')}`);
+        billPages.push({ file: '생산팀 스마트팩토리', page: 1, pages: 1, name: `생산팀 실적 · ${ymLabel(ym)}`, how: '생산팀 웹', ym, out, warn, prev: null });
+        billStatus('');
+        const sel = document.getElementById('bill-ym'); sel.dataset.touched = ''; renderBill();
+      } catch (e) {
+        console.error(e); billStatus('');
+        alert('생산팀 웹 자료를 읽지 못했습니다: ' + (e.message || e) + '\n\n회사 네트워크에서 gstatic.com / googleapis.com 이 막혀 있거나, 생산팀 웹 보안 설정이 바뀌었을 수 있습니다.');
+      }
+    }
 
   </script>
   <script>
@@ -2910,6 +2973,7 @@
       const ro = !isAdmin();
       document.getElementById('monthly-save').hidden = ro;
       document.getElementById('monthly-bill').hidden = ro;
+      document.getElementById('monthly-prod').hidden = ro;
       document.getElementById('monthly-note').textContent = ro ? '월간입력은 관리자만 수정할 수 있습니다. (보기 전용)' :
         (monthlyDraft._imported ? '엑셀에서 옮겨온 달입니다. 빈 칸 자동 채움이 꺼져 있습니다.' : '빈 칸은 회색 글씨 값(전월 값·자체 검침값)으로 계산됩니다.');
       const eff = UT.effective(monthlyYm, MONTHLY, DAILY, {});
