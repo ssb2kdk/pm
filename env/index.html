@@ -436,6 +436,12 @@
       if (!ED) return esc(v);
       return `<input class="ed" data-p="${path}" ${o.n ? 'data-n="1" inputmode="decimal"' : ''} ${o.h ? 'data-h="1"' : ''} value="${esc(v)}" style="${o.w ? 'width:' + o.w : ''}" placeholder="${esc(o.ph || '')}">`;
     }
+    // 출력할 때만 숫자를 소수점 d자리까지 (설정 화면은 입력한 그대로)
+    function F1(path, d) {
+      if (ED || d === null) return F(path);
+      const v = getP(CUR, path); const n = Number(String(v ?? '').replace(/,/g, ''));
+      return (v === null || v === undefined || String(v).trim() === '' || isNaN(n)) ? esc(v ?? '') : n.toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
     const M = (path, fallback = '') => `<span data-m="${path}">${esc(getP(CUR, path) ?? fallback)}</span>`; // 같은 값을 여러 칸에 보여줄 때
 
     // 폐수일지 가동시간대: 그날 고친 값(ww_daily.hours)이 있으면 그 값, 없으면 설정의 기본값 (배출시설은 조업일만)
@@ -541,13 +547,13 @@
           <tr>${chemRow(0, 1)}</tr><tr>${chemRow(2, 3)}</tr><tr>${chemRow(4, 5)}</tr></table>
         <h3>8. 폭기조 운전상태(생물화학적 처리시설의 경우)</h3>
         <table class="f"><tr><th>pH</th><th>수온</th><th>DO</th><th>SV30</th><th>MLSS</th><th>SVI</th><th>폭기시간</th><th>주미생물상태</th></tr>
-          <tr class="avr"><td>${nf(r.ph)}</td><td>${nf(r.water_temp)}</td><td>${nf(r.do_mg)}</td><td>${nf(r.sv30)}</td><td>${nf(r.mlss)}</td><td>${nf(sv, 1)}</td><td>${r.aer_hours !== null && r.aer_hours !== undefined ? nf(r.aer_hours) + 'hr' : ''}</td><td>${esc(r.micro || (r.ph !== null && r.ph !== undefined ? '양호' : ''))}</td></tr></table>
+          <tr class="avr"><td>${nf(r.ph)}</td><td>${nf(r.water_temp)}</td><td>${nf(r.do_mg)}</td><td>${nf(r.sv30)}</td><td>${nf(r.mlss)}</td><td>${nf(sv, 0)}</td><td>${r.aer_hours !== null && r.aer_hours !== undefined ? nf(r.aer_hours) + 'hr' : ''}</td><td>${esc(r.micro || (r.ph !== null && r.ph !== undefined ? '양호' : ''))}</td></tr></table>
         <div class="note">※ 미생물 관찰: 현미경 보유(600배율 이상), 주미생물상태는 양호 또는 불량으로 적습니다.</div>
         <h3>9. 수질오염방지시설 고장 유무 및 특기사항</h3>
         <table class="f"><tr><td class="tall">${esc(r.remark || '')}</td></tr></table>
         <h3>10. 수질오염물질 측정내용</h3>
         <table class="f"><tr><th>항목 구분</th><th>BOD<br>(mg/L)</th><th>TOC<br>(mg/L)</th><th>SS<br>(mg/L)</th><th>T-N<br>(mg/L)</th><th>T-P<br>(mg/L)</th><th>총대장균군</th><th>pH</th><th>분석일</th><th>비고</th></tr>
-          ${[0, 1].map(i => `<tr>${['kind', 'bod', 'toc', 'ss', 'tn', 'tp', 'coli', 'ph', 'date', 'note'].map(k => `<td>${F(`ww.quality.${i}.${k}`)}</td>`).join('')}</tr>`).join('')}</table>
+          ${[0, 1].map(i => `<tr>${['kind', 'bod', 'toc', 'ss', 'tn', 'tp', 'coli', 'ph', 'date', 'note'].map(k => `<td>${F1(`ww.quality.${i}.${k}`, k === 'tn' || k === 'tp' ? 1 : null)}</td>`).join('')}</tr>`).join('')}</table>
         <div class="note">※ 사업장에서 분석하는 경우 분석자명 :
 ※ 분석을 위탁하는 경우 측정대행업소명 : ${F('ww.lab', { w: '60mm' })}</div>
         <h3>11. 수질자동측정기기 등의 측정항목별 점검내용</h3>
