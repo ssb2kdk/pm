@@ -74,6 +74,7 @@
     .cz-text table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
     .cz-text td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: top; } .cz-text td.v { text-align: right; white-space: nowrap; font-weight: 600; }
     .cz-text tr.key td { background: #fff8e1; } .cz-text .concl { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #f2f6ff; }
+    .cz-per { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding: 6px 2px 8px; border-bottom: 1px dashed #ccd; margin-bottom: 8px; }
     .cz-more summary { cursor: pointer; font-size: 14px; }
     .cz-memo-ta { width: 100%; min-height: 90px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; line-height: 1.6; font-family: inherit; }
     @media (max-width: 900px) { .cz-wrap { grid-template-columns: 1fr; } }
@@ -340,7 +341,7 @@
         </div>
         <div class="card">
           <h3 id="cz-title">사용량이 왜 늘었나·줄었나</h3>
-          <div class="hint" style="margin:-6px 0 10px">비교 달과의 차이를 <b>가동일·원육 투입량·날씨</b> 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
+          <div class="hint" style="margin:-6px 0 10px">비교 달과의 차이를 <b>생산일·달력 날수·원육 투입량·날씨</b> 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
           <div class="cz-wrap">
             <div class="cz-text" id="cz-text"></div>
             <div class="chart-box cz-chart"><canvas id="chart-cz"></canvas></div>
@@ -378,7 +379,7 @@
         <div class="toolbar"><span class="chips" id="anom-chips"></span></div>
         <div class="card">
           <h3 id="anom-chart-title"></h3>
-          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 전기 사용량으로 가동일·쉬는 날을 자동 구분해 주말 특근도 반영). 아래 표에서 줄을 누르면 그 항목 그래프로 바뀝니다.</div>
+          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 전기 사용량으로 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 아래 표에서 줄을 누르면 그 항목 그래프로 바뀝니다.</div>
           <div class="chart-box"><canvas id="chart-anom"></canvas></div>
         </div>
         <div class="card"><div class="tbl-wrap" id="anom-table"></div></div>
@@ -465,6 +466,7 @@
   // carry: 값이 없으면 이전 달 값을 그대로 씀 (단가·계수처럼 자주 안 바뀌는 값)
   UT.FIELDS = [
     { g: '원육 투입', k: 'production_kg', label: '원육 투입량', unit: 'kg' },
+    { g: '원육 투입', k: 'prod_days', label: '생산일수', unit: '일', hint: '비우면 보일러 가스를 하루 50㎥ 넘게 쓴 날 수로 자동 계산' },
 
     { g: '전기', k: 'elec_kwh_light', label: '경부하 사용량', unit: 'kWh', hint: '비우면 일별 사용량 × 전월 비율로 추정' },
     { g: '전기', k: 'elec_kwh_mid', label: '중간부하 사용량', unit: 'kWh' },
@@ -983,8 +985,8 @@
   // 기준선(예상 사용량) — 사용량 = a×날수 + b×생산량 (+ c×난방도일 / 냉방도일)
   // =====================================================================
   UT.HDD_BASE = 18; UT.CDD_BASE = 24;   // 평균기온 18℃ 아래는 난방, 24℃ 위는 냉방
-  UT.MODEL_FEATS = { elec: ['days', 'prod', 'cdd'], gas: ['op', 'prod', 'hdd'], water: ['days', 'prod', 'hdd'], ww: ['days', 'prod', 'hdd'] };
-  UT.FEAT_LABEL = { days: '날마다 기본', op: '가동일 1일당', prod: '원육 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
+  UT.MODEL_FEATS = { elec: ['days', 'op', 'prod', 'cdd'], gas: ['op', 'prod', 'hdd'], water: ['days', 'prod', 'hdd'], ww: ['days', 'prod', 'hdd'] };
+  UT.FEAT_LABEL = { days: '달력 하루당 기본', op: '생산일 1일당', prod: '원육 1kg당', hdd: '난방도일 1당', cdd: '냉방도일 1당' };
   // 그 달의 날수·난방도일·냉방도일 (temps: { 'YYYY-MM-DD': 평균기온 }) — 기온 빠진 날은 비율로 보정
   UT.monthWeather = (ym, temps) => {
     const n = UT.daysIn(ym); let hdd = 0, cdd = 0, cnt = 0;
@@ -992,8 +994,10 @@
     if (cnt < n * 0.6) return { days: n, hdd: null, cdd: null };
     return { days: n, hdd: hdd * n / cnt, cdd: cdd * n / cnt };
   };
-  // 그 달 가동일 수: 보일러 가스를 쓴 날(하루 50㎥ 넘게) — 가스 검침이 빠진 달은 전기로 판단한 가동일
-  UT.opDays = (daily, ym) => {
+  // 그 달 생산일 수: 월간입력 '생산일수'가 있으면 그 값, 없으면 보일러 가스를 쓴 날(하루 50㎥ 넘게) — 가스 검침이 빠진 달은 전기로 판단
+  UT.opDays = (daily, ym, monthly) => {
+    const ov = monthly && monthly[ym] && monthly[ym].prod_days;
+    if (ov !== undefined && ov !== null && ov !== '' && !isNaN(Number(ov))) return Number(ov);
     const n = UT.daysIn(ym); let g = 0, seen = 0, w = 0;
     for (let d = 1; d <= n; d++) { const ds = UT.dateStr(ym, d); const u = UT.dailyUsage(daily, ds); if (u.gas !== null) { seen++; if (u.gas > 50) g++; } if (UT.isWorkDay(daily, ds)) w++; }
     return seen >= n * 0.8 ? Math.round(g * n / seen) : w;
@@ -1122,7 +1126,7 @@
     // 한 달 데이터 (실적 + 날씨)
     function monthRow(ym) {
       const s = S(ym), w = UT.monthWeather(ym, TEMPS || {});
-      const r = { ym, days: w.days, op: UT.opDays(DAILY, ym), prod: s.production, hdd: w.hdd, cdd: w.cdd, s };
+      const r = { ym, days: w.days, op: UT.opDays(DAILY, ym, MONTHLY), prod: s.production, hdd: w.hdd, cdd: w.cdd, s };
       UT.UTILS.forEach(u => { r[u.k] = s[u.k].usage; r[u.k + '_cost'] = s[u.k].cost; });
       return r;
     }
@@ -1183,7 +1187,7 @@
           const note = (f, v) => f === 'hdd' ? (v < 0 ? ' <span class="hint">(추울수록 덜 씀)</span>' : ' <span class="hint">(추울수록 더 씀)</span>') : f === 'cdd' ? (v < 0 ? ' <span class="hint">(더울수록 덜 씀)</span>' : ' <span class="hint">(더울수록 더 씀)</span>') : '';
           const parts = m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
-      h += `<div class="hint" style="margin-top:6px">가동일 = 보일러 가스를 쓴 날 수 (스팀보일러는 생산하는 날만 돌기 때문에 가스는 달력 날수 대신 가동일로 계산). 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
+      h += `<div class="hint" style="margin-top:6px">생산일 = 보일러 가스를 하루 50㎥ 넘게 쓴 날 수 (스팀보일러는 생산하는 날만 돌기 때문 · 월간입력 '생산일수'로 직접 고칠 수 있음). 가스는 생산일로, 전기는 달력 날수(냉동·공조 등 매일 도는 몫)와 생산일(생산설비 몫)을 함께 써서 계산. 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
       document.getElementById('tg-model').innerHTML = h;
 
       // 2) 절감률
@@ -1201,9 +1205,9 @@
       const ev = Array.from({ length: 12 }, (_, i) => { const ym = UT.ym(y, i + 1); return ym > last ? null : evalMonth(y, ym, uk, models, t); });
       const sumE = list => { const l = list.filter(Boolean); if (!l.length) return null; const exp = l.reduce((a, e) => a + e.exp, 0), act = l.reduce((a, e) => a + e.act, 0); return { exp, act, target: l.every(e => e.target !== null) ? l.reduce((a, e) => a + e.target, 0) : null, save: (1 - act / exp) * 100, rate: rateOf(t, uk), n: l.length }; };
       const er = (label, e, cls = '') => `<tr class="${cls}"><td class="l">${label}</td><td>${e && e.op !== undefined ? f0(e.op) : ''}</td><td>${e ? f0(e.prod ?? '') : ''}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e && e.target !== null ? f0(e.target) : '-'}</td><td>${e ? f0(e.act) : '-'}</td><td>${e ? saveTxt(e.save) : '-'}</td><td>${e ? judge(e) : ''}</td></tr>`;
-      let ht = `<table class="t"><tr><th class="l">월</th><th>가동일</th><th>원육 투입량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
+      let ht = `<table class="t"><tr><th class="l">월</th><th>생산일</th><th>원육 투입량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
       for (let q = 0; q < 4; q++) {
-        for (let i = q * 3; i < q * 3 + 3; i++) { const e = ev[i]; if (e) { e.prod = S(UT.ym(y, i + 1)).production; e.op = UT.opDays(DAILY, UT.ym(y, i + 1)); } ht += er(`${i + 1}월`, e); }
+        for (let i = q * 3; i < q * 3 + 3; i++) { const e = ev[i]; if (e) { e.prod = S(UT.ym(y, i + 1)).production; e.op = UT.opDays(DAILY, UT.ym(y, i + 1), MONTHLY); } ht += er(`${i + 1}월`, e); }
         const qs = sumE(ev.slice(q * 3, q * 3 + 3)); if (qs) { const l = ev.slice(q * 3, q * 3 + 3).filter(Boolean); qs.prod = l.reduce((a, e) => a + e.prod, 0); qs.op = l.reduce((a, e) => a + e.op, 0); }
         ht += er(`<b>${QN[q]}</b>${qs && qs.n < 3 ? ` <span class="hint">(${qs.n}개월)</span>` : ''}`, qs, 'qrow');
       }
@@ -1263,8 +1267,8 @@
     function renderPlan(models) {
       const y = targetY, t = targetDraft, ro = !isAdmin(), nm = normals();
       let h = `<div class="toolbar no-print" style="margin-bottom:8px">${ro ? '' : `<button class="btn secondary" onclick="fillPlanProd('prev')">전년 실적으로 원육 투입 계획 채우기</button>
-        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">원육 투입 계획(kg)과 가동일(기본 = 평일 수, 공휴일 등은 고쳐 넣기)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
-      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>원육 투입 계획 (kg)</th><th>가동일</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
+        <button class="btn secondary" onclick="fillPlanProd('total')">연간 총량 넣고 나누기</button>`}<span class="hint">원육 투입 계획(kg)과 생산일(기본 = 평일 수, 공휴일 등은 고쳐 넣기)을 넣으면 평년 기온으로 월별 예상·목표 사용량과 비용이 계산됩니다. 비용 = 목표 사용량 × 전년 같은 달 단가.</span></div>`;
+      h += `<div class="tbl-wrap"><table class="t plan"><tr><th class="l">월</th><th>원육 투입 계획 (kg)</th><th>생산일</th>${UT.UTILS.map(u => `<th>${u.name} 목표<br><span class="hint">${u.unit}</span></th>`).join('')}${UT.UTILS.map(u => `<th>${u.name} 비용</th>`).join('')}<th>목표 비용 합계</th></tr>`;
       const tot = { prod: 0, cost: 0 }; UT.UTILS.forEach(u => { tot[u.k] = 0; tot[u.k + 'c'] = 0; });
       const rows = [];
       for (let m = 1; m <= 12; m++) {
@@ -1302,7 +1306,7 @@
     }
     function fillPlanProd(mode) {
       const y = targetY; targetDraft.plan_prod = {};
-      if (mode === 'prev') { targetDraft.plan_op = {}; for (let m = 1; m <= 12; m++) { const ym = UT.ym(y - 1, m), p = S(ym).production; if (p) { targetDraft.plan_prod[m] = Math.round(p); targetDraft.plan_op[m] = UT.opDays(DAILY, ym); } } }
+      if (mode === 'prev') { targetDraft.plan_op = {}; for (let m = 1; m <= 12; m++) { const ym = UT.ym(y - 1, m), p = S(ym).production; if (p) { targetDraft.plan_prod[m] = Math.round(p); targetDraft.plan_op[m] = UT.opDays(DAILY, ym, MONTHLY); } } }
       else { const v = Number(prompt(`${y}년 연간 원육 투입 계획 총량(kg)은? (월 날수 비율로 나눕니다)`, '')); if (!v) return;
         for (let m = 1; m <= 12; m++) targetDraft.plan_prod[m] = Math.round(v * UT.daysIn(UT.ym(y, m)) / (y % 4 === 0 ? 366 : 365)); }
       targetDirty = true; renderTargets(targetDraft);
@@ -1344,7 +1348,7 @@
       if (!mdl) { out.err = '예상 사용량 식을 만들 기준 달이 부족합니다 (목표 탭 ①).'; return out; }
       const miss = mdl.feats.filter(f => r[f] === null || r[f] === undefined || r0[f] === null || r0[f] === undefined || (f === 'prod' && (!r.prod || !r0.prod)));
       if (miss.length) { out.err = `${miss.includes('prod') ? '원육 투입량' : '기온'} 기록이 없는 달이 있어 요인별로 나눌 수 없습니다. (가동 초기 달이면 비교 달을 '전월'로 바꿔 보세요)`; out.mdl = null; return out; }
-      const grp = { days: '가동일·날수', op: '가동일·날수', prod: '원육 투입량', hdd: '날씨 (기온)', cdd: '날씨 (기온)' };
+      const grp = { days: '달력 날수', op: '생산일', prod: '원육 투입량', hdd: '날씨 (기온)', cdd: '날씨 (기온)' };
       const by = {};
       mdl.feats.forEach((f, i) => { if (r[f] === null || r0[f] === null) return; const v = mdl.coef[i] * (r[f] - r0[f]); by[grp[f]] = (by[grp[f]] || 0) + v; });
       const explained = Object.values(by).reduce((a, b) => a + b, 0);
@@ -1353,7 +1357,7 @@
       const ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
       const anomPart = ex(an) - ex(an0);
       const rest = out.diff - explained - anomPart;
-      out.parts = [['가동일·날수', by['가동일·날수'] || 0], ['원육 투입량', by['원육 투입량'] || 0], ['날씨 (기온)', by['날씨 (기온)'] || 0], ['이상 사용일', anomPart], ['운전·관리 차이', rest]];
+      out.parts = ['생산일', '달력 날수', '원육 투입량', '날씨 (기온)'].filter(g => g in by).map(g => [g, by[g]]).concat([['이상 사용일', anomPart], ['운전·관리 차이', rest]]);
       out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
       return out;
     }
@@ -1363,14 +1367,15 @@
       const pct = D.act0 ? D.diff / D.act0 * 100 : null;
       const lead = `${ml(ym)} ${U.name} 사용량은 <b>${f0(D.act)} ${un}</b>로 ${cmpName}(${f0(D.act0)})보다 <b class="${D.diff > 0 ? 'up' : 'down'}">${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${nf1.format(Math.abs(pct))}%)` : ''} ${D.diff > 0 ? '늘었습니다' : '줄었습니다'}</b>.`;
       if (D.err && !D.mdl) return { lead, rows: [], concl: D.err, plain: `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}` };
-      const r = D.r, r0 = D.r0, rows = [];
-      const opF = D.mdl.feats.includes('op');
-      const dTxt = opF ? `가동일 ${r0.op}일 → ${r.op}일` : `날수 ${r0.days}일 → ${r.days}일`;
-      rows.push(['가동일·날수', dTxt, D.parts[0][1]]);
-      rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})`, D.parts[1][1]]);
+      const r = D.r, r0 = D.r0, rows = [], P = Object.fromEntries(D.parts);
+      const pd = x => x.op ? x[uk] / x.op : null;
+      const opInfo = `생산일 ${r0.op}일 → ${r.op}일 (${r.op - r0.op >= 0 ? '+' : '−'}${Math.abs(r.op - r0.op)}일)`;
+      if ('생산일' in P) rows.push(['생산일', `${opInfo} · 보일러 가스 쓴 날 기준`, P['생산일']]);
+      if ('달력 날수' in P) rows.push(['달력 날수', `${r0.days}일 → ${r.days}일 · 냉동·공조처럼 매일 도는 몫`, P['달력 날수']]);
+      rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})`, P['원육 투입량'] || 0]);
       const wf = D.mdl.feats.find(f => f === 'hdd' || f === 'cdd');
-      if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}`, D.parts[2][1]]);
-      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, D.parts[3][1]]);
+      if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}`, P['날씨 (기온)'] || 0]);
+      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
       rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
       let ref = '';
       if (uk === 'elec') {
@@ -1379,15 +1384,20 @@
         if (h1 && h0) ref = `참고(실제 계량기): 공조냉동 ${f0(h0)} → ${f0(h1)} kWh (${h1 - h0 >= 0 ? '+' : '−'}${f0(Math.abs(h1 - h0))})` + (w1 && w0 ? `, 폐수동 ${f0(w0)} → ${f0(w1)} kWh (${w1 - w0 >= 0 ? '+' : '−'}${f0(Math.abs(w1 - w0))})` : '') + ' — 날씨 몫은 식으로 추정한 값이라 실제 공조냉동 변화와 차이가 날 수 있습니다.';
       }
       const tol = D.mdl.mape || 5, restPct = D.act ? D.rest / D.act * 100 : 0;
-      const big = rows.slice(0, 4).filter(x => Math.abs(x[2]) >= Math.abs(D.diff) * 0.3 && Math.abs(x[2]) > 0).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2]));
-      let concl = big.length ? `주된 이유는 <b>${big.map(x => x[0]).join(', ')}</b>입니다. ` : '';
-      concl += Math.abs(restPct) <= tol ? `가동일·원육·날씨·이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
+      const big = rows.filter(x => !x[3]).filter(x => Math.abs(x[2]) > 0.5).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2])).slice(0, 2);
+      let concl = big.length ? `가장 크게 작용한 건 <b>${big.map(x => `${x[0]}(${fx(x[2])})`).join(', ')}</b>입니다. ` : '';
+      concl += Math.abs(restPct) <= tol ? `생산일·원육·날씨·이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
         : D.rest < 0 ? `그걸 빼고도 <b class="down">${f0(-D.rest)} ${un} (${nf1.format(-restPct)}%) 덜 썼습니다 → 실제 절감</b>으로 볼 수 있습니다.`
         : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
       const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` +
         rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
+      const fu = v => v < 0.1 ? v.toFixed(4) : v < 1 ? v.toFixed(3) : f2(v);
+      const p1 = pd(r), p0 = pd(r0), u1 = r.prod ? r[uk] / r.prod : null, u0 = r0.prod ? r0[uk] / r0.prod : null;
+      const per = `<div class="cz-per"><span>생산일 하루당 <b>${p0 === null ? '-' : f0(p0)} → ${p1 === null ? '-' : f0(p1)}</b> ${un} ${pctTxt(p1, p0)}</span><span>원육 kg당 <b>${u0 === null ? '-' : fu(u0)} → ${u1 === null ? '-' : fu(u1)}</b> ${un} ${pctTxt(u1, u0)}</span>` +
+        (!('생산일' in P) ? `<span class="hint">${opInfo} — ${U.name}는 생산일보다 달력 날수 영향이 커서 날수로 계산합니다</span>` : '') + `</div>`;
+      concl = per + concl;
       if (ref) concl += `<div class="hint" style="margin-top:6px">${ref}</div>`;
-      concl += `<div class="hint" style="margin-top:4px">※ 가동일·원육·날씨 몫은 목표 탭 ①의 예상 사용량 식(월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
+      concl += `<div class="hint" style="margin-top:4px">※ 생산일·날수·원육·날씨 몫은 목표 탭 ①의 예상 사용량 식(월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
       return { lead, rows, concl, plain };
     }
     async function renderCause() {
@@ -1425,7 +1435,7 @@
       document.getElementById('cz-anom').innerHTML = !DU ? '' : !an.length ? `<div class="empty">${ymLabel(ym)}에 ${U.name} 이상 사용일이 없습니다 👍</div>` :
         `<table class="t"><tr><th>날짜</th><th>그날 사용량</th><th>평소</th><th>더 쓴 양</th><th class="l">구분</th><th class="l" style="min-width:240px">원인·조치 메모</th></tr>` +
         an.map(a => `<tr><td>${a.d.slice(5).replace('-', '/')} (${W[new Date(a.d + 'T00:00:00').getDay()]})</td><td>${f1(a.v)} ${DU.unit}</td><td>${a.base === null ? '-' : f1(a.base)}</td><td class="up">+${f1(a.v - (a.base || 0))} ${DU.unit}</td>
-          <td class="l">${a.work ? '가동일 과다' : '쉬는 날 사용'}</td><td class="l">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="원인·조치를 적어 주세요">` : esc(anomNote(a.d, a.u)) || '-'}</td></tr>`).join('') + '</table>' +
+          <td class="l">${a.work ? '생산일 과다' : '쉬는 날 사용'}</td><td class="l">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="원인·조치를 적어 주세요">` : esc(anomNote(a.d, a.u)) || '-'}</td></tr>`).join('') + '</table>' +
         (uk === 'gas' ? '<div class="hint" style="margin-top:4px">가스 하루 사용량은 ㎥, 위 계산에서는 열량(MJ)으로 바꿔 합칩니다.</div>' : '');
       bindAnomNotes('#cz-anom');
 
@@ -1510,7 +1520,7 @@
         `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th><th></th></tr>` +
         list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
           return `<tr class="anom-row" onclick="anomUtil='${a.u}';anomFocus='${a.d}';renderAnomChart()"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
-            <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '가동일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
+            <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '생산일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
             <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td>
             <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인분석 →</button></td></tr>`; }).join('') + '</table>';
       bindAnomNotes('#anom-table');
