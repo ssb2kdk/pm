@@ -1280,8 +1280,14 @@
     // ---- 전기 (2026.10 개선): 공조냉동·폐수동은 계량기 실측 그대로, 나머지(생산동·조명·사무실 등)만 식으로 ----
     //  생산동 전기 = 하루 기본 A × 달력 날수 + 원육 1kg당 C × 원육 투입량
     //  · 생산일은 넣지 않음 (생산일이 늘면 원육도 같이 늘어 같은 몫을 두 번 세게 됨)
-    //  · 2026년 4월부터 씀 (공조냉동 계량은 3월부터지만 3월은 자숙실 미가동 등 가동 초기라 생산동 전기가 평소보다 6천 kWh 적어 식을 비틂)
-    const HVAC_FULL_FROM = '2026-04';
+    //  · 공조냉동 계량기가 찍힌 2026년 3월부터 씀 (자숙1~3 전력계는 3/17부터지만 그 전엔 추워서 자숙실 냉방을 안 켬)
+    //  · 생산동에도 계량기 없는 냉방(칠러·실외기 등)이 있어 기온 몫을 따로 둠: 하루 평균기온이 Tb℃ 넘는 만큼 × 계수 (Tb는 가장 잘 맞는 값)
+    const HVAC_FULL_FROM = '2026-03';
+    function warmSum(ym, Tb) { // 그 달 Σ max(0, 하루 평균기온 − Tb) · 기온 기록 없는 날은 그 달 평균(없으면 평년)
+      const w = UT.monthWeather(ym, TEMPS || {}); let tm = w.tmean; if (tm === null) { const nm = normals()[Number(ym.slice(5))]; tm = nm ? nm.tmean : null; }
+      if (tm === null || tm === undefined) return null;
+      let s = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const t = (TEMPS || {})[UT.dateStr(ym, d)]; s += Math.max(0, (t === undefined || t === null ? tm : t) - Tb); } return s;
+    }
     function fitElecHall(months) {
       const prep = r => {
         if (r.ym && r.wwk === undefined) { r.wwk = wwKwh(r.ym); r.hvk = meterKwh(r.ym, 'elec_hvac_kwh'); r.eq = equipKwh(r.ym, ['생산동', '기타']); }
@@ -1291,19 +1297,29 @@
       const rows = months.filter(ym => ym >= HVAC_FULL_FROM).map(ym => prep(monthRow(ym))).filter(r => r.elec !== null && r.elec !== undefined && r.prod && r.wwk !== null && r.hvk !== null);
       if (rows.length < 4) return null;
       const hall = rows.map(r => r.elec - r.wwk - r.hvk - r.eq);
-      let A = 0, C = 0; const co = UT.ols(rows.map(r => [r.days, r.prod]), hall);
+      const err = f => rows.reduce((a, r, i) => a + Math.abs(f(r) - hall[i]) / hall[i], 0) / rows.length;
+      let A = 0, C = 0, W = 0, Tb = null; const co = UT.ols(rows.map(r => [r.days, r.prod]), hall);
       if (co && co[0] >= 0 && co[1] >= 0) { A = co[0]; C = co[1]; }
       else { const a1 = UT.ols(rows.map(r => [r.days]), hall); A = a1 ? Math.max(0, a1[0]) : 0; }
-      const F = ['days', 'prod', 'wwk', 'hvk', 'eq'];
-      const pred = r => A * r.days + C * r.prod + r.wwk + r.hvk + r.eq;
+      // 기온 몫: 넣어서 오차가 0.3%p 넘게 줄면 씀 (계수는 모두 0 이상)
+      if (rows.length >= 5) { let best = err(r => A * r.days + C * r.prod) - 0.003;
+        for (let tb = 5; tb <= 22; tb++) { const ws = rows.map(r => warmSum(r.ym, tb)); if (ws.some(v => v === null)) continue;
+          const c3 = UT.ols(rows.map((r, i) => [r.days, r.prod, ws[i]]), hall); if (!c3 || c3.some(v => v < 0)) continue;
+          const e = rows.reduce((a, r, i) => a + Math.abs(c3[0] * r.days + c3[1] * r.prod + c3[2] * ws[i] - hall[i]) / hall[i], 0) / rows.length;
+          if (e < best) { best = e; A = c3[0]; C = c3[1]; W = c3[2]; Tb = tb; } } }
+      const prep0 = prep, prepT = r => { prep0(r); if (r.ym && r.wx === undefined) r.wx = Tb === null ? 0 : warmSum(r.ym, Tb); return r; };
+      rows.forEach(prepT);
+      const F = ['days', 'prod', 'wx', 'wwk', 'hvk', 'eq'];
+      const pred = r => A * r.days + C * r.prod + W * r.wx + r.wwk + r.hvk + r.eq;
       const ys = rows.map(r => r.elec), mean = ys.reduce((a, b) => a + b, 0) / ys.length;
       const ssr = rows.reduce((a, r) => a + (r.elec - pred(r)) ** 2, 0), sst = ys.reduce((a, v) => a + (v - mean) ** 2, 0);
-      const hm = hall.reduce((a, b) => a + b, 0) / hall.length, hsr = rows.reduce((a, r, i) => a + (hall[i] - A * r.days - C * r.prod) ** 2, 0), hst = hall.reduce((a, v) => a + (v - hm) ** 2, 0);
-      return { hall: true, feats: F, coef: [A, C, 1, 1, 1], n: rows.length, months: rows.map(r => r.ym), r2: sst ? 1 - ssr / sst : null, hallR2: hst ? 1 - hsr / hst : null,
+      const hp = r => A * r.days + C * r.prod + W * r.wx;
+      const hm = hall.reduce((a, b) => a + b, 0) / hall.length, hsr = rows.reduce((a, r, i) => a + (hall[i] - hp(r)) ** 2, 0), hst = hall.reduce((a, v) => a + (v - hm) ** 2, 0);
+      return { hall: true, feats: F, coef: [A, C, W, 1, 1, 1], Tb, n: rows.length, months: rows.map(r => r.ym), r2: sst ? 1 - ssr / sst : null, hallR2: hst ? 1 - hsr / hst : null,
         mape: rows.reduce((a, r) => a + Math.abs(pred(r) - r.elec) / r.elec, 0) / rows.length * 100,
-        hallMape: rows.reduce((a, r, i) => a + Math.abs(A * r.days + C * r.prod - hall[i]) / hall[i], 0) / rows.length * 100,
-        prep, ww: fitWW(months),
-        predict: r => { prep(r); return F.every(f => r[f] !== null && r[f] !== undefined) ? Math.max(0, pred(r)) : null; } };
+        hallMape: rows.reduce((a, r, i) => a + Math.abs(hp(r) - hall[i]) / hall[i], 0) / rows.length * 100,
+        prep: prepT, ww: fitWW(months),
+        predict: r => { prepT(r); return F.every(f => r[f] !== null && r[f] !== undefined) ? Math.max(0, pred(r)) : null; } };
     }
     function fitElecIdle(months) {
       const idle = UT.fitIdleBase(idlePoints(months)); if (!idle) return null;
@@ -1427,7 +1443,7 @@
         UT.UTILS.map(u => { const m = models[u.k]; if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달이 부족해 계산할 수 없습니다</td></tr>`;
           const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(v.toPrecision(3)).toLocaleString('ko-KR');
           const note = (f, v) => f === 'hdd' ? (v < 0 ? ' <span class="hint">(추울수록 덜 씀)</span>' : ' <span class="hint">(추울수록 더 씀)</span>') : f === 'cdd' ? (v < 0 ? ' <span class="hint">(더울수록 덜 씀)</span>' : ' <span class="hint">(더울수록 더 씀)</span>') : '';
-          const parts = m.hall ? `생산동 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; 폐수동·공조냉동 계량기 실측 &nbsp;+&nbsp; 부하 변동 <span class="hint">(${m.months[0].slice(2).replace('-', '.')}~${m.months[m.months.length - 1].slice(2).replace('-', '.')} ${m.n}개월 · 생산동만 따로 맞춘 오차 ±${nf1.format(m.hallMape)}%)</span>`
+          const parts = m.hall ? `생산동 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; ${m.Tb !== null ? `기온 <span class="hint">(하루 평균기온 ${m.Tb}℃ 넘는 1℃마다 <b>${fc(m.coef[2])}</b> — 계량기 없는 칠러·실외기 등)</span> &nbsp;+&nbsp; ` : ''}폐수동·공조냉동 계량기 실측 &nbsp;+&nbsp; 부하 변동 <span class="hint">(${m.months[0].slice(2).replace('-', '.')}~${m.months[m.months.length - 1].slice(2).replace('-', '.')} ${m.n}개월 · 생산동만 따로 맞춘 오차 ±${nf1.format(m.hallMape)}%)</span>`
             : m.idle ? `휴무일 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 생산일 1일당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[2])}</b> &nbsp;+&nbsp; ${m.idle.b || m.idle.c ? `기온 영향 <span class="hint">(평균기온 ${m.idle.Tb}℃ 넘는 1℃마다 하루 <b>${fc(m.idle.b)}</b>${m.idle.c ? `, ${m.idle.Tc}℃ 아래 1℃마다 하루 <b>${fc(m.idle.c)}</b>` : ''})</span> &nbsp;+&nbsp;` : ''} 폐수동·공조냉동 (계량기 실측) &nbsp;+&nbsp; 부하 변동 (생산동·기타)`
             : m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
@@ -1438,9 +1454,9 @@
       h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
         const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
         const used = brows.map(r => m.prep ? m.prep({ ...r }) : r).filter(r => r[u.k] !== null && r[u.k] !== undefined && m.feats.every(f => r[f] !== null && r[f] !== undefined));
-        let t2 = `<table class="t tg-why"><tr><th class="l">기준 달</th>${m.feats.map(f => `<th>${FL[f]}<br><span class="hint">${f === 'wx' ? '휴무일 식으로 날마다 합' : (f === 'wwk' || f === 'hvk') ? '계량기 그대로' : f === 'eq' ? '운전 이력 합' : '× ' + fc(m.coef[m.feats.indexOf(f)])}</span></th>`).join('')}<th>식으로 계산한 값</th><th>실제 사용량</th><th>차이</th></tr>`;
+        let t2 = `<table class="t tg-why"><tr><th class="l">기준 달</th>${m.feats.map(f => `<th>${f === 'wx' && m.hall ? `기온 ${m.Tb ?? '-'}℃ 넘는 합 (℃·일)` : FL[f]}<br><span class="hint">${f === 'wx' && !m.hall ? '휴무일 식으로 날마다 합' : (f === 'wwk' || f === 'hvk') ? '계량기 그대로' : f === 'eq' ? '운전 이력 합' : '× ' + fc(m.coef[m.feats.indexOf(f)])}</span></th>`).join('')}<th>식으로 계산한 값</th><th>실제 사용량</th><th>차이</th></tr>`;
         used.forEach(r => { const parts = m.feats.map((f, i) => m.coef[i] * r[f]), sum = parts.reduce((a, b) => a + b, 0), err = r[u.k] ? (sum / r[u.k] - 1) * 100 : null;
-          t2 += `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td>${m.feats.map((f, i) => `<td>${['wx', 'wwk', 'hvk', 'eq'].includes(f) ? '' : fc(r[f]) + '<br>'}<span class="hint">→ ${f0(parts[i])}</span></td>`).join('')}<td><b>${f0(sum)}</b></td><td>${f0(r[u.k])}</td><td>${err === null ? '-' : (err >= 0 ? '+' : '') + nf1.format(err) + '%'}</td></tr>`; });
+          t2 += `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td>${m.feats.map((f, i) => `<td>${['wwk', 'hvk', 'eq'].includes(f) || (f === 'wx' && !m.hall) ? '' : fc(r[f]) + '<br>'}<span class="hint">→ ${f0(parts[i])}</span></td>`).join('')}<td><b>${f0(sum)}</b></td><td>${f0(r[u.k])}</td><td>${err === null ? '-' : (err >= 0 ? '+' : '') + nf1.format(err) + '%'}</td></tr>`; });
         t2 += '</table>';
         return `<details class="tg-whyd"><summary>${u.name} — 계수가 어떻게 나왔는지 보기 (기준 달 ${used.length}개)</summary>
           <div class="hint" style="margin:6px 0">각 달의 실제 사용량을 <b>${m.feats.map(f => FL[f].replace('(kg)', '')).join(' · ')}</b> 덩어리로 나눴을 때, 모든 기준 달에서 <b>식으로 계산한 값과 실제 사용량의 차이가 가장 작아지는 계수</b>를 찾은 것입니다 (최소제곱법 — 엑셀 추세선·LINEST와 같은 방법). 아래 표의 회색 숫자 = 그 요인 × 계수, 더하면 '식으로 계산한 값'.</div>${t2}</details>`; }).join('');
@@ -1655,7 +1671,8 @@
       rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})${calc('prod', r.prod - r0.prod, 'kg')}`, P['원육 투입량'] || 0]);
       const wf = D.mdl.feats.find(f => f === 'hdd' || f === 'cdd');
       if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}${calc(wf, r[wf] - r0[wf], '', wf === 'cdd' ? '냉방도일' : '난방도일')}`, P['날씨 (기온)'] || 0]);
-      if (((D.mdl.idle && !(D.mdl.idle.b || D.mdl.idle.c)) || D.mdl.hall) && uk === 'elec') rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'}<br><span class="hint">· 기온에 따른 차이는 위 공조냉동 실측에 들어 있습니다 (계량기 없는 나머지 부하는 기온과 관계없이 일정)</span>`, 0]);
+      if (D.mdl.hall && D.mdl.Tb !== null && uk === 'elec') rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'} · 생산동 계량기 없는 냉방(칠러·실외기 등) 몫<br><span class="calc">= ${D.mdl.Tb}℃ 넘는 기온 합 ${f0(r0.wx)} → ${f0(r.wx)} (℃·일) × ${cf(D.mdl.coef[2])} kWh</span><br><span class="hint">· 냉동·냉장·공조 12곳은 위 공조냉동 실측에 들어 있습니다</span>`, P['날씨 (기온)'] || 0]);
+      else if (((D.mdl.idle && !(D.mdl.idle.b || D.mdl.idle.c)) || D.mdl.hall) && uk === 'elec') rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'}<br><span class="hint">· 기온에 따른 차이는 위 공조냉동 실측에 들어 있습니다 (계량기 없는 나머지 부하는 기온과 관계없이 일정)</span>`, 0]);
       else if (D.mdl.idle) rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'} · 실외기 등 기온 영향 ${f0(r0.wx)} → ${f0(r.wx)} ${un}${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}<br><span class="calc">= 휴무일 식(${D.mdl.idle.Tb}℃ 넘는 1℃마다 하루 ${cf(D.mdl.idle.b)} ${un}${D.mdl.idle.c ? `, ${D.mdl.idle.Tc}℃ 아래 1℃마다 하루 ${cf(D.mdl.idle.c)}` : ''})으로 날마다 계산해 더한 차이</span>`, P['날씨 (기온)'] || 0]);
       rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
       rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
