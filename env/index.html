@@ -117,6 +117,23 @@
       .sheet { page-break-after: always; }
       .sheet:last-child { page-break-after: auto; }
     }
+    /* 수질 측정 */
+    .tbl-x { overflow-x: auto; }
+    table.wq { border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+    table.wq th, table.wq td { border: 1px solid #e3e6ea; padding: 5px 9px; text-align: right; white-space: nowrap; }
+    table.wq th { background: #eef3f1; text-align: center; font-weight: 600; }
+    table.wq th.g1 { background: #e6f2ec; } table.wq th.g2 { background: #e7eef8; }
+    table.wq td.l { text-align: left; } table.wq td.v { font-weight: bold; }
+    table.wq.sm { font-size: 12px; } table.wq.sm th, table.wq.sm td { padding: 3px 7px; }
+    table.wq.in input { width: 120px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: right; background: #fffbe6; }
+    .wq-hi { color: #c62828; font-weight: bold; } td.wq-hi { background: #fdecea; }
+    .wq-mid { color: #b26a00; } td.wq-mid { background: #fff6e0; }
+    .wq-ok { color: #1D7A5C; }
+    .wq-sum { background: #f4f8f6; border-left: 4px solid #1D9E75; padding: 8px 12px; margin-top: 10px; font-size: 13px; line-height: 1.7; }
+    .wq-sum ul { margin: 4px 0 0 18px; padding: 0; }
+    .wq-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+    .wq-svg { width: 100%; height: auto; background: #fff; }
+    details.card summary { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -127,6 +144,7 @@
         <button class="tab-btn active" data-tab="book" onclick="showTab('book')">다온산업 장부</button>
         <button class="tab-btn staff" data-tab="ww" onclick="showTab('ww')">폐수일지 출력</button>
         <button class="tab-btn staff" data-tab="air" onclick="showTab('air')">대기일지 출력</button>
+        <button class="tab-btn" data-tab="wq" onclick="showTab('wq')">수질 측정</button>
         <button class="tab-btn admin" data-tab="set" onclick="showTab('set')">설정</button>
       </div>
     </div>
@@ -153,7 +171,7 @@
             <button class="btn" onclick="printForm('ww', false)">🖨 인쇄</button>
           </div>
           <div class="hint">· 하루가 A4 두 장(앞·뒤 쪽)으로 나옵니다. 기간을 고르면 한 번에 인쇄합니다.<br>· <b>가동시간대</b>: [미리보기]를 누르면 1·2번 표에 노란 칸이 나옵니다. 설정의 기본값이 들어가 있고, 그날만 다르면 고치세요 (바로 저장). 비우면 그 줄은 화살표 없이 나옵니다.<br>
-            · 날씨·온도·상수도·방류량·폐수 전력은 <b>설비검침</b>, 슬러지·약품·폭기조는 <b>다온산업 장부</b>, 나머지 고정 문구와 수질 측정값은 <b>설정</b>에서 가져옵니다.<br>
+            · 날씨·온도·상수도·방류량·폐수 전력은 <b>설비검침</b>, 슬러지·약품·폭기조는 <b>다온산업 장부</b>, 10번 수질 측정값은 <b>수질 측정</b> 탭에 넣은 성적서 중 그날까지 분석이 끝난 가장 최근 것, 나머지 고정 문구는 <b>설정</b>에서 가져옵니다.<br>
             · 지침은 그날 08시 검침값(전일지침)과 다음날 08시 검침값(금일지침)으로 계산합니다. 폐수 전력 사용량도 같은 기준입니다.</div>
         </div>
       </div>
@@ -169,6 +187,9 @@
           <div class="hint">· 하루가 A4 한 장으로 나옵니다.<br>· <b>보일러 가동시간</b>: [미리보기]를 누르면 날짜마다 배출-1·배출-2 아래에 노란 칸이 나옵니다. <b>7-12,13-16</b>처럼 넣으면 (쉬는 시간은 쉼표로) 화살표가 그려지고 바로 저장됩니다. 안 돌린 보일러는 비워 두세요. 비워 두고 인쇄해서 손으로 그어도 됩니다.<br>· 날씨·온도는 설비검침에서 가져옵니다. 3번 자가측정사항은 비워서 나오니 측정할 때 손으로 적으세요. 방지시설·환경기술인은 설정에서 바꿉니다.</div>
         </div>
       </div>
+
+      <!-- ============ 수질 측정 ============ -->
+      <div id="tab-wq" class="tab"><div id="wq-body"><div class="loading">불러오는 중...</div></div></div>
 
       <!-- ============ 설정 ============ -->
       <div id="tab-set" class="tab">
@@ -225,6 +246,7 @@
       SET = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SET)), (s.data && s.data.value) || {});
       WW = Object.fromEntries(w.map(r => [r.d, r]));
       calcBalances();
+      try { await loadWq(); } catch (e) { WQ = null; } // 수질 측정 (폐수일지 10번에 씀)
     }
     async function loadMeter(from, to) {
       const rows = await fetchAll(() => sb.from('meter_daily').select('d, weather, temp_min, temp_max, v').gte('d', addDays(from, -10)).lte('d', addDays(to, 10)).order('d'));
@@ -258,6 +280,7 @@
       document.body.classList.remove('preview'); document.getElementById('print-area').innerHTML = '';
       if (t === 'set') renderSettings(document.getElementById('tab-set').classList.contains('active') && setDirty);
       if (t === 'book') renderBook();
+      if (t === 'wq') renderWq();
     }
 
     // ---------------- 장부 칼럼 ----------------
@@ -480,6 +503,7 @@
     }
 
     function wwSheet(ds, S = SET, edit = false, dayEdit = false) {
+      if (!edit) S = wqApply(S, ds); // 10번 수질 측정값: 수질 측정 탭의 최근 성적서
       ED = edit; CUR = S;
       const W = S.ww || {}, r = WW[ds] || {}, b = BAL[ds] || {}, wt = weatherOf(ds);
       const ct = num(W.ct) || 40, mt = esc(W.meter_time || '08:00');
@@ -683,6 +707,223 @@
       SET = v; calcBalances(); setDirty = false;
       document.getElementById('set-save').classList.remove('has');
       alert('설정을 저장했습니다.');
+    }
+
+
+    // ---------------- 수질 측정 (자가측정 성적서 · 설계 대비) ----------------
+    // 설계값: 폐수배출시설 설치(변경)신고 3-4. 폐수발생량 및 오염물질 예측 내역서(변경후)
+    const WQ_DESIGN = {
+      flow: 110, // ㎥/일
+      flowItems: [
+        ['삶기 (증숙 용수)', '증숙기 1.33㎥/대 × 세척 2회/6대', 16], ['살균 1차냉각', '4대 × 5.67㎥/대', 23], ['살균 2차냉각', '4대 × 1.0㎥/대', 4],
+        ['세척 및 청소수', '32.5㎥/회 × 2회/일', 65], ['소스제조', '0.5㎥/회 × 2회/일', 1], ['보일러 블로우다운', '0.25㎥/회 × 2회/일', 0.5], ['콤프레샤 응축수', '0.25㎥/회 × 2회/일', 0.5]
+      ]
+    };
+    const WQ_ITEMS = [
+      { k: 'bod', n: 'BOD', f: '생물화학적산소요구량', dr: 1130, de: 117.2, lim: 350 },
+      { k: 'toc', n: 'TOC', f: '총유기탄소', dr: 787.8, de: 81.7, lim: 195 },
+      { k: 'ss', n: 'SS', f: '부유물질', dr: 612.4, de: 78.4, lim: 350 },
+      { k: 'tn', n: 'T-N', f: '총질소', dr: 219, de: 49.7, lim: 60 },
+      { k: 'tp', n: 'T-P', f: '총인', dr: 45.6, de: 10.5, lim: 15 },
+      { k: 'ph', n: 'pH', f: '수소이온농도', dr: '6~8', de: '6~8', lim: '5.8~8.6', x: 1 },
+      { k: 'nh', n: '노말헥산(광유류)', dr: 4.5, de: 0.8, lim: 5, x: 1 },
+      { k: 'cu', n: '구리', dr: 2, de: 1.3, lim: 3, x: 1 },
+      { k: 'f', n: '불소', lim: 15, x: 1 }, { k: 'ni', n: '니켈', lim: 3, x: 1 }, { k: 'mn', n: '망간', lim: 10, x: 1 },
+      { k: 'ba', n: '바륨', lim: 10, x: 1 }, { k: 'zn', n: '아연', lim: 5, x: 1 }, { k: 'cr', n: '크롬', lim: 2, x: 1 }, { k: 'fe', n: '철', lim: 10, x: 1 }
+    ];
+    const WQ_MAIN = WQ_ITEMS.filter(i => !i.x);
+    // 처음 자료: ㈜중부환경연구소 수질측정기록부 2025.12 ~ 2026.09 (원수 / 방류수)
+    const WQ_SEED = [
+      ['2025-12-17', '2025-12-23', [633.3, 1263.3, 200.0, 106.6, 19.104], [5.2, 1.0, 16.0, 23.9, 0.422]],
+      ['2026-01-14', '2026-01-19', [1876.5, 3497.3, 885.0, 317.7, 67.091], [6.5, 5.0, 17.0, 29.5, 0.604]],
+      ['2026-02-10', '2026-02-16', [921.3, 1787.3, 760.0, 196.6, 49.177], [18.4, 27.8, 110.0, 35.7, 6.843]],
+      ['2026-03-10', '2026-03-16', [1189.5, 2356.2, 750.0, 265.7, 66.669], [13.8, 18.4, 22.0, 14.7, 5.875]],
+      ['2026-04-14', '2026-04-20', [1990.9, 3338.3, 2085.0, 295.8, 54.908], [11.0, 4.9, 8.0, 7.9, 8.594]],
+      ['2026-05-12', '2026-05-19', [574.8, 1118.1, 186.0, 196.1, 50.234], [8.7, 1.2, 2.8, 11.4, 5.707],
+        { ph: '6.3', nh: '0.8', f: '불검출', ni: '불검출', mn: '0.007', ba: '0.018', zn: '0.048', cr: '불검출', cu: '불검출', fe: '0.103' },
+        { ph: '7.5', nh: '불검출', f: '불검출', ni: '불검출', mn: '0.003', ba: '불검출', zn: '0.013', cr: '불검출', cu: '불검출', fe: '0.107' }],
+      ['2026-06-17', '2026-06-22', [1570.2, 3058.2, 985.0, 256.2, 44.795], [11.7, 6.0, 12.7, 8.5, 9.812]],
+      ['2026-07-15', '2026-07-21', [1297.4, 3227.3, 930.0, 472.6, 88.935], [10.3, 7.4, 4.8, 13.1, 3.374]],
+      ['2026-08-20', '2026-08-26', [3093.7, 7381.5, 2710.0, 718.6, 166.694], [17.3, 4.2, 11.4, 36.2, 9.974]],
+      ['2026-09-22', '2026-09-29', [1131.8, 1890.0, 940.0, 341.4, 69.109], [12.2, 10.1, 9.0, 21.6, 7.496]]
+    ].map(([s, d, r, e, rx, ex]) => {
+      const o = a => Object.fromEntries(['toc', 'bod', 'ss', 'tn', 'tp'].map((k, i) => [k, String(a[i])]));
+      return { s, d, raw: Object.assign(o(r), rx || {}), eff: Object.assign(o(e), ex || {}) };
+    });
+    let WQ = null, WQ_SAVED = false, wqSel = '', wqItem = 'bod', wqEdit = null, wqMeterLoaded = false;
+
+    async function loadWq() {
+      const { data, error } = await sb.from('env_settings').select('value').eq('key', 'wq').maybeSingle();
+      if (error) throw error;
+      WQ_SAVED = !!(data && data.value);
+      WQ = (data && data.value) || { records: JSON.parse(JSON.stringify(WQ_SEED)) };
+      WQ.records = (WQ.records || []).sort((a, b) => a.s < b.s ? -1 : 1);
+    }
+    const wqNum = v => { if (v === null || v === undefined) return null; const s = String(v).trim(); if (!s) return null; if (/불검출|ND|N\.D/i.test(s)) return 0; const n = Number(s.replace(/,/g, '')); return isNaN(n) ? null : n; };
+    const wqShow = (v, d) => { const s = String(v ?? '').trim(); if (!s) return '<span class="hint">-</span>'; const n = wqNum(s); return (n === null || /불검출/.test(s)) ? esc(s) : nf(n, d ?? 3); };
+    const pct = (a, b) => (a === null || b === null || !b) ? null : a / b * 100;
+    const pctCell = (p, warn = 100) => p === null ? '<td></td>' : `<td class="${p > warn ? 'wq-hi' : p > warn * 0.8 ? 'wq-mid' : 'wq-ok'}">${nf(p, 0)}%</td>`;
+    const ymKor = s => `${s.slice(2, 4)}.${s.slice(5, 7)}`;
+    // 그달 방류량: 설비검침 폐수방류량 (그달 1일 → 다음달 1일 지침 차), 배출일 = 하루 사용량이 있는 날
+    function wqFlow(ym) {
+      const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate();
+      let tot = 0, days = 0, have = 0;
+      for (let d = 1; d <= n; d++) { const u = pair(`${ym}-${pad2(d)}`, g('폐수방류량')).use; if (u !== null) { have++; tot += u; if (u > 0.5) days++; } }
+      return have < n * 0.6 ? null : { tot: round(tot, 1), days, avg: days ? tot / days : null, cal: tot / n };
+    }
+    function wqPick() { // 비교에 쓸 값: 한 달 / 평균 / 최대
+      const R = WQ.records; if (!R.length) return null;
+      if (wqSel === 'avg' || wqSel === 'max') {
+        const agg = side => Object.fromEntries(WQ_ITEMS.map(i => { const a = R.map(r => wqNum((r[side] || {})[i.k])).filter(v => v !== null); return [i.k, a.length ? String(wqSel === 'avg' ? round(a.reduce((x, y) => x + y, 0) / a.length, 3) : Math.max(...a)) : '']; }));
+        return { label: `${ymKor(R[0].s)} ~ ${ymKor(R[R.length - 1].s)} ${wqSel === 'avg' ? '평균' : '최대'} (${R.length}회)`, raw: agg('raw'), eff: agg('eff'), agg: true };
+      }
+      const r = R.find(x => x.s === wqSel) || R[R.length - 1]; wqSel = r.s;
+      return { label: `${r.s} 채취 (분석 ${r.d || '-'})`, raw: r.raw || {}, eff: r.eff || {}, rec: r };
+    }
+
+    async function renderWq() {
+      const el = document.getElementById('wq-body');
+      if (!WQ) { el.innerHTML = '<div class="loading">불러오는 중...</div>'; await loadWq(); }
+      if (!wqMeterLoaded && WQ.records.length) { try { await loadMeter(WQ.records[0].s.slice(0, 8) + '01', todayStr); } catch (e) { } wqMeterLoaded = true; }
+      const R = WQ.records, P = wqPick();
+      const opts = R.slice().reverse().map(r => `<option value="${r.s}" ${wqSel === r.s ? 'selected' : ''}>${r.s.slice(0, 7)} (채취 ${r.s.slice(5)})</option>`).join('');
+      let h = `<div class="card"><div class="toolbar"><b>설계 대비 농도 비교</b>
+        <select onchange="wqSel=this.value;renderWq()">${opts}<option value="avg" ${wqSel === 'avg' ? 'selected' : ''}>전체 평균</option><option value="max" ${wqSel === 'max' ? 'selected' : ''}>전체 최대</option></select>
+        <span class="hint">${P ? esc(P.label) : ''}</span></div>`;
+      if (!P) { document.getElementById('wq-body').innerHTML = h + '<div class="hint">입력된 성적서가 없습니다.</div></div>' + wqInputCard(); return; }
+      h += `<div class="tbl-x"><table class="wq"><tr><th rowspan="2">항목</th><th colspan="3" class="g1">처리 전 (원수)</th><th colspan="5" class="g2">처리 후 (방류수)</th><th colspan="2">처리효율</th></tr>
+        <tr><th class="g1">설계</th><th class="g1">실측</th><th class="g1">설계 대비</th><th class="g2">설계</th><th class="g2">실측</th><th class="g2">설계 대비</th><th class="g2">배출허용기준</th><th class="g2">기준 대비</th><th>설계</th><th>실측</th></tr>`;
+      WQ_ITEMS.forEach(i => {
+        const rv = P.raw[i.k], ev = P.eff[i.k];
+        if (i.x && !String(rv ?? '').trim() && !String(ev ?? '').trim()) return;
+        const r = wqNum(rv), e = wqNum(ev), num_ = typeof i.dr === 'number';
+        const effD = num_ ? (1 - i.de / i.dr) * 100 : null, effA = (r && e !== null) ? (1 - e / r) * 100 : null;
+        h += `<tr><td class="l"><b>${esc(i.n)}</b>${i.f ? `<br><span class="hint">${esc(i.f)}</span>` : ''}</td>
+          <td>${i.dr !== undefined ? nf(i.dr, 1) || esc(i.dr) : ''}</td><td class="v">${wqShow(rv)}</td>${num_ ? pctCell(pct(r, i.dr)) : '<td></td>'}
+          <td>${i.de !== undefined ? nf(i.de, 1) || esc(i.de) : ''}</td><td class="v">${wqShow(ev)}</td>${num_ ? pctCell(pct(e, i.de)) : '<td></td>'}
+          <td>${typeof i.lim === 'number' ? nf(i.lim) + ' 이하' : esc(i.lim)}</td>${typeof i.lim === 'number' ? pctCell(pct(e, i.lim), 100) : '<td></td>'}
+          <td>${effD !== null ? nf(effD, 1) + '%' : ''}</td><td>${effA !== null ? nf(effA, 1) + '%' : ''}</td></tr>`;
+      });
+      h += `</table></div><div class="hint">· 설계 대비 = 실측 ÷ 설계값. <span class="wq-hi">100% 넘음</span> <span class="wq-mid">80~100%</span> <span class="wq-ok">80% 미만</span> · 기준 대비 = 방류수 ÷ 배출허용기준(국가식품클러스터 폐수종말처리시설 유입기준) · 불검출은 0으로 계산</div>`;
+      h += wqSummary() + '</div>';
+      h += wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
+      el.innerHTML = h;
+    }
+    function wqSummary() {
+      const R = WQ.records; if (!R.length) return '';
+      const L = [];
+      const rawP = WQ_MAIN.map(i => { const a = R.map(r => wqNum(r.raw[i.k])).filter(v => v !== null); const av = a.reduce((x, y) => x + y, 0) / a.length; return { i, av, p: av / i.dr * 100, over: R.filter(r => wqNum(r.raw[i.k]) > i.dr).length, n: a.length }; });
+      L.push(`원수 농도(전체 ${R.length}회 평균)는 설계값 대비 ${rawP.map(x => `<b>${x.i.n} ${nf(x.p, 0)}%</b>`).join(', ')} 수준입니다.`);
+      L.push(`설계값을 넘은 횟수: ${rawP.map(x => `${x.i.n} ${x.over}/${x.n}회`).join(', ')}.`);
+      let worst = null; R.forEach(r => WQ_MAIN.forEach(i => { const e = wqNum(r.eff[i.k]); if (e === null) return; const p = e / i.lim * 100; if (!worst || p > worst.p) worst = { p, i, r, e }; }));
+      const overLim = R.filter(r => WQ_MAIN.some(i => wqNum(r.eff[i.k]) > i.lim)).length;
+      if (worst) L.push(`방류수는 ${overLim ? `<b class="wq-hi">${overLim}회 배출허용기준 초과</b>` : '모든 회차가 배출허용기준 이내'}이며, 기준에 가장 가까웠던 값은 ${worst.r.s.slice(0, 7)} ${worst.i.n} ${nf(worst.e, 3)} mg/L (기준 ${worst.i.lim}의 ${nf(worst.p, 0)}%)입니다.`);
+      const effOver = WQ_MAIN.map(i => ({ i, c: R.filter(r => wqNum(r.eff[i.k]) > i.de).length })).filter(x => x.c);
+      L.push(effOver.length ? `방류수가 설계 처리후 농도를 넘은 경우: ${effOver.map(x => `${x.i.n} ${x.c}회`).join(', ')}.` : '방류수는 모든 회차가 설계 처리후 농도 이하입니다.');
+      return `<div class="wq-sum"><b>요약</b><ul>${L.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+    }
+    function wqLoadCard(P) {
+      const R = WQ.records, D = WQ_DESIGN.flow;
+      const rows = R.map(r => ({ r, f: wqFlow(r.s.slice(0, 7)) }));
+      const cur = P.rec ? rows.find(x => x.r === P.rec) : null;
+      const okRows = rows.filter(x => x.f && x.f.avg);
+      const avgFlow = okRows.length ? okRows.reduce((a, x) => a + x.f.avg, 0) / okRows.length : null;
+      const flow = P.rec ? (cur && cur.f ? cur.f.avg : null) : avgFlow;
+      let h = `<div class="card"><b>오염부하량 비교 (원수, kg/일 = 농도 mg/L × 폐수량 ㎥/일 ÷ 1,000)</b>
+        <div class="hint">폐수량은 설비검침 <b>폐수방류량</b>에서 그달 배출한 날(하루 0.5㎥ 넘는 날)의 하루 평균입니다. 설계 폐수발생량은 ${D}㎥/일입니다.</div>
+        <div class="tbl-x"><table class="wq"><tr><th>항목</th><th>설계 부하</th><th>실제 부하</th><th>설계 대비</th></tr>
+        <tr><td class="l"><b>폐수량</b> ㎥/일</td><td>${nf(D, 1)}</td><td class="v">${flow ? nf(flow, 1) : '<span class="hint">검침 자료 없음</span>'}</td>${pctCell(flow ? flow / D * 100 : null)}</tr>`;
+      WQ_MAIN.forEach(i => { const c = wqNum(P.raw[i.k]), dl = i.dr * D / 1000, al = (c !== null && flow) ? c * flow / 1000 : null; h += `<tr><td class="l">${i.n}</td><td>${nf(dl, 1)}</td><td class="v">${al !== null ? nf(al, 1) : ''}</td>${pctCell(al !== null ? al / dl * 100 : null)}</tr>`; });
+      h += `</table></div><div class="hint" style="margin-top:6px">달별 폐수량: ${rows.map(x => `${ymKor(x.r.s)} ${x.f ? `${nf(x.f.tot, 0)}㎥/${x.f.days}일 = <b>${x.f.avg ? nf(x.f.avg, 1) : '-'}</b>` : '자료 없음'}`).join(' · ')}</div></div>`;
+      return h;
+    }
+    function wqChart(side, it) {
+      const R = WQ.records, W = 520, H = 200, L = 46, B = 26, T = 12, Rt = 26;
+      const vals = R.map(r => wqNum((r[side] || {})[it.k]));
+      const refs = side === 'raw' ? [[it.dr, '설계', '#c62828']] : [[it.de, '설계', '#c62828'], [it.lim, '기준', '#555']];
+      const mx = Math.max(...vals.filter(v => v !== null), ...refs.map(x => x[0])) * 1.12 || 1;
+      const xs = i => L + (R.length === 1 ? (W - L - Rt) / 2 : i * (W - L - Rt) / (R.length - 1)), ys = v => T + (H - T - B) * (1 - v / mx);
+      let s = `<svg viewBox="0 0 ${W} ${H}" class="wq-svg">`;
+      for (let k = 0; k <= 4; k++) { const v = mx * k / 4; s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${L - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${nf(v, v < 10 ? 1 : 0)}</text>`; }
+      refs.forEach(([v, n, c]) => { s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="${c}" stroke-dasharray="5 4"/><text x="${W - Rt}" y="${ys(v) - 3}" text-anchor="end" font-size="10" fill="${c}">${n} ${nf(v)}</text>`; });
+      const pts = vals.map((v, i) => v === null ? null : [xs(i), ys(v)]);
+      s += `<polyline fill="none" stroke="${side === 'raw' ? '#1D7A5C' : '#1565c0'}" stroke-width="2" points="${pts.filter(Boolean).map(p => p.join(',')).join(' ')}"/>`;
+      pts.forEach((p, i) => { if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${side === 'raw' ? '#1D7A5C' : '#1565c0'}"/><text x="${p[0]}" y="${p[1] - 7}" text-anchor="middle" font-size="10" fill="#333">${nf(vals[i], vals[i] < 10 ? 1 : 0)}</text>`; });
+      R.forEach((r, i) => { s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`; });
+      return s + '</svg>';
+    }
+    function wqTrendCard() {
+      const it = WQ_MAIN.find(i => i.k === wqItem) || WQ_MAIN[0], R = WQ.records;
+      let h = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${WQ_MAIN.map(i => `<button class="${i.k === it.k ? 'on' : ''}" onclick="wqItem='${i.k}';renderWq()">${i.n}</button>`).join('')}</span></div>
+        <div class="wq-charts"><div><div class="hint"><b>원수</b> (mg/L) — 빨간 점선: 설계 처리전 ${nf(it.dr)}</div>${wqChart('raw', it)}</div>
+        <div><div class="hint"><b>방류수</b> (mg/L) — 빨간 점선: 설계 처리후 ${nf(it.de)}, 회색: 배출허용기준 ${nf(it.lim)}</div>${wqChart('eff', it)}</div></div>`;
+      h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
+      R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}</tr>`; });
+      return h + `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div></div>`;
+    }
+    function wqFlowDesignCard() {
+      const F = WQ_DESIGN.flowItems;
+      return `<details class="card"><summary><b>설계 근거 보기</b> <span class="hint">— 폐수발생량 산출근거 · 폐수 배출예측 (변경후)</span></summary>
+        <div class="wq-charts" style="margin-top:8px"><div><table class="wq sm"><tr><th>구분</th><th>산출근거</th><th>㎥/일</th></tr>${F.map(x => `<tr><td class="l">${x[0]}</td><td class="l">${x[1]}</td><td>${nf(x[2], 1)}</td></tr>`).join('')}<tr><th colspan="2">폐수발생량 합계</th><th>${WQ_DESIGN.flow}</th></tr></table></div>
+        <div><table class="wq sm"><tr><th>오염물질</th><th>처리 전</th><th>처리 후</th><th>배출허용기준</th></tr>${WQ_ITEMS.filter(i => i.dr !== undefined).map(i => `<tr><td class="l">${i.n}</td><td>${esc(i.dr)}</td><td>${esc(i.de)}</td><td>${esc(i.lim)}</td></tr>`).join('')}</table>
+        <div class="hint">pH~T-P: 국가식품클러스터 폐수종말처리시설 유입기준 · 노말헥산·구리: "나 지역" 적용</div></div></div></details>`;
+    }
+    // 입력 (관리자)
+    function wqInputCard() {
+      if (!isAdmin()) return '';
+      const R = WQ.records;
+      if (!wqEdit) { const last = R[R.length - 1]; wqEdit = last ? JSON.parse(JSON.stringify(last)) : { s: todayStr, d: '', raw: {}, eff: {} }; wqEdit._orig = last ? last.s : null; }
+      const E = wqEdit, showX = E._x || WQ_ITEMS.some(i => i.x && (String(E.raw[i.k] ?? '').trim() || String(E.eff[i.k] ?? '').trim()));
+      const opts = R.slice().reverse().map(r => `<option value="${r.s}" ${E._orig === r.s ? 'selected' : ''}>${r.s} 성적서</option>`).join('');
+      const row = i => `<tr><td class="l">${esc(i.n)}${i.f ? ` <span class="hint">${esc(i.f)}</span>` : ''}</td><td><input class="wqi" data-side="raw" data-k="${i.k}" value="${esc(E.raw[i.k] ?? '')}"></td><td><input class="wqi" data-side="eff" data-k="${i.k}" value="${esc(E.eff[i.k] ?? '')}"></td></tr>`;
+      return `<div class="card" id="wq-input"><div class="toolbar"><b>수질측정기록부 입력</b>
+          <select onchange="wqLoadEdit(this.value)"><option value="">+ 새 성적서</option>${opts}</select>
+          <span class="hint" id="wq-st">${WQ_SAVED ? '' : '※ 지금 보이는 2025.12~2026.09 값은 PDF에서 읽어 넣은 처음 자료입니다. 원본과 확인 후 [저장]을 한 번 눌러 주세요.'}</span></div>
+        <div class="toolbar">채취일 <input type="date" id="wq-s" value="${esc(E.s || '')}"> 분석 끝난 날 <input type="date" id="wq-d" value="${esc(E.d || '')}"><span class="hint">분석 끝난 날부터 폐수일지 10번 칸에 이 값이 나옵니다.</span></div>
+        <table class="wq in"><tr><th>항목</th><th>원수 (순수본㈜ 2공장 원수)</th><th>방류수 (순수본㈜ 2공장 방류수)</th></tr>${WQ_MAIN.map(row).join('')}
+          ${showX ? WQ_ITEMS.filter(i => i.x).map(row).join('') : `<tr><td colspan="3"><button class="btn secondary small" onclick="wqEdit._x=1;wqKeep();renderWq()">+ pH·노말헥산·중금속 칸 열기 (반기 측정 때)</button></td></tr>`}</table>
+        <div class="hint">mg/L 숫자 그대로 넣으세요. 불검출은 "불검출"이라고 적으면 됩니다.</div>
+        <div class="toolbar" style="margin-top:8px"><button class="btn" onclick="wqSave()">✓ 저장</button>${E._orig ? `<button class="btn secondary small" onclick="wqDel()">이 성적서 삭제</button>` : ''}</div></div>`;
+    }
+    function wqKeep() { if (!wqEdit) return; const s = document.getElementById('wq-s'), d = document.getElementById('wq-d'); if (s) wqEdit.s = s.value; if (d) wqEdit.d = d.value; document.querySelectorAll('.wqi').forEach(x => { wqEdit[x.dataset.side][x.dataset.k] = x.value.trim(); }); }
+    function wqLoadEdit(s) { const r = WQ.records.find(x => x.s === s); wqEdit = r ? Object.assign(JSON.parse(JSON.stringify(r)), { _orig: r.s }) : { s: todayStr, d: '', raw: {}, eff: {}, _orig: null }; renderWq(); }
+    async function wqPut(records) {
+      const v = Object.assign({}, WQ, { records });
+      const { error } = await sb.from('env_settings').upsert({ key: 'wq', value: v }, { onConflict: 'key' });
+      if (error) { alert('저장 실패: ' + errMsg(error)); return false; }
+      WQ = v; WQ_SAVED = true; return true;
+    }
+    async function wqSave() {
+      wqKeep(); const E = wqEdit;
+      if (!E.s) { alert('채취일을 넣어 주세요.'); return; }
+      const clean = o => Object.fromEntries(Object.entries(o).filter(([, v]) => String(v ?? '').trim() !== ''));
+      const rec = { s: E.s, d: E.d || '', raw: clean(E.raw), eff: clean(E.eff) };
+      const others = WQ.records.filter(r => r.s !== E._orig && r.s !== E.s);
+      if (E._orig !== E.s && WQ.records.some(r => r.s === E.s) && !confirm(`${E.s} 성적서가 이미 있습니다. 덮어쓸까요?`)) return;
+      if (!await wqPut(others.concat([rec]).sort((a, b) => a.s < b.s ? -1 : 1))) return;
+      wqEdit = Object.assign(JSON.parse(JSON.stringify(rec)), { _orig: rec.s }); wqSel = rec.s; renderWq();
+      setTimeout(() => { const st = document.getElementById('wq-st'); if (st) st.textContent = '저장했습니다.'; }, 0);
+    }
+    async function wqDel() {
+      const s = wqEdit && wqEdit._orig; if (!s || !confirm(`${s} 성적서를 지울까요?`)) return;
+      if (!await wqPut(WQ.records.filter(r => r.s !== s))) return;
+      wqEdit = null; wqSel = ''; renderWq();
+    }
+    // 폐수일지 10번: 그날까지 분석이 끝난 가장 최근 성적서 (없으면 설정값)
+    function wqForDay(ds) {
+      if (!WQ || !WQ_SAVED) return null;
+      const r = WQ.records.filter(x => (x.d || x.s) <= ds).pop(); return r || null;
+    }
+    function wqApply(S, ds) {
+      const r = wqForDay(ds); if (!r) return S;
+      const S2 = JSON.parse(JSON.stringify(S)); S2.ww = S2.ww || {}; const q = S2.ww.quality = (S2.ww.quality || []).slice(); while (q.length < 2) q.push({});
+      const dt = (r.d || r.s).replace(/-/g, '.');
+      [['raw', '원폐수'], ['eff', '방류수']].forEach(([side, kind], i) => {
+        const o = Object.assign({}, q[i], { kind: q[i].kind || kind, date: dt });
+        ['bod', 'toc', 'ss', 'tn', 'tp', 'ph'].forEach(k => { o[k] = String((r[side] || {})[k] ?? '').trim() || (k === 'ph' ? '-' : ''); });
+        q[i] = o;
+      });
+      return S2;
     }
 
     // ---------------- 시작 ----------------
