@@ -134,6 +134,17 @@
     .wq-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
     .wq-svg { width: 100%; height: auto; background: #fff; }
     details.card summary { cursor: pointer; }
+    #wq-drop { display: block; border: 2px dashed #9cc9b6; border-radius: 8px; padding: 10px 12px; margin: 6px 0 10px; background: #f6fbf9; }
+    #wq-drop.over { background: #e3f4ec; border-color: #1D9E75; }
+    #wq-drop .hint { display: block; margin-top: 4px; }
+    .wq-read { background: #fff8e6; border-left: 4px solid #e0a020; padding: 8px 12px; margin: 6px 0 10px; font-size: 13px; line-height: 1.8; }
+    table.wq.in input.unsure { border: 2px solid #f08c00; background: #fff0d9; }
+    table.wq.in input.miss { border: 2px solid #d93025; background: #fdecea; }
+    .unsure-s { border: 2px solid #f08c00; background: #fff0d9; padding: 0 4px; } .miss-s { border: 2px solid #d93025; background: #fdecea; padding: 0 4px; }
+    .wq-edit { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .wq-imgs { flex: 1; min-width: 320px; display: grid; gap: 10px; }
+    .wq-imgs img { width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+    .chip { border: 1px solid #ccc; background: #fff; border-radius: 14px; padding: 4px 10px; cursor: pointer; font-size: 12px; } .chip.on { background: #1D9E75; color: #fff; border-color: #1D9E75; }
   </style>
 </head>
 <body>
@@ -868,22 +879,36 @@
         <div><table class="wq sm"><tr><th>오염물질</th><th>처리 전</th><th>처리 후</th><th>배출허용기준</th></tr>${WQ_ITEMS.filter(i => i.dr !== undefined).map(i => `<tr><td class="l">${i.n}</td><td>${esc(i.dr)}</td><td>${esc(i.de)}</td><td>${esc(i.lim)}</td></tr>`).join('')}</table>
         <div class="hint">pH~T-P: 국가식품클러스터 폐수종말처리시설 유입기준 · 노말헥산·구리: "나 지역" 적용</div></div></div></details>`;
     }
-    // 입력 (관리자)
+    // 입력 (관리자·협력업체)
     function wqInputCard() {
-      if (!isAdmin()) return '';
+      if (!isAdmin() && !isPartner()) return '';
       const R = WQ.records;
       if (!wqEdit) { const last = R[R.length - 1]; wqEdit = last ? JSON.parse(JSON.stringify(last)) : { s: todayStr, d: '', raw: {}, eff: {} }; wqEdit._orig = last ? last.s : null; }
       const E = wqEdit, showX = E._x || WQ_ITEMS.some(i => i.x && (String(E.raw[i.k] ?? '').trim() || String(E.eff[i.k] ?? '').trim()));
       const opts = R.slice().reverse().map(r => `<option value="${r.s}" ${E._orig === r.s ? 'selected' : ''}>${r.s} 성적서</option>`).join('');
-      const row = i => `<tr><td class="l">${esc(i.n)}${i.f ? ` <span class="hint">${esc(i.f)}</span>` : ''}</td><td><input class="wqi" data-side="raw" data-k="${i.k}" value="${esc(E.raw[i.k] ?? '')}"></td><td><input class="wqi" data-side="eff" data-k="${i.k}" value="${esc(E.eff[i.k] ?? '')}"></td></tr>`;
+      const U = E._unsure || [], rd = E._read !== undefined, G = rd ? WQ_READ[E._read] : null;
+      const i_main = k => WQ_MAIN.some(x => x.k === k);
+      const has = (side, k) => String(E[side][k] ?? '').trim() !== '', cls = (side, k) => (rd && (i_main(k) || has(side === 'raw' ? 'eff' : 'raw', k)) && !has(side, k)) ? 'miss' : U.includes(side + '.' + k) ? 'unsure' : '';
+      const row = i => `<tr><td class="l">${esc(i.n)}${i.f ? ` <span class="hint">${esc(i.f)}</span>` : ''}</td><td><input class="wqi ${cls('raw', i.k)}" data-side="raw" data-k="${i.k}" value="${esc(E.raw[i.k] ?? '')}"></td><td><input class="wqi ${cls('eff', i.k)}" data-side="eff" data-k="${i.k}" value="${esc(E.eff[i.k] ?? '')}"></td></tr>`;
+      const drop = `<label id="wq-drop" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');wqFiles(event.dataTransfer.files)">
+          <input type="file" id="wq-file" accept="application/pdf,.pdf,image/*" multiple hidden onchange="wqFiles(this.files);this.value=''">
+          <b>📎 수질측정기록부 PDF·사진을 여기로 끌어다 놓거나</b> <button type="button" class="btn small" id="wq-pick" onclick="document.getElementById('wq-file').click()">파일 고르기</button>
+          <span class="hint">원수·방류수 두 쪽을 한꺼번에 넣으면 같은 채취일끼리 묶어서 아래 칸에 채웁니다. 여러 달 파일을 한꺼번에 넣어도 됩니다. 파일은 서버로 보내지 않고 이 브라우저 안에서만 읽습니다.</span>
+          <span id="wq-ocr-st" class="hint"></span></label>`;
+      const reads = WQ_READ.length > 1 ? `<div class="toolbar"><span class="hint">읽은 성적서:</span>${WQ_READ.map((g, i) => `<button class="chip ${E._read === i ? 'on' : ''}" onclick="wqUseRead(${i})">${g.s}${WQ.records.some(r => r.s === g.s) ? ' (저장됨)' : ''}</button>`).join('')}</div>` : '';
+      const note = rd ? `<div class="wq-read">파일에서 읽은 값입니다. <b>오른쪽 원본과 한 줄씩 비교</b>하고 틀린 곳은 고친 뒤 [저장]을 누르세요.<br>
+          ${U.length ? `<span class="unsure-s">주황 칸</span> = 글자가 흐려 확실하지 않은 값 (${U.length}개) · ` : ''}<span class="miss-s">빨간 칸</span> = 못 읽은 칸${G && G.sideGuess ? '<br>원수/방류수 글자를 못 읽어서 값 크기로 짐작했습니다. 맞는지 확인하세요.' : ''}
+          ${WQ.records.some(r => r.s === E.s) ? `<br><b class="wq-hi">${E.s} 성적서가 이미 저장돼 있습니다. 저장하면 이 값으로 바뀝니다.</b>` : ''}</div>` : '';
+      const imgs = rd && G ? `<div class="wq-imgs">${['raw', 'eff'].filter(k => G.img[k]).map(k => `<div><div class="hint"><b>${k === 'raw' ? '원수' : '방류수'} 원본</b></div><img src="${G.img[k]}"></div>`).join('')}</div>` : '';
       return `<div class="card" id="wq-input"><div class="toolbar"><b>수질측정기록부 입력</b>
-          <select onchange="wqLoadEdit(this.value)"><option value="">+ 새 성적서</option>${opts}</select>
+          <select onchange="wqLoadEdit(this.value)"><option value="">+ 새 성적서</option>${opts}</select></div>${drop}${reads}${note}<div class="toolbar">
           <span class="hint" id="wq-st">${WQ_SAVED ? '' : '※ 지금 보이는 2025.12~2026.09 값은 PDF에서 읽어 넣은 처음 자료입니다. 원본과 확인 후 [저장]을 한 번 눌러 주세요.'}</span></div>
+        <div class="wq-edit"><div>
         <div class="toolbar">채취일 <input type="date" id="wq-s" value="${esc(E.s || '')}"> 분석 끝난 날 <input type="date" id="wq-d" value="${esc(E.d || '')}"><span class="hint">분석 끝난 날부터 폐수일지 10번 칸에 이 값이 나옵니다.</span></div>
         <table class="wq in"><tr><th>항목</th><th>원수 (순수본㈜ 2공장 원수)</th><th>방류수 (순수본㈜ 2공장 방류수)</th></tr>${WQ_MAIN.map(row).join('')}
           ${showX ? WQ_ITEMS.filter(i => i.x).map(row).join('') : `<tr><td colspan="3"><button class="btn secondary small" onclick="wqEdit._x=1;wqKeep();renderWq()">+ pH·노말헥산·중금속 칸 열기 (반기 측정 때)</button></td></tr>`}</table>
         <div class="hint">mg/L 숫자 그대로 넣으세요. 불검출은 "불검출"이라고 적으면 됩니다.</div>
-        <div class="toolbar" style="margin-top:8px"><button class="btn" onclick="wqSave()">✓ 저장</button>${E._orig ? `<button class="btn secondary small" onclick="wqDel()">이 성적서 삭제</button>` : ''}</div></div>`;
+        <div class="toolbar" style="margin-top:8px"><button class="btn" onclick="wqSave()">✓ 저장</button>${E._orig && isAdmin() ? `<button class="btn danger small" onclick="wqDel()">이 성적서 삭제</button>` : ''}</div></div>${imgs}</div></div>`;
     }
     function wqKeep() { if (!wqEdit) return; const s = document.getElementById('wq-s'), d = document.getElementById('wq-d'); if (s) wqEdit.s = s.value; if (d) wqEdit.d = d.value; document.querySelectorAll('.wqi').forEach(x => { wqEdit[x.dataset.side][x.dataset.k] = x.value.trim(); }); }
     function wqLoadEdit(s) { const r = WQ.records.find(x => x.s === s); wqEdit = r ? Object.assign(JSON.parse(JSON.stringify(r)), { _orig: r.s }) : { s: todayStr, d: '', raw: {}, eff: {}, _orig: null }; renderWq(); }
@@ -902,6 +927,7 @@
       if (E._orig !== E.s && WQ.records.some(r => r.s === E.s) && !confirm(`${E.s} 성적서가 이미 있습니다. 덮어쓸까요?`)) return;
       if (!await wqPut(others.concat([rec]).sort((a, b) => a.s < b.s ? -1 : 1))) return;
       wqEdit = Object.assign(JSON.parse(JSON.stringify(rec)), { _orig: rec.s }); wqSel = rec.s; renderWq();
+      if (WQ_READ.length > 1) setTimeout(() => wqMsg('저장했습니다. 위의 다른 성적서 버튼을 눌러 이어서 확인하세요.'), 0);
       setTimeout(() => { const st = document.getElementById('wq-st'); if (st) st.textContent = '저장했습니다.'; }, 0);
     }
     async function wqDel() {
@@ -909,6 +935,126 @@
       if (!await wqPut(WQ.records.filter(r => r.s !== s))) return;
       wqEdit = null; wqSel = ''; renderWq();
     }
+
+    // ---------------- 수질측정기록부 파일 → 자동 기입 (브라우저 안에서만 읽음) ----------------
+    // ㈜중부환경연구소 양식 기준: 페이지 비율 위치로 칸을 잘라 글자 인식
+    const WQ_LIB = {
+      pdf: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+      pdfWorker: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+      tess: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+      kor: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor/4.0.0_best_int',
+      eng: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int'
+    };
+    const WQ_KEYS = [['tn', ['질소']], ['toc', ['유기', '탄소']], ['bod', ['산소', '생물', '요구']], ['ss', ['부유']], ['ph', ['수소', '이온']], ['nh', ['헥산', '광유', '노말', '추출']],
+      ['f', ['불소']], ['ni', ['니켈']], ['mn', ['망간']], ['ba', ['바륨']], ['zn', ['아연']], ['cr', ['크롬']], ['cu', ['구리']], ['fe', ['철', '절', '칠']], ['tp', ['총인', '총민', '총입', '총이', '총안', '종인']]];
+    let wqOcrW = null, WQ_READ = [];
+    function wqScript(src) {
+      return new Promise((ok, no) => {
+        if ([...document.scripts].some(s => s.src === src)) return ok();
+        const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('불러오기 실패: ' + src)); document.head.appendChild(s);
+      });
+    }
+    function wqMsg(t) { const e = document.getElementById('wq-ocr-st'); if (e) e.innerHTML = t; }
+    async function wqWorkers() {
+      if (wqOcrW) return wqOcrW;
+      wqMsg('글자 인식 프로그램 준비 중… (처음 한 번은 1분 정도 걸릴 수 있습니다)');
+      await wqScript(WQ_LIB.tess);
+      const kor = await Tesseract.createWorker('kor', 1, { langPath: WQ_LIB.kor });
+      await kor.setParameters({ preserve_interword_spaces: '1' });
+      const dig = await Tesseract.createWorker('eng', 1, { langPath: WQ_LIB.eng });
+      await dig.setParameters({ tessedit_char_whitelist: '0123456789.', tessedit_pageseg_mode: '7' });
+      return (wqOcrW = { kor, dig });
+    }
+    function wqCrop(cv, x0, y0, x1, y1) { // 비율 좌표
+      const W = cv.width, H = cv.height, sx = Math.round(W * x0), sy = Math.round(H * y0), w = Math.round(W * (x1 - x0)), h = Math.round(H * (y1 - y0));
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(cv, sx, sy, w, h, 0, 0, w, h); return c;
+    }
+    function wqPad(c, sc = 2, pad = 24) { // 숫자 칸: 2배 확대 + 흰 여백 (소수점 놓치지 않게)
+      const o = document.createElement('canvas'); o.width = c.width * sc + pad * 2; o.height = c.height * sc + pad * 2;
+      const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, o.width, o.height); g.imageSmoothingEnabled = true; g.drawImage(c, pad, pad, c.width * sc, c.height * sc); return o;
+    }
+    async function wqKor(c, psm) { const { kor } = wqOcrW; await kor.setParameters({ tessedit_pageseg_mode: String(psm) }); return (await kor.recognize(c)).data; }
+    const wqLastNum = s => { const m = String(s || '').match(/\d+(?:\.\d+)?/g); return m ? m[m.length - 1] : null; };
+    const WQ_DRE = /(20\d\d)\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g;
+    const wqDates = t => [...String(t).matchAll(WQ_DRE)].map(m => `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`);
+    async function wqParsePage(cv, idx) {
+      await wqWorkers();
+      const W = cv.width, H = cv.height, out = { side: null, s: null, d: null, v: {}, unsure: [], idx };
+      const tgt = (await wqKor(wqCrop(cv, .27, .222, .93, .258), 7)).text.replace(/\s/g, '');
+      out.side = /방류/.test(tgt) ? 'eff' : /원수/.test(tgt) ? 'raw' : null;
+      const top = (await wqKor(wqCrop(cv, .07, .20, .93, .37), 6)).text.replace(/\s/g, '');
+      if (!out.side) out.side = /방류/.test(top) ? 'eff' : /원수/.test(top) ? 'raw' : null;
+      const td = wqDates(top); out.s = td[0] || null;
+      const y0 = .36, y1 = .75, rh = .0228;
+      const names = await wqKor(wqCrop(cv, .12, y0, .27, y1), 6);
+      for (const L of (names.lines || [])) {
+        const t = L.text.replace(/\s/g, ''); if (/기간/.test(t)) continue;
+        const hit = WQ_KEYS.find(([, ws]) => ws.some(w => t.includes(w))); if (!hit) continue;
+        const k = hit[0]; if (k in out.v) continue;
+        const yc = y0 + ((L.bbox.y0 + L.bbox.y1) / 2) / H;
+        const cell = wqPad(wqCrop(cv, .412, yc - rh / 2 + 6 / H, .533, yc + rh / 2 - 6 / H));
+        const e = (await wqOcrW.dig.recognize(cell)).data.text.trim(), kk = (await wqKor(cell, 7)).text.replace(/\s/g, '');
+        if (/[불검]/.test(kk)) { out.v[k] = '불검출'; continue; }
+        const n1 = wqLastNum(e), n2 = wqLastNum(kk);
+        if (n1 && n1 === n2) out.v[k] = n1;
+        else { const c = [n1, n2].filter(Boolean); const v = c.find(x => x.includes('.')) || c[0] || ''; out.v[k] = v; out.unsure.push(k); }
+      }
+      const bd = wqDates((await wqKor(wqCrop(cv, .07, .62, .93, .86), 6)).text.replace(/\s/g, '')).sort();
+      out.d = bd.length ? bd[bd.length - 1] : null;
+      if (!out.side) { const t = wqNum(out.v.toc) ?? wqNum(out.v.bod); out.side = t === null ? (idx % 2 ? 'eff' : 'raw') : (t >= 100 ? 'raw' : 'eff'); out.sideGuess = true; }
+      const pv = wqCrop(cv, .06, .2, .94, .62), sc = Math.min(1, 900 / pv.width), p2 = document.createElement('canvas');
+      p2.width = pv.width * sc; p2.height = pv.height * sc; p2.getContext('2d').drawImage(pv, 0, 0, p2.width, p2.height); out.img = p2.toDataURL('image/jpeg', .8);
+      return out;
+    }
+    async function wqPages(f) { // 파일 → 캔버스들 (가로 2480px)
+      const res = [];
+      if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+        await wqScript(WQ_LIB.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = WQ_LIB.pdfWorker;
+        const doc = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+        for (let i = 1; i <= doc.numPages; i++) {
+          const pg = await doc.getPage(i), vp0 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: 2480 / vp0.width });
+          const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+          await pg.render({ canvasContext: g, viewport: vp }).promise; res.push(c);
+        }
+      } else {
+        const img = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = URL.createObjectURL(f); });
+        const c = document.createElement('canvas'); c.width = 2480; c.height = Math.round(img.height * 2480 / img.width); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); res.push(c);
+      }
+      return res;
+    }
+    async function wqFiles(files) {
+      files = [...files]; if (!files.length) return;
+      const btn = document.getElementById('wq-pick'); if (btn) btn.disabled = true;
+      try {
+        const pages = []; let n = 0;
+        for (const [fi, f] of files.entries()) { wqMsg(`${esc(f.name)} 여는 중…`); (await wqPages(f)).forEach((cv, i) => pages.push({ cv, i, file: fi })); }
+        const read = [];
+        for (const c of pages) { n++; wqMsg(`글자 읽는 중… ${n} / ${pages.length}쪽 (한 쪽에 5~20초)`); const r = await wqParsePage(c.cv, c.i); r.file = c.file; read.push(r); }
+        // 같은 파일 쪽끼리는 채취일·분석일을 맞춤 (한 파일 = 원수 + 방류수)
+        const byFile = {}; read.forEach(p => (byFile[p.file] = byFile[p.file] || []).push(p));
+        Object.values(byFile).forEach(ps => {
+          const cnt = a => { const m = {}; a.filter(Boolean).forEach(x => m[x] = (m[x] || 0) + 1); return Object.keys(m).sort((x, y) => m[y] - m[x])[0] || null; };
+          const s = cnt(ps.map(p => p.s)), d = ps.map(p => p.d).filter(x => x && (!s || x >= s)).sort().pop() || null;
+          ps.forEach(p => { p.s = s; p.d = d; });
+        });
+        // 채취일로 묶기 (원수 + 방류수)
+        const groups = {};
+        read.forEach(p => { if (!Object.keys(p.v).length) return; const s = p.s || todayStr; const G = groups[s] = groups[s] || { s, d: '', raw: {}, eff: {}, unsure: [], img: {} };
+          if (p.d && p.d > G.d) G.d = p.d; Object.assign(G[p.side], p.v); p.unsure.forEach(k => G.unsure.push(p.side + '.' + k)); G.img[p.side] = p.img; if (p.sideGuess) G.sideGuess = true; });
+        WQ_READ = Object.values(groups).sort((a, b) => a.s < b.s ? -1 : 1);
+        if (!WQ_READ.length) { wqMsg('<span class="wq-hi">값을 읽지 못했습니다.</span> 수질측정기록부(측정분석결과 표가 있는 쪽)인지 확인하거나 직접 입력해 주세요.'); return; }
+        wqUseRead(WQ_READ.length - 1);
+      } catch (e) { wqMsg('<span class="wq-hi">읽기 실패: ' + esc(errMsg(e)) + '</span>'); }
+      finally { const b = document.getElementById('wq-pick'); if (b) b.disabled = false; }
+    }
+    function wqUseRead(i) {
+      const G = WQ_READ[i]; if (!G) return;
+      const ex = WQ.records.find(r => r.s === G.s);
+      wqEdit = { s: G.s, d: G.d, raw: Object.assign({}, G.raw), eff: Object.assign({}, G.eff), _orig: ex ? ex.s : null, _read: i, _unsure: G.unsure.slice(), _x: WQ_ITEMS.some(x => x.x && (x.k in G.raw || x.k in G.eff)) };
+      renderWq();
+      setTimeout(() => { const el = document.getElementById('wq-input'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    }
+
     // 폐수일지 10번: 그날까지 분석이 끝난 가장 최근 성적서 (없으면 설정값)
     function wqForDay(ds) {
       if (!WQ || !WQ_SAVED) return null;
