@@ -77,6 +77,8 @@
     .cz-text table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
     .cz-text td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: top; } .cz-text td.v { text-align: right; white-space: nowrap; font-weight: 600; }
     .cz-text tr.key td { background: #fff8e1; } .cz-text .concl { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #f2f6ff; }
+    .tg-whyd { margin-top: 8px; } .tg-whyd summary { cursor: pointer; color: var(--brand); font-size: 13px; font-weight: 600; }
+    .tg-why td, .tg-why th { font-size: 12px; }
     .cz-text .calc { color: #2f5aa8; font-size: 12px; }
     .cz-per { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding: 6px 2px 8px; border-bottom: 1px dashed #ccd; margin-bottom: 8px; }
     .cz-more summary { cursor: pointer; font-size: 14px; }
@@ -1195,6 +1197,18 @@
           const parts = m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
       h += `<div class="hint" style="margin-top:6px">생산일 = 보일러 가스를 하루 50㎥ 넘게 쓴 날 수 (스팀보일러는 생산하는 날만 돌기 때문 · 월간입력 '생산일수'로 직접 고칠 수 있음). 가스는 생산일로, 전기는 달력 날수(냉동·공조 등 매일 도는 몫)와 생산일(생산설비 몫)을 함께 써서 계산. 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
+      // 계산 근거: 기준 달마다 (요인 × 계수) 더한 값 vs 실제
+      const brows = base.map(monthRow);
+      const FL = { days: '달력 날수', op: '생산일', prod: '원육 투입(kg)', hdd: '난방도일', cdd: '냉방도일' };
+      h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
+        const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
+        const used = brows.filter(r => r[u.k] !== null && r[u.k] !== undefined && m.feats.every(f => r[f] !== null && r[f] !== undefined));
+        let t2 = `<table class="t tg-why"><tr><th class="l">기준 달</th>${m.feats.map(f => `<th>${FL[f]}<br><span class="hint">× ${fc(m.coef[m.feats.indexOf(f)])}</span></th>`).join('')}<th>식으로 계산한 값</th><th>실제 사용량</th><th>차이</th></tr>`;
+        used.forEach(r => { const parts = m.feats.map((f, i) => m.coef[i] * r[f]), sum = parts.reduce((a, b) => a + b, 0), err = r[u.k] ? (sum / r[u.k] - 1) * 100 : null;
+          t2 += `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td>${m.feats.map((f, i) => `<td>${fc(r[f])}<br><span class="hint">→ ${f0(parts[i])}</span></td>`).join('')}<td><b>${f0(sum)}</b></td><td>${f0(r[u.k])}</td><td>${err === null ? '-' : (err >= 0 ? '+' : '') + nf1.format(err) + '%'}</td></tr>`; });
+        t2 += '</table>';
+        return `<details class="tg-whyd"><summary>${u.name} — 계수가 어떻게 나왔는지 보기 (기준 달 ${used.length}개)</summary>
+          <div class="hint" style="margin:6px 0">각 달의 실제 사용량을 <b>${m.feats.map(f => FL[f].replace('(kg)', '')).join(' · ')}</b> 덩어리로 나눴을 때, 모든 기준 달에서 <b>식으로 계산한 값과 실제 사용량의 차이가 가장 작아지는 계수</b>를 찾은 것입니다 (최소제곱법 — 엑셀 추세선·LINEST와 같은 방법). 아래 표의 회색 숫자 = 그 요인 × 계수, 더하면 '식으로 계산한 값'.</div>${t2}</details>`; }).join('');
       document.getElementById('tg-model').innerHTML = h;
 
       // 2) 절감률
