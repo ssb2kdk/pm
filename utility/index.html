@@ -1776,7 +1776,7 @@
     }
     const PER_MAX = { day: 400, week: 160, month: 120, quarter: 40 };
     function perRange() { return perSel[perGran] || perDefault(perGran); }
-    const PER_CMP = { day: ['전년 같은 요일', '전일'], week: ['전년 같은 주', '전주'], month: ['전년 동월', '전월'], quarter: ['전년 동분기', '전분기'] };
+    const PER_CMP = { day: ['전년 같은 요일', '전월 같은 요일'], week: ['전년 같은 주', '전주'], month: ['전년 동월', '전월'], quarter: ['전년 동분기', '전분기'] };
     let perLine = 'both';
     function periodSeries() {
       const uk = perUtil, metric = perMetric, out = [];
@@ -1784,7 +1784,7 @@
       if (perGran === 'day') {
         const end = to > last ? last : to, multiYear = from.slice(0, 4) !== end.slice(0, 4);
         for (let ds = from, i = 0; ds <= end && i < PER_MAX.day; ds = UT.addDays(ds, 1), i++) { const ly = UT.addDays(ds, -364); // 364일 전 = 같은 요일
-          out.push({ label: `${multiYear ? ds.slice(2, 4) + '/' : ''}${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prior: dayVal(UT.addDays(ds, -1), uk), prevLabel: ly }); }
+          out.push({ label: `${multiYear ? ds.slice(2, 4) + '/' : ''}${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prior: dayVal(UT.addDays(ds, -28), uk), prevLabel: ly }); }
       } else if (perGran === 'week') {
         const multiYear = from.slice(0, 4) !== to.slice(0, 4);
         for (let ws = isoWeekStart(from), i = 0; ws <= isoWeekStart(to) && ws <= last && i < PER_MAX.week; ws = UT.addDays(ws, 7), i++) { const lws = UT.addDays(ws, -364);
@@ -1854,7 +1854,7 @@
       const rg = ser.length ? ` (${ser[0].label} ~ ${ser[ser.length - 1].label})` : '';
       const [nLy, nPr] = PER_CMP[perGran];
       document.getElementById('per-title').textContent = `${U.name} ${gName} ${perMetric === 'usage' ? '사용량' : perMetric === 'cost' ? '비용' : '원단위'} — ${nLy}·${nPr} 비교${rg}`;
-      document.getElementById('per-note').innerHTML = (perGran === 'day' ? '전년 같은 요일 = 364일 전 (요일을 맞춤). 전일 = 바로 앞날. ' : perGran === 'week' ? '주 = 월요일 시작. 전년 같은 주 = 52주 전 (요일 맞춤), 전주 = 바로 앞 주. 이번 주는 어제까지만, 비교도 같은 날수만큼. ' : perGran === 'month' ? '전년 동월 = 작년 같은 달, 전월 = 바로 앞 달 (달력 기준이라 요일은 맞추지 않음). ' : '전년 동분기 = 작년 같은 분기, 전분기 = 바로 앞 분기. ') +
+      document.getElementById('per-note').innerHTML = (perGran === 'day' ? '전년 같은 요일 = 364일 전 (52주 전), 전월 같은 요일 = 28일 전 (4주 전) — 둘 다 요일을 맞춤. ' : perGran === 'week' ? '주 = 월요일 시작. 전년 같은 주 = 52주 전 (요일 맞춤), 전주 = 바로 앞 주. 이번 주는 어제까지만, 비교도 같은 날수만큼. ' : perGran === 'month' ? '전년 동월 = 작년 같은 달, 전월 = 바로 앞 달 (달력 기준이라 요일은 맞추지 않음). ' : '전년 동분기 = 작년 같은 분기, 전분기 = 바로 앞 분기. ') +
         (daily && perUtil === 'gas' ? '가스 일·주 단위는 ㎥(월·분기는 MJ). ' : '') + '옅은 막대 = 아직 진행 중인 기간.' +
         ` &nbsp; 그래프 비교선: ` + [['both', '둘 다'], ['ly', nLy], ['prior', nPr]].map(([k, n]) => `<button class="chip ${perLine === k ? 'on' : ''}" onclick="perLine='${k}';renderPeriod()">${n}</button>`).join('');
       const pr = perGran === 'day' ? 0 : 3;
