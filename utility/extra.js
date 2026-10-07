@@ -1012,3 +1012,133 @@
         `<div class="hint" style="margin-top:6px">단위: ${unit}. 증감 ▲ = 더 씀(빨강), ▼ = 덜 씀(초록).</div>`;
     }
 
+
+    // =====================================================================
+    // 지출결의 자료: 유틸별 [지출결의 입력사항 · 추가의견 문구 · 원육 사용량당 그래프] → 그룹웨어에 붙여넣기
+    // =====================================================================
+    let exYm = null, exUtil = 'elec', exChartKind = 'unit', exChart = null;
+    const EX_NAME = { elec: '전력', gas: '가스', water: '용수', ww: '폐수' };
+    const EX_BILL = { elec: '전기요금', gas: '도시가스요금', water: '상수도요금', ww: '하수도(폐수)요금' };
+    function shiftExMonth(d) { exYm = d > 0 ? UT.nextYm(exYm) : UT.prevYm(exYm); renderExpense(); }
+    // "32,596천원 ~ 전월대비 : 345천원(-1.0%)감소."
+    function exCmp(cur, prev, fmt, unit) {
+      if (cur === null || cur === undefined || isNaN(cur)) return '-';
+      let t = `${fmt(cur)}${unit}`;
+      if (prev === null || prev === undefined || isNaN(prev) || !prev) return t + '.';
+      const d = cur - prev, p = d / prev * 100, pt = (p >= 0 ? '+' : '-') + Math.abs(p).toFixed(1);
+      return `${t} ~ 전월대비 : ${fmt(Math.abs(d))}${unit}(${pt}%)${Math.abs(d) < 1e-9 ? '동일' : d > 0 ? '증가' : '감소'}.`;
+    }
+    const exF = d => v => Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    function exLines(ym) {
+      const s = S(ym), p = S(UT.prevYm(ym)), uk = exUtil, N = EX_NAME[uk], U = UT.UTILS.find(u => u.k === uk);
+      const c = s[uk], c0 = p[uk], dn = UT.daysIn(ym), dn0 = UT.daysIn(UT.prevYm(ym));
+      const ud = uk === 'water' || uk === 'ww' ? 3 : 1;
+      const L = [];
+      const k1 = v => v === null || v === undefined ? null : Math.round(v / 1000);
+      L.push(`1. ${N} 비용 = ${exCmp(c.cost, c0.cost, v => exF(0)(v / 1000), '천원')}`);
+      L.push(`2. ${N} 사용량 = ${exCmp(c.usage, c0.usage, exF(0), U.unit)}`);
+      const sub = [];
+      sub.push(`일평균 ${N}사용량 = ${exCmp(c.usage === null ? null : c.usage / dn, c0.usage === null ? null : c0.usage / dn0, exF(1), U.unit)}`);
+      if (uk === 'elec') {
+        const ww = meterKwh(ym, 'elec_ww_kwh'), ww0 = meterKwh(UT.prevYm(ym), 'elec_ww_kwh'), hv = meterKwh(ym, 'elec_hvac_kwh'), hv0 = meterKwh(UT.prevYm(ym), 'elec_hvac_kwh');
+        if (ww !== null && hv !== null && c.usage !== null) {
+          const pr = c.usage - ww - hv, pr0 = (c0.usage !== null && ww0 !== null && hv0 !== null) ? c0.usage - ww0 - hv0 : null;
+          sub.push(`생산 전력 사용량 = ${exCmp(pr, pr0, exF(0), 'kWh')}`);
+          sub.push(`폐수처리장 전력 사용량 = ${exCmp(ww, ww0, exF(0), 'kWh')}`);
+          sub.push(`공조냉동 전력사용량 = ${exCmp(hv, hv0, exF(0), 'kWh')}`);
+        }
+      } else if (uk === 'gas') {
+        sub.push(`가스 사용량(㎥) = ${exCmp(c.m3, c0.m3, exF(0), '㎥')}`);
+        const g = gasSplit(s), g0 = gasSplit(p), f = (a, n) => (a.find(x => x.name === n) || {}).m3;
+        ['보일러', '식당'].forEach(n => { if (f(g, n) !== undefined) sub.push(`${n} 가스 사용량 = ${exCmp(f(g, n), f(g0, n), exF(0), '㎥')}`); });
+      } else if (uk === 'water') {
+        const u4 = x => x.w40 ? x.w40.usage : null, u5 = x => x.w50 ? x.w50.usage : null;
+        if (u4(c) !== null) sub.push(`40A 사용량 = ${exCmp(u4(c), u4(c0), exF(0), '㎥')}`);
+        if (u5(c) !== null) sub.push(`50A 사용량 = ${exCmp(u5(c), u5(c0), exF(0), '㎥')}`);
+      }
+      const GA = '가나다라마바사아';
+      sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`));
+      L.push(`3. 생산량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
+      L.push(`4. 생산량당 사용량 = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
+      return { lines: L, s, c };
+    }
+    // 지출결의 입력사항 줄: [상세내용, 공급가액, 부가세, 합계]
+    function exRows(ym, s) {
+      const y = ym.slice(0, 4), m = ym.slice(5), tag = `2공장 ${EX_BILL[exUtil]}_${y}년${m}월`, raw = MONTHLY[ym] || {};
+      if (exUtil === 'elec') {
+        const ep = elecParts(s); if (!ep) return [];
+        const sup = ep.total - ep.vat - ep.fund - (ep.late || 0);
+        return [[tag, sup, ep.vat, ep.total - ep.fund - (ep.late || 0)], [`2공장 전기요금_공통전력기금_${y}년${m}월`, ep.fund, 0, ep.fund], ...(ep.late ? [[`2공장 전기요금_연체료_${y}년${m}월`, ep.late, 0, ep.late]] : [])];
+      }
+      if (exUtil === 'gas') return gasSplit(s).map(x => [`2공장 도시가스요금_${x.name}_${y}년${m}월`, x.exvat, x.total - x.exvat, x.total]);
+      if (exUtil === 'water') return [['40A', s.water.w40cost], ['50A', s.water.w50cost]].filter(x => x[1]).map(([n, v]) => [`2공장 상수도요금_${n}_${y}년${m}월`, v, 0, v]);
+      const ff = Number(raw.ww_facility_fee) || 0, fi = Number(raw.ww_improve_fee) || 0;
+      if (ff || fi) return [['시설사용료', ff], ['개선부담금', fi]].filter(x => x[1]).map(([n, v]) => [`2공장 폐수_${n}_${y}년${m}월`, v, 0, v]);
+      return s.ww.cost ? [[tag, s.ww.cost, 0, s.ww.cost]] : [];
+    }
+    function renderExpense() {
+      if (!exYm) exYm = UT.prevYm(thisYm);
+      document.getElementById('ex-month').textContent = ymLabel(exYm);
+      const U = UT.UTILS.find(u => u.k === exUtil), N = EX_NAME[exUtil];
+      document.getElementById('ex-utils').innerHTML = UT.UTILS.map(u => `<button class="chip ${u.k === exUtil ? 'on' : ''}" onclick="exUtil='${u.k}';renderExpense()">${u.name}</button>`).join('');
+      const { lines, s, c } = exLines(exYm), rows = exRows(exYm, s);
+      const st = c.status;
+      let h = st !== '확정' ? `<div class="fc-note">⚠ ${ymLabel(exYm)} ${U.name}는 <b>${st || '자료 없음'}</b> 상태입니다. 고지서를 넣어 확정한 뒤 쓰세요.</div>` : '';
+      const tot = rows.reduce((a, r) => [a[0] + (r[1] || 0), a[1] + (r[2] || 0), a[2] + (r[3] || 0)], [0, 0, 0]);
+      h += `<div class="card"><h3>지출결의 입력사항 <span class="sub">숫자를 누르면 복사됩니다</span></h3>
+        <div class="tbl-wrap"><table class="t"><tr><th class="l">상세내용</th><th>공급가액</th><th>부가세</th><th>합계</th></tr>
+        ${rows.map(r => `<tr><td class="l ex-cp" onclick="exCopy(this.textContent,this)">${esc(r[0])}</td>${[1, 2, 3].map(i => `<td class="ex-cp" onclick="exCopy('${r[i] || 0}',this)">${f0(r[i] || 0)}</td>`).join('')}</tr>`).join('')}
+        ${rows.length > 1 ? `<tr class="sum"><td class="l">지출결의계</td><td>${f0(tot[0])}</td><td>${f0(tot[1])}</td><td>${f0(tot[2])}</td></tr>` : ''}</table></div>
+        <div class="hint">${exUtil === 'elec' ? '공급가액 = 청구액 − 부가세 − 전력기금 (원단위 절사 반영). 전력기금은 부가세 없이 따로 한 줄.' : exUtil === 'gas' ? '보일러·식당은 검침 비율대로 고지서 금액을 나눈 값입니다.' : ''}</div></div>`;
+      h += `<div class="card"><h3>추가의견 <span class="sub">고쳐서 쓸 수 있습니다</span></h3>
+        <textarea id="ex-text" class="ex-text" rows="${lines.length + 1}">${esc(lines.join('\n'))}</textarea>
+        <div class="toolbar" style="margin-top:6px"><button class="btn" onclick="exCopy(document.getElementById('ex-text').value,this)">📋 추가의견 복사</button><span class="hint">전월(${ymLabel(UT.prevYm(exYm))})과 비교 · 비용은 부가세 포함 청구액 기준</span></div></div>`;
+      h += `<div class="card"><h3>그래프 <span class="sub">그림 복사 후 그룹웨어 「캡쳐자료」 칸에 붙여넣기</span></h3>
+        <div class="toolbar"><span class="chips"><button class="chip ${exChartKind === 'unit' ? 'on' : ''}" onclick="exChartKind='unit';renderExpense()">원육 사용량당 ${N}사용량</button><button class="chip ${exChartKind === 'ucost' ? 'on' : ''}" onclick="exChartKind='ucost';renderExpense()">원육 사용량당 ${N} 비용</button><button class="chip ${exChartKind === 'usage' ? 'on' : ''}" onclick="exChartKind='usage';renderExpense()">${N} 사용량</button></span>
+          <button class="btn" onclick="exCopyImg(this)">🖼 그림 복사</button><button class="btn secondary" onclick="exSaveImg()">💾 그림 저장</button></div>
+        <div class="ex-chart"><canvas id="ex-canvas" width="900" height="460"></canvas></div></div>`;
+      document.getElementById('ex-body').innerHTML = h;
+      exDraw();
+    }
+    function exDraw() {
+      const y = Number(exYm.slice(0, 4)), mEnd = Number(exYm.slice(5)), U = UT.UTILS.find(u => u.k === exUtil), N = EX_NAME[exUtil];
+      const ud = exUtil === 'water' || exUtil === 'ww' ? 3 : 1;
+      const K = { unit: { t: `원육 사용량당 ${N}사용량`, u: `${U.unit}/kg`, d: ud, f: s => ratio(s[exUtil].usage, s.production) },
+        ucost: { t: `원육 사용량당 ${N} 비용`, u: '원/kg', d: 1, f: s => ratio(s[exUtil].cost, s.production) },
+        usage: { t: `${N} 사용량`, u: U.unit, d: 0, f: s => s[exUtil].usage } }[exChartKind];
+      const vals = Array.from({ length: 12 }, (_, i) => i < mEnd ? K.f(S(UT.ym(y, i + 1))) : null);
+      const fmt = exF(K.d), i = mEnd - 1, pv = i > 0 ? vals[i - 1] : null, cv = vals[i];
+      const chg = cv !== null && pv ? (cv / pv - 1) * 100 : null;
+      const BG = { id: 'exbg', beforeDraw(ch) { const g = ch.ctx; g.save(); g.fillStyle = '#fff'; g.fillRect(0, 0, ch.width, ch.height); g.restore(); } };
+      const LB = { id: 'exlb', afterDatasetsDraw(ch) {
+        const g = ch.ctx, meta = ch.getDatasetMeta(0); g.save(); g.textAlign = 'center'; g.font = '600 12px "Malgun Gothic", sans-serif'; g.fillStyle = '#222';
+        meta.data.forEach((el, k) => { if (vals[k] === null) return; g.fillText(fmt(vals[k]), el.x, el.y - 12); });
+        g.textAlign = 'left'; g.font = '700 14px "Malgun Gothic", sans-serif'; g.fillStyle = '#111'; const x0 = ch.chartArea.right - 270;
+        g.fillText('▶ 전월대비 증감률', x0, ch.chartArea.top + 16);
+        if (chg !== null) { g.font = '700 13px "Malgun Gothic", sans-serif'; g.fillStyle = '#e00000'; g.fillText(`• ${String(mEnd).padStart(2, '0')}월 = ${fmt(cv)} ${K.u} : ${chg > 0 ? '+' : ''}${chg.toFixed(1)}% ${chg > 0 ? '증가' : '감소'}`, x0, ch.chartArea.top + 38); }
+        g.restore(); } };
+      if (exChart) exChart.destroy();
+      exChart = new Chart(document.getElementById('ex-canvas'), {
+        type: 'line', plugins: [BG, LB],
+        data: { labels: Array.from({ length: 12 }, (_, k) => `${k + 1}월`), datasets: [{ label: `${String(y).slice(2)}년`, data: vals, borderColor: '#e00000', backgroundColor: '#ffe500', pointBorderColor: '#e00000', pointBackgroundColor: '#ffe500', pointRadius: 6, pointBorderWidth: 3, borderWidth: 3, spanGaps: false }] },
+        options: { responsive: false, animation: false, layout: { padding: { top: 10, right: 16 } },
+          plugins: { title: { display: true, text: K.t, align: 'start', font: { size: 20, weight: '700' }, color: '#111', padding: { bottom: 14 } }, legend: { display: true, position: 'top' }, tooltip: { enabled: false } },
+          scales: { y: { beginAtZero: true, grace: '15%', title: { display: true, text: `(단위: ${K.u})` }, ticks: { callback: v => exF(K.d === 3 ? 3 : K.d)(v) } }, x: { grid: { display: false } } } }
+      });
+    }
+    async function exCopy(t, el) {
+      try { await navigator.clipboard.writeText(String(t).trim()); } catch (e) { const ta = document.createElement('textarea'); ta.value = String(t).trim(); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      if (el) { el.classList.add('ex-done'); setTimeout(() => el.classList.remove('ex-done'), 900); }
+    }
+    async function exCopyImg(btn) {
+      const cv = document.getElementById('ex-canvas');
+      try {
+        const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ 복사됨'; setTimeout(() => btn.textContent = '🖼 그림 복사', 1200);
+      } catch (e) { alert('이 브라우저에서는 그림 복사가 안 됩니다. [그림 저장]으로 받아서 붙여넣으세요.'); }
+    }
+    function exSaveImg() {
+      const a = document.createElement('a'); a.href = document.getElementById('ex-canvas').toDataURL('image/png');
+      a.download = `${exYm}_${EX_NAME[exUtil]}_${{ unit: '원육사용량당사용량', ucost: '원육사용량당비용', usage: '사용량' }[exChartKind]}.png`; a.click();
+    }
