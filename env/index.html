@@ -134,6 +134,19 @@
     .wq-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
     .wq-svg { width: 100%; height: auto; background: #fff; }
     details.card summary { cursor: pointer; }
+    .wwn-form { display: grid; grid-template-columns: 160px 160px 1fr; gap: 8px 12px; margin-top: 8px; align-items: end; }
+    .wwn-form label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 3px; }
+    .wwn-form label.wide { grid-column: 1 / -1; }
+    .wwn-form input, .wwn-form select, .wwn-form textarea { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; }
+    @media (max-width: 700px) { .wwn-form { grid-template-columns: 1fr 1fr; } }
+    table.wwn td.txt { white-space: pre-wrap; min-width: 220px; max-width: 480px; }
+    .wwn-cat { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eee; color: #444; white-space: nowrap; }
+    .wwn-cat.c1 { background: #fdecea; color: #b3261e; } .wwn-cat.c2 { background: #e7eef8; color: #1a4f8b; } .wwn-cat.c3 { background: #e6f4ea; color: #1e6b33; }
+    .wwn-cat.c4 { background: #fff4e0; color: #8a5300; } .wwn-cat.c5 { background: #efe6d8; color: #6b4a1a; } .wwn-cat.c6 { background: #f0e8f7; color: #6a3d9a; }
+    .wwn-near { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: #6a3d9a; color: #fff; }
+    .wwn-box { margin-top: 10px; padding: 8px 12px; border-left: 4px solid #6a3d9a; background: #f7f2fb; font-size: 13px; line-height: 1.8; }
+    .wwn-box ul { margin: 4px 0 0 18px; padding: 0; }
+    td.wwn-cell { white-space: normal !important; min-width: 200px; max-width: 360px; font-size: 11px; line-height: 1.6; }
     #wq-drop { display: block; border: 2px dashed #9cc9b6; border-radius: 8px; padding: 10px 12px; margin: 6px 0 10px; background: #f6fbf9; }
     #wq-drop.over { background: #e3f4ec; border-color: #1D9E75; }
     #wq-drop .hint { display: block; margin-top: 4px; }
@@ -156,6 +169,7 @@
         <button class="tab-btn staff" data-tab="ww" onclick="showTab('ww')">폐수일지 출력</button>
         <button class="tab-btn staff" data-tab="air" onclick="showTab('air')">대기일지 출력</button>
         <button class="tab-btn" data-tab="wq" onclick="showTab('wq')">수질 측정</button>
+        <button class="tab-btn" data-tab="wwn" onclick="showTab('wwn')">폐수장 특이사항</button>
         <button class="tab-btn admin" data-tab="set" onclick="showTab('set')">설정</button>
       </div>
     </div>
@@ -201,6 +215,7 @@
 
       <!-- ============ 수질 측정 ============ -->
       <div id="tab-wq" class="tab"><div id="wq-body"><div class="loading">불러오는 중...</div></div></div>
+      <div id="tab-wwn" class="tab"><div id="wwn-body"><div class="loading">불러오는 중...</div></div></div>
 
       <!-- ============ 설정 ============ -->
       <div id="tab-set" class="tab">
@@ -292,6 +307,7 @@
       if (t === 'set') renderSettings(document.getElementById('tab-set').classList.contains('active') && setDirty);
       if (t === 'book') renderBook();
       if (t === 'wq') renderWq();
+      if (t === 'wwn') renderWwn();
     }
 
     // ---------------- 장부 칼럼 ----------------
@@ -795,6 +811,7 @@
     async function renderWq() {
       const el = document.getElementById('wq-body');
       if (!WQ) { el.innerHTML = '<div class="loading">불러오는 중...</div>'; await loadWq(); }
+      if (!WWN) { try { await loadWwn(); } catch (e) { WWN = []; } }
       if (!wqMeterLoaded && WQ.records.length) { try { await loadMeter(WQ.records[0].s.slice(0, 8) + '01', todayStr); } catch (e) { } wqMeterLoaded = true; }
       const R = WQ.records, P = wqPick();
       const opts = R.slice().reverse().map(r => `<option value="${r.s}" ${wqSel === r.s ? 'selected' : ''}>${r.s.slice(0, 7)} (채취 ${r.s.slice(5)})</option>`).join('');
@@ -816,7 +833,11 @@
           <td>${effD !== null ? nf(effD, 1) + '%' : ''}</td><td>${effA !== null ? nf(effA, 1) + '%' : ''}</td></tr>`;
       });
       h += `</table></div><div class="hint">· 설계 대비 = 실측 ÷ 설계값. <span class="wq-hi">100% 넘음</span> <span class="wq-mid">80~100%</span> <span class="wq-ok">80% 미만</span> · 기준 대비 = 방류수 ÷ 배출허용기준(국가식품클러스터 폐수종말처리시설 유입기준) · 불검출은 0으로 계산</div>`;
-      h += wqSummary() + '</div>';
+      h += wqSummary();
+      if (P.rec) { const R = WQ.records, i = R.indexOf(P.rec), nl = wwnForRec(P.rec);
+        h += `<div class="wwn-box"><b>폐수장 특이사항</b> <span class="hint">${i > 0 ? `지난 측정(${R[i - 1].s}) 다음날 ~ 이번 채취일(${P.rec.s})` : `채취일(${P.rec.s}) 전 한 달`}</span>
+          ${nl.length ? `<ul>${nl.map(n => `<li>${wwnLine(n)}${wwnNearSample(n.d)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 특이사항이 없습니다. <a href="#" onclick="showTab('wwn');return false">특이사항 적기</a></div>`}</div>`; }
+      h += '</div>';
       h += wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
       el.innerHTML = h;
     }
@@ -860,7 +881,8 @@
       const pts = vals.map((v, i) => v === null ? null : [xs(i), ys(v)]);
       s += `<polyline fill="none" stroke="${side === 'raw' ? '#1D7A5C' : '#1565c0'}" stroke-width="2" points="${pts.filter(Boolean).map(p => p.join(',')).join(' ')}"/>`;
       pts.forEach((p, i) => { if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${side === 'raw' ? '#1D7A5C' : '#1565c0'}"/><text x="${p[0]}" y="${p[1] - 7}" text-anchor="middle" font-size="10" fill="#333">${nf(vals[i], vals[i] < 10 ? 1 : 0)}</text>`; });
-      R.forEach((r, i) => { s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`; });
+      R.forEach((r, i) => { const nn = wwnForRec(r).length; s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`;
+        if (nn) s += `<g><title>폐수장 특이사항 ${nn}건</title><rect x="${xs(i) - 9}" y="${H - B - 14}" width="18" height="11" rx="5" fill="#6a3d9a"/><text x="${xs(i)}" y="${H - B - 5}" text-anchor="middle" font-size="9" fill="#fff">${nn}</text></g>`; });
       return s + '</svg>';
     }
     function wqTrendCard() {
@@ -868,8 +890,8 @@
       let h = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${WQ_MAIN.map(i => `<button class="${i.k === it.k ? 'on' : ''}" onclick="wqItem='${i.k}';renderWq()">${i.n}</button>`).join('')}</span></div>
         <div class="wq-charts"><div><div class="hint"><b>원수</b> (mg/L) — 빨간 점선: 설계 처리전 ${nf(it.dr)}</div>${wqChart('raw', it)}</div>
         <div><div class="hint"><b>방류수</b> (mg/L) — 빨간 점선: 설계 처리후 ${nf(it.de)}, 회색: 배출허용기준 ${nf(it.lim)}</div>${wqChart('eff', it)}</div></div>`;
-      h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
-      R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}</tr>`; });
+      h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}<th rowspan="2">폐수장 특이사항<br><span class="hint">(지난 측정 이후)</span></th></tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
+      R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}<td class="l wwn-cell">${wwnForRec(r).map(n => `<div>${wwnLine(n, false)}</div>`).join('')}</td></tr>`; });
       return h + `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div></div>`;
     }
     function wqFlowDesignCard() {
@@ -912,10 +934,12 @@
     }
     function wqKeep() { if (!wqEdit) return; const s = document.getElementById('wq-s'), d = document.getElementById('wq-d'); if (s) wqEdit.s = s.value; if (d) wqEdit.d = d.value; document.querySelectorAll('.wqi').forEach(x => { wqEdit[x.dataset.side][x.dataset.k] = x.value.trim(); }); }
     function wqLoadEdit(s) { const r = WQ.records.find(x => x.s === s); wqEdit = r ? Object.assign(JSON.parse(JSON.stringify(r)), { _orig: r.s }) : { s: todayStr, d: '', raw: {}, eff: {}, _orig: null }; renderWq(); }
-    async function wqPut(records) {
+    async function wqPut(fn) { // 저장 직전에 최신 자료를 다시 받아서 고침 (여럿이 동시에 저장해도 덮어쓰지 않게)
+      const wasSaved = WQ_SAVED, keep = WQ; await loadWq(); if (!WQ_SAVED && wasSaved === false) WQ = keep;
+      const records = fn(WQ.records.slice());
       const v = Object.assign({}, WQ, { records });
       const { error } = await sb.from('env_settings').upsert({ key: 'wq', value: v }, { onConflict: 'key' });
-      if (error) { alert('저장 실패: ' + errMsg(error)); return false; }
+      if (error) { alert('저장 실패: ' + errMsg(error) + (/policy|permission|row-level/i.test(errMsg(error)) ? '\n(Supabase에 16번 SQL을 실행했는지 확인해 주세요)' : '')); return false; }
       WQ = v; WQ_SAVED = true; return true;
     }
     async function wqSave() {
@@ -925,14 +949,14 @@
       const rec = { s: E.s, d: E.d || '', raw: clean(E.raw), eff: clean(E.eff) };
       const others = WQ.records.filter(r => r.s !== E._orig && r.s !== E.s);
       if (E._orig !== E.s && WQ.records.some(r => r.s === E.s) && !confirm(`${E.s} 성적서가 이미 있습니다. 덮어쓸까요?`)) return;
-      if (!await wqPut(others.concat([rec]).sort((a, b) => a.s < b.s ? -1 : 1))) return;
+      if (!await wqPut(L => L.filter(r => r.s !== E._orig && r.s !== E.s).concat([rec]).sort((a, b) => a.s < b.s ? -1 : 1))) return;
       wqEdit = Object.assign(JSON.parse(JSON.stringify(rec)), { _orig: rec.s }); wqSel = rec.s; renderWq();
       if (WQ_READ.length > 1) setTimeout(() => wqMsg('저장했습니다. 위의 다른 성적서 버튼을 눌러 이어서 확인하세요.'), 0);
       setTimeout(() => { const st = document.getElementById('wq-st'); if (st) st.textContent = '저장했습니다.'; }, 0);
     }
     async function wqDel() {
       const s = wqEdit && wqEdit._orig; if (!s || !confirm(`${s} 성적서를 지울까요?`)) return;
-      if (!await wqPut(WQ.records.filter(r => r.s !== s))) return;
+      if (!await wqPut(L => L.filter(r => r.s !== s))) return;
       wqEdit = null; wqSel = ''; renderWq();
     }
 
@@ -1053,6 +1077,79 @@
       wqEdit = { s: G.s, d: G.d, raw: Object.assign({}, G.raw), eff: Object.assign({}, G.eff), _orig: ex ? ex.s : null, _read: i, _unsure: G.unsure.slice(), _x: WQ_ITEMS.some(x => x.x && (x.k in G.raw || x.k in G.eff)) };
       renderWq();
       setTimeout(() => { const el = document.getElementById('wq-input'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    }
+
+
+    // ---------------- 폐수장 특이사항 (내부 기록, 일지에는 인쇄 안 함) ----------------
+    const WWN_CATS = ['설비 고장', '수질 이상', '미생물', '약품', '슬러지', '운전 변경', '기타'];
+    let WWN = null, wwnYm = todayStr.slice(0, 7), wwnCat = '', wwnEditId = null;
+    async function loadWwn() {
+      const { data, error } = await sb.from('env_settings').select('value').eq('key', 'wwnote').maybeSingle();
+      if (error) throw error;
+      WWN = ((data && data.value && data.value.notes) || []).slice().sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (a.at < b.at ? 1 : -1));
+    }
+    async function wwnPut(fn) { // 저장 직전에 최신 목록을 다시 받아서 고침 (여럿이 동시에 적어도 덮어쓰지 않게)
+      await loadWwn(); const notes = fn(WWN.slice());
+      const { error } = await sb.from('env_settings').upsert({ key: 'wwnote', value: { notes } }, { onConflict: 'key' });
+      if (error) { alert('저장 실패: ' + errMsg(error) + (/policy|permission|row-level/i.test(errMsg(error)) ? '\n(Supabase에 16번 SQL을 실행했는지 확인해 주세요)' : '')); await loadWwn(); return false; }
+      WWN = notes.sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (a.at < b.at ? 1 : -1)); return true;
+    }
+    const wwnMine = n => isAdmin() || (me && n.uid === me.id);
+    // 그 측정(채취일)에 해당하는 특이사항: 지난 측정 다음날 ~ 이번 채취일
+    function wwnForRec(r) {
+      if (!WWN) return [];
+      const R = (WQ && WQ.records) || [], i = R.findIndex(x => x.s === r.s), prev = i > 0 ? R[i - 1].s : addDays(r.s, -31);
+      return WWN.filter(n => n.d > prev && n.d <= r.s).sort((a, b) => a.d < b.d ? -1 : 1);
+    }
+    function wwnLine(n, withAct = true) {
+      return `<span class="wwn-cat c${WWN_CATS.indexOf(n.cat) + 1}">${esc(n.cat || '기타')}</span> <b>${Number(n.d.slice(5, 7))}/${Number(n.d.slice(8))}</b> ${esc(n.text)}${withAct && n.act ? ` <span class="hint">→ 조치: ${esc(n.act)}</span>` : ''}`;
+    }
+    function wwnNearSample(d) { // 수질 측정 채취일과의 관계
+      const R = (WQ && WQ.records) || []; const r = R.find(x => x.s >= d); if (!r) return '';
+      const n = Math.round((new Date(r.s) - new Date(d)) / 864e5); if (n > 31) return '';
+      return `<span class="wwn-near" title="${r.s} 수질 측정">${n === 0 ? '측정 당일' : `측정 ${n}일 전`}</span>`;
+    }
+    async function renderWwn() {
+      const el = document.getElementById('wwn-body');
+      if (!WWN) { el.innerHTML = '<div class="loading">불러오는 중...</div>'; try { await loadWwn(); } catch (e) { el.innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}</div>`; return; } }
+      if (!WQ) { try { await loadWq(); } catch (e) { } }
+      const E = wwnEditId ? WWN.find(n => n.id === wwnEditId) : null;
+      let h = `<div class="card"><b>${E ? '특이사항 고치기' : '특이사항 적기'}</b> <span class="hint">— 우리끼리 보는 기록입니다. 폐수일지에는 인쇄되지 않습니다. 수질 측정 탭에서 그 달 측정값 옆에 같이 나옵니다.</span>
+        <div class="wwn-form">
+          <label>날짜 <input type="date" id="wwn-d" value="${esc(E ? E.d : todayStr)}"></label>
+          <label>분류 <select id="wwn-cat">${WWN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+          <label class="wide">내용 <textarea id="wwn-text" rows="2" placeholder="예: 폭기조 거품 많음, 2번 블로워 소음, 원수 색이 진함(소스 세척수 유입 추정)">${esc(E ? E.text : '')}</textarea></label>
+          <label class="wide">조치 <input id="wwn-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 소포제 투입량 늘림, 업체 점검 요청"></label>
+          <div><button class="btn" onclick="wwnSave()">${E ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E ? ` <button class="btn secondary small" onclick="wwnEditId=null;renderWwn()">취소</button>` : ''}</div>
+        </div></div>`;
+      const list = WWN.filter(n => (!wwnYm || n.d.slice(0, 7) === wwnYm) && (!wwnCat || n.cat === wwnCat));
+      h += `<div class="card"><div class="toolbar">
+          <div class="month-nav"><button onclick="wwnShift(-1)">◀</button><span>${wwnYm ? `${wwnYm.slice(0, 4)}년 ${Number(wwnYm.slice(5))}월` : '전체'}</span><button onclick="wwnShift(1)">▶</button></div>
+          <button class="chip ${wwnYm ? '' : 'on'}" onclick="wwnYm=wwnYm?'':todayStr.slice(0,7);renderWwn()">전체 기간</button>
+          <span class="hint">분류</span><button class="chip ${wwnCat ? '' : 'on'}" onclick="wwnCat='';renderWwn()">전체</button>${WWN_CATS.map(c => `<button class="chip ${wwnCat === c ? 'on' : ''}" onclick="wwnCat='${c}';renderWwn()">${c}</button>`).join('')}
+          <span class="hint">${list.length}건</span></div>`;
+      h += list.length ? `<div class="tbl-x"><table class="wq wwn"><tr><th>날짜</th><th>분류</th><th>내용</th><th>조치</th><th>적은 사람</th><th></th></tr>
+        ${list.map(n => `<tr><td>${n.d} <span class="hint">(${WEEK[new Date(n.d + 'T00:00:00').getDay()]})</span> ${wwnNearSample(n.d)}</td><td><span class="wwn-cat c${WWN_CATS.indexOf(n.cat) + 1}">${esc(n.cat)}</span></td>
+          <td class="l txt">${esc(n.text)}</td><td class="l txt">${esc(n.act || '')}</td><td>${esc(n.by || '')}</td>
+          <td>${wwnMine(n) ? `<button class="btn secondary small" onclick="wwnEditId='${n.id}';renderWwn();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="wwnDel('${n.id}')">삭제</button>` : ''}</td></tr>`).join('')}</table></div>`
+        : `<div class="hint" style="padding:10px">${wwnYm ? '이 달에 적은 특이사항이 없습니다.' : '적은 특이사항이 없습니다.'}</div>`;
+      el.innerHTML = h + '</div>';
+    }
+    function wwnShift(n) { const base = wwnYm || todayStr.slice(0, 7); const [y, m] = base.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); wwnYm = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; renderWwn(); }
+    async function wwnSave() {
+      const d = document.getElementById('wwn-d').value, cat = document.getElementById('wwn-cat').value, text = document.getElementById('wwn-text').value.trim(), act = document.getElementById('wwn-act').value.trim();
+      if (!d || !text) { alert('날짜와 내용을 넣어 주세요.'); return; }
+      const id = wwnEditId, now = new Date().toISOString();
+      const ok = await wwnPut(L => {
+        if (id) { const x = L.find(n => n.id === id); if (x) Object.assign(x, { d, cat, text, act, edited: now, editedBy: (me && me.name) || '' }); return L; }
+        return L.concat([{ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), d, cat, text, act, by: (me && (me.name || me.username)) || '', uid: me && me.id, at: now }]);
+      });
+      if (!ok) return;
+      wwnEditId = null; wwnYm = d.slice(0, 7); renderWwn();
+    }
+    async function wwnDel(id) {
+      const n = WWN.find(x => x.id === id); if (!n || !confirm(`${n.d} 「${n.text.slice(0, 30)}」 기록을 지울까요?`)) return;
+      if (await wwnPut(L => L.filter(x => x.id !== id))) renderWwn();
     }
 
     // 폐수일지 10번: 그날까지 분석이 끝난 가장 최근 성적서 (없으면 설정값)

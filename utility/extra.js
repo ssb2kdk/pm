@@ -184,7 +184,9 @@
 
     // ---- 폐수동 전력: 기본(날수) + 블로워(운전 이력) + 방류량 + 슬러지 처리량 ----
     let WWD = null; // 다온산업 장부 { d: {sludge_out, sludge_gen} }
-    async function loadWWD() { if (WWD) return; try { const rows = await fetchAll('ww_daily', 'd, sludge_out, sludge_gen', 'd'); WWD = {}; rows.forEach(r => { WWD[r.d] = r; }); } catch (e) { WWD = {}; } }
+    let WWNOTE = []; // 환경일지 · 폐수장 특이사항 (env_settings.wwnote)
+    async function loadWWD() { if (WWD) return; try { const { data } = await sb.from('env_settings').select('value').eq('key', 'wwnote').maybeSingle(); WWNOTE = ((data && data.value && data.value.notes) || []).slice().sort((a, b) => a.d < b.d ? -1 : 1); } catch (e) { WWNOTE = []; }
+      try { const rows = await fetchAll('ww_daily', 'd, sludge_out, sludge_gen', 'd'); WWD = {}; rows.forEach(r => { WWD[r.d] = r; }); } catch (e) { WWD = {}; } }
     function meterKwh(ym, k) {
       const v = UT.effective(ym, MONTHLY, DAILY, {})[k];
       if (v !== null && v !== undefined && v !== '' && !isNaN(v)) return Number(v);
@@ -473,10 +475,12 @@
       const evs = area => { const from = UT.dateStr(r0.ym, 1), to = UT.dateStr(r.ym, UT.daysIn(r.ym));
         const l = equipList().filter(x => x.area === area && x.d >= from && x.d <= to).sort((p, q) => p.d < q.d ? -1 : 1);
         return l.length ? l.map(x => `<br><span class="calc">· ${Number(x.d.slice(5, 7))}/${Number(x.d.slice(8))} ${esc(x.name)}${x.note ? ': ' + esc(x.note) : ''}</span>`).join('') : `<br><span class="hint">· 이 기간 부하 변동 사항 없음</span>`; };
+      const wwn = () => { const from = UT.dateStr(r0.ym, 1), to = UT.dateStr(r.ym, UT.daysIn(r.ym)), l = WWNOTE.filter(x => x.d >= from && x.d <= to);
+        return l.length ? l.map(x => `<br><span class="calc" style="color:#6a3d9a">· 폐수장 ${Number(x.d.slice(5, 7))}/${Number(x.d.slice(8))} [${esc(x.cat || '기타')}] ${esc(x.text)}${x.act ? ' → ' + esc(x.act) : ''}</span>`).join('') : ''; };
       if ('폐수동 (실측)' in P) {
         const a = wwRow(r.ym), b = wwRow(r0.ym);
         const j = [b.flow !== null && a.flow !== null ? `방류량 ${f0(b.flow)} → ${f0(a.flow)} ㎥` : '', b.sludgeGen !== null && a.sludgeGen !== null ? `슬러지 발생량 ${f0(b.sludgeGen)} → ${f0(a.sludgeGen)} kg (탈수기 가동 기준)` : ''].filter(Boolean).join(', ');
-        rows.push(['폐수동 (실측)', `폐수동 계량기 ${f0(r0.wwk)} → ${f0(r.wwk)} ${un} (하루 ${perDay(r0.wwk, r0)} → ${perDay(r.wwk, r)})${mnote('elec_ww_kwh')}${evs('폐수동')}${j ? `<br><span class="hint">· 일지: ${j}</span>` : ''}`, P['폐수동 (실측)']]);
+        rows.push(['폐수동 (실측)', `폐수동 계량기 ${f0(r0.wwk)} → ${f0(r.wwk)} ${un} (하루 ${perDay(r0.wwk, r0)} → ${perDay(r.wwk, r)})${mnote('elec_ww_kwh')}${evs('폐수동')}${wwn()}${j ? `<br><span class="hint">· 일지: ${j}</span>` : ''}`, P['폐수동 (실측)']]);
       }
       if ('공조냉동 (실측)' in P) rows.push(['공조냉동 (실측)', `냉동·냉장·공조 계량기 12개 합 ${f0(r0.hvk)} → ${f0(r.hvk)} ${un} (하루 ${perDay(r0.hvk, r0)} → ${perDay(r.hvk, r)})${mnote('elec_hvac_kwh')}${evs('공조냉동')}`, P['공조냉동 (실측)']]);
       if ('부하 변동 (생산동·기타)' in P) rows.push(['부하 변동 (생산동·기타)', `부하 변동 사항에 적은 생산동·기타 부하 ${f0(r0.eq)} → ${f0(r.eq)} ${un}${evs('생산동')}`, P['부하 변동 (생산동·기타)']]);
