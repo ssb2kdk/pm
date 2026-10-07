@@ -77,6 +77,7 @@
     .cz-text table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
     .cz-text td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: top; } .cz-text td.v { text-align: right; white-space: nowrap; font-weight: 600; }
     .cz-text tr.key td { background: #fff8e1; } .cz-text .concl { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #f2f6ff; }
+    .cz-text .calc { color: #2f5aa8; font-size: 12px; }
     .cz-per { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding: 6px 2px 8px; border-bottom: 1px dashed #ccd; margin-bottom: 8px; }
     .cz-more summary { cursor: pointer; font-size: 14px; }
     .cz-memo-ta { width: 100%; min-height: 90px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; line-height: 1.6; font-family: inherit; }
@@ -1356,6 +1357,7 @@
       if (miss.length) { out.err = `${miss.includes('prod') ? '원육 투입량' : '기온'} 기록이 없는 달이 있어 요인별로 나눌 수 없습니다. (가동 초기 달이면 비교 달을 '전월'로 바꿔 보세요)`; out.mdl = null; return out; }
       const grp = { days: '달력 날수', op: '생산일', prod: '원육 투입량', hdd: '날씨 (기온)', cdd: '날씨 (기온)' };
       const by = {};
+      out.coef = Object.fromEntries(mdl.feats.map((f, i) => [f, mdl.coef[i]]));
       mdl.feats.forEach((f, i) => { if (r[f] === null || r0[f] === null) return; const v = mdl.coef[i] * (r[f] - r0[f]); by[grp[f]] = (by[grp[f]] || 0) + v; });
       const explained = Object.values(by).reduce((a, b) => a + b, 0);
       // 이상 사용일: 평소보다 더 쓴 양 (이번 달 − 비교 달)
@@ -1376,11 +1378,16 @@
       const r = D.r, r0 = D.r0, rows = [], P = Object.fromEntries(D.parts);
       const pd = x => x.op ? x[uk] / x.op : null;
       const opInfo = `생산일 ${r0.op}일 → ${r.op}일 (${r.op - r0.op >= 0 ? '+' : '−'}${Math.abs(r.op - r0.op)}일)`;
-      if ('생산일' in P) rows.push(['생산일', `${opInfo} · 보일러 가스 쓴 날 기준`, P['생산일']]);
-      if ('달력 날수' in P) rows.push(['달력 날수', `${r0.days}일 → ${r.days}일 · 냉동·공조처럼 매일 도는 몫`, P['달력 날수']]);
-      rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})`, P['원육 투입량'] || 0]);
+      // 계산식 보여주기: 차이 × 예상식 계수
+      const C = D.coef || {}, sg = v => (v >= 0 ? '+' : '−'), cf = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
+      const calc = (f, d, du, per) => C[f] === undefined ? '' : `<br><span class="calc">= ${sg(d)}${cf(Math.abs(d))}${du} × ${cf(C[f])} ${un}/${per || du.trim()}</span>`;
+      const pdSrc = x => { const m = MONTHLY[x.ym] || {}; return m.prod_days !== undefined && m.prod_days !== null && m.prod_days !== '' ? '생산팀 기록' : '보일러 가스로 추정'; };
+      const srcTxt = pdSrc(r) === pdSrc(r0) ? pdSrc(r) : `${pdSrc(r0)} → ${pdSrc(r)}`;
+      if ('생산일' in P) rows.push(['생산일', `${opInfo} · ${srcTxt}${calc('op', r.op - r0.op, '일')}`, P['생산일']]);
+      if ('달력 날수' in P) rows.push(['달력 날수', `${r0.days}일 → ${r.days}일 · 냉동·공조처럼 매일 도는 몫${calc('days', r.days - r0.days, '일')}`, P['달력 날수']]);
+      rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})${calc('prod', r.prod - r0.prod, 'kg')}`, P['원육 투입량'] || 0]);
       const wf = D.mdl.feats.find(f => f === 'hdd' || f === 'cdd');
-      if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}`, P['날씨 (기온)'] || 0]);
+      if (wf) rows.push(['날씨 (기온)', `${wf === 'cdd' ? '냉방도일' : '난방도일'} ${f0(r0[wf])} → ${f0(r[wf])} (${Math.abs(r[wf] - r0[wf]) < 0.5 ? (r[wf] < 0.5 ? (wf === 'cdd' ? '둘 다 냉방 필요 없는 날씨' : '둘 다 난방 필요 없는 날씨') : '비슷함') : wf === 'cdd' ? (r[wf] > r0[wf] ? '더 더움' : '덜 더움') : (r[wf] > r0[wf] ? '더 추움' : '덜 추움')})${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}${calc(wf, r[wf] - r0[wf], '', wf === 'cdd' ? '냉방도일' : '난방도일')}`, P['날씨 (기온)'] || 0]);
       rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
       rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
       let ref = '';
