@@ -81,6 +81,8 @@
     .addrow input { flex: 1; min-width: 0; font-size: 13px; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: transparent; }
     .addrow input.u { flex: 0 0 64px; }
     .addrow button { padding: 8px 12px; border: 1px solid var(--blue); border-radius: 8px; background: var(--blue-bg); color: var(--blue); cursor: pointer; font-size: 13px; white-space: nowrap; }
+    .month-alert { margin: 8px 12px 0; background: #fff4e5; border: 1px solid #ffb74d; color: #7a4300; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.5; }
+    .card.must { border: 2px solid #ffb74d; }
   </style>
 </head>
 <body>
@@ -113,6 +115,7 @@
           <input type="number" id="t-max" placeholder="최고°C" step="0.1" inputmode="decimal" oninput="markDirty()">
         </div>
       </div>
+      <div id="month-alert" class="month-alert" hidden></div>
       <div class="tabs" id="tabs"></div>
       <div class="content" id="content"><div class="loading">불러오는 중...</div></div>
     </div>
@@ -211,7 +214,28 @@
       document.getElementById('t-max').value = r.temp_max ?? '';
       if (!r.weather && r.temp_min == null) fetchWeather(false);
       else showWeatherCard(r.weather, r.temp_min, r.temp_max, '저장된 값');
+      renderMonthAlert();
       renderTabs(); renderContent(); renderFooter();
+    }
+    // ---------------- 월초 검침 알림 ----------------
+    // 폐수동·공조냉동 한 달 사용량 = 매월 1일 지침 차이 → 1일이 쉬는 날이면 마지막 출근일·첫 출근일에 꼭 검침
+    const MONTH_METERS = ['폐수전력', '냉장1전력', '냉동1전력', '냉동2전력', '냉동3전력', '내포장공조전력', '파쇄공조전력', '파쇄냉장전력', '방혈1전력', '방혈2전력', '자숙1전력', '자숙2전력', '자숙3전력'];
+    let monthAlertOn = false;
+    function renderMonthAlert() {
+      const el = document.getElementById('month-alert'), ds = curDate, off = Portal.isOffDay, add = Portal.addDaysStr;
+      const wd = d => '일월화수목금토'[new Date(d + 'T00:00:00').getDay()], md = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}(${wd(d)})`;
+      let msg = '';
+      if (!off(ds)) {
+        const next1 = (() => { const d = new Date(ds + 'T00:00:00'); return `${d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear()}-${String(d.getMonth() === 11 ? 1 : d.getMonth() + 2).padStart(2, '0')}-01`; })();
+        const this1 = ds.slice(0, 8) + '01';
+        let lastWd = add(next1, -1); while (off(lastWd)) lastWd = add(lastWd, -1);
+        let firstWd = this1; while (off(firstWd)) firstWd = add(firstWd, 1);
+        if (ds === this1) msg = `오늘은 ${Number(ds.slice(5, 7))}월 1일입니다. <b>폐수 전력량과 공조냉동 계량기(12개)</b>를 꼭 검침해 주세요. (한 달 사용량 계산 기준)`;
+        else if (off(next1) && ds === lastWd) msg = `다음 달 1일 ${md(next1)}은 쉬는 날입니다. 오늘(마지막 출근일) <b>폐수 전력량과 공조냉동 계량기(12개)</b>를 꼭 검침해 주세요. 쉬고 온 첫 출근일에도 한 번 더 검침합니다.`;
+        else if (off(this1) && ds === firstWd) msg = `이번 달 1일 ${md(this1)}은 쉬는 날이었습니다. 오늘(첫 출근일) <b>폐수 전력량과 공조냉동 계량기(12개)</b>를 꼭 검침해 주세요. 1일 지침은 앞뒤 검침값으로 나눠 계산됩니다.`;
+      }
+      monthAlertOn = !!msg;
+      el.hidden = !msg; el.innerHTML = msg ? `📌 ${msg}` : '';
     }
 
     // ---------------- 날씨 (open-meteo, 회사망에서 막히면 직접 입력) ----------------
@@ -290,8 +314,9 @@
           const v = values[f.id] ?? '';
           const p = prevValue(f.id, curDate);
           const warn = f.cumulative && v !== '' && p && Number(v) < p.v;
-          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''}" id="card-${esc(f.id)}">
-            <div class="info"><div class="fname">${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
+          const must = monthAlertOn && MONTH_METERS.includes(f.id);
+          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''} ${must ? 'must' : ''}" id="card-${esc(f.id)}">
+            <div class="info"><div class="fname">${must ? '📌 ' : ''}${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
             <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
               value="${esc(v)}" data-id="${esc(f.id)}">
           </div>`;
