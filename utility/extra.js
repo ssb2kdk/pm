@@ -502,7 +502,7 @@
         : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
       const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` +
         rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
-      const fu = v => v < 0.1 ? v.toFixed(4) : v < 1 ? v.toFixed(3) : f2(v);
+      const fu = v => fU(v, uk);
       const p1 = pd(r), p0 = pd(r0), u1 = r.prod ? r[uk] / r.prod : null, u0 = r0.prod ? r0[uk] / r0.prod : null;
       const per = `<div class="cz-per"><span>생산일 하루당 <b>${p0 === null ? '-' : f0(p0)} → ${p1 === null ? '-' : f0(p1)}</b> ${un} ${pctTxt(p1, p0)}</span><span>원육 kg당 <b>${u0 === null ? '-' : fu(u0)} → ${u1 === null ? '-' : fu(u1)}</b> ${un} ${pctTxt(u1, u0)}</span>` +
         (!('생산일' in P) ? `<span class="hint">${opInfo} — ${U.name}는 생산일보다 달력 날수 영향이 커서 날수로 계산합니다</span>` : '') + `</div>`;
@@ -629,7 +629,7 @@
         { label: `${causeYear - 1}년`, data: mp.filter(p => p.ym < `${causeYear}`), backgroundColor: '#a3a29d', pointRadius: 5 },
         { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: UC.color, pointRadius: 6 }
       ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '원육 투입량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
-        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 원육 ${f0(c.raw.x)}kg · ${f2(c.raw.y)} ${unit2}`; return o; })() });
+        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 원육 ${f0(c.raw.x)}kg · ${fU(c.raw.y, ck)} ${unit2}`; return o; })() });
       document.getElementById('produnit-note').innerHTML = !lr2 ? '원육 투입량을 넣은 달이 부족합니다.' :
         `읽는 법: 오른쪽(원육 많이 넣은 달)으로 갈수록 점이 아래로 내려가면, 많이 넣을수록 kg당 덜 쓴다는 뜻.<br>→ 원육을 많이 넣은 달일수록 kg당 사용량이 ${lr2.a < 0 ? '<b>낮아집니다</b> (기본으로 쓰는 양이 나뉘기 때문)' : '<b>높아집니다</b>'}. 비슷한 원육 투입량인데 혼자 위에 떠 있는 점은 낭비를 의심해 볼 달입니다.`;
       const ms = yearMonths(causeYear), es = ms.map(ym => { const s = S(ym); const m = s.m || {}; const tot = s.elec.usage; const hv = Number(m.elec_hvac_kwh) || null, ww = Number(m.elec_ww_kwh) || null; return { tot, hv, ww, etc: tot ? Math.max(0, tot - (hv || 0) - (ww || 0)) : null }; });
@@ -725,7 +725,7 @@
         `</div>`;
       h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">원육·기온 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
         UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production), e = fc ? null : evalFor(brYm, u.k);
-          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${f2(un)} <span class="hint">${u.unit}/kg</span></td>
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${fU(un, u.k)} <span class="hint">${u.unit}/kg</span></td>
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
         `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
       h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
@@ -769,7 +769,9 @@
     }
     let zoomChart = null, zoomId = null, zoomLabels = true;
     // 차트에 수치 표시 (크게 보기 화면)
-    const zfmtFor = vals => { const mx = Math.max(0, ...vals.filter(v => v !== null && v !== undefined && isFinite(v)).map(v => Math.abs(v))); return mx >= 100 ? (v => f0(v)) : mx >= 1 ? (v => nf1.format(v)) : (v => Number(v).toFixed(3)); };
+    let ZUNIT = ''; // 크게 보기 단위 (원단위면 전기·가스 1자리, 용수·폐수 3자리)
+    const zUnitKg = () => /\/kg$/.test(ZUNIT) && !/^원/.test(ZUNIT);
+    const zfmtFor = vals => { if (zUnitKg()) return v => fU(v, ZUNIT); const mx = Math.max(0, ...vals.filter(v => v !== null && v !== undefined && isFinite(v)).map(v => Math.abs(v))); return mx >= 100 ? (v => f0(v)) : mx >= 1 ? (v => nf1.format(v)) : (v => Number(v).toFixed(3)); };
     const ZLABEL = {
       id: 'zlabels',
       afterDatasetsDraw(chart, a, opt) {
@@ -822,6 +824,7 @@
       const card = document.getElementById(id).closest('.card');
       const h3 = card ? card.querySelector('h3') : null;
       const unit = (((cfg.options || {}).scales || {}).y || {}).title ? cfg.options.scales.y.title.text || '' : '';
+      ZUNIT = unit;
       const ttl = h3 ? (h3.childNodes[0].textContent || '').trim() || h3.textContent.trim().split('\n')[0] : '';
       let ttl2 = ttl;
       if (id === 'chart-util') { const U = UT.UTILS.find(u => u.k === utilSel); ttl2 = `${U.name} ${{ usage: '사용량', unit: '원단위 (원육 kg당 사용량)', cost: '비용' }[metricSel]}`; }
@@ -860,7 +863,7 @@
       if (cfg.type === 'scatter' || (ds[0] && ds[0].data && ds[0].data[0] && typeof ds[0].data[0] === 'object')) {
         h = '<div class="hint">점 그래프는 점에 마우스를 올리면 값이 보입니다.</div>';
       } else {
-        const fmt = v => v === null || v === undefined || isNaN(v) ? '-' : (Math.abs(v) >= 100 ? f0(v) : f2(v));
+        const fmt = v => v === null || v === undefined || isNaN(v) ? '-' : zUnitKg() ? fU(v, ZUNIT) : (Math.abs(v) >= 100 ? f0(v) : f2(v));
         h = `<table class="t zal"><colgroup></colgroup><tr><th class="l">구분</th>${labels.map(l => `<th>${esc(l)}</th>`).join('')}<th>합계</th><th>평균</th></tr>` +
           ds.map(d => { const vals = (d.data || []).map(x => x === null || x === undefined ? null : Number(x)); const ok = vals.filter(x => x !== null && !isNaN(x));
             return `<tr><td class="l">${esc(d.label)}</td>${vals.map(v => `<td>${fmt(v)}</td>`).join('')}<td>${ok.length && !isRatio ? fmt(ok.reduce((a, b) => a + b, 0)) : '-'}</td><td>${ok.length ? fmt(ok.reduce((a, b) => a + b, 0) / ok.length) : '-'}</td></tr>`; }).join('') + '</table>';
@@ -996,11 +999,11 @@
       mkChart('chart-period', { type: 'bar', data: { labels: ser.map(s => s.label), datasets: [
         { label: '이번', data: ser.map(s => s.cur), backgroundColor: ser.map(s => s.partial ? U.color + '66' : U.color), maxBarThickness: 26, order: 2 }, ...lines
       ] }, options: (() => { const o = baseOpts(unit); o.plugins.legend.display = true; o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.autoSkip = true;
-        o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${perMetric === 'unit' ? f2(c.raw) : f0(c.raw)} ${unit}`;
+        o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${perMetric === 'unit' ? fU(c.raw, perUtil) : f0(c.raw)} ${unit}`;
         o.plugins.tooltip.callbacks.footer = items => { const i = items[0].dataIndex, s = ser[i], pc = (a, b) => a !== null && b ? `${((a / b - 1) * 100).toFixed(1)}%` : '-';
           return s.cur === null ? '' : `${nLy} 대비 ${pc(s.cur, s.prev)} · ${nPr} 대비 ${pc(s.cur, s.prior)}`; }; return o; })() });
       // 표 (최근 것부터)
-      const fmt = v => v === null || v === undefined ? '-' : (perMetric === 'unit' ? f2(v) : f0(v));
+      const fmt = v => v === null || v === undefined ? '-' : (perMetric === 'unit' ? fU(v, perUtil) : f0(v));
       const okLy = ser.filter(s => s.cur !== null && s.prev !== null && !s.partial), okPr = ser.filter(s => s.cur !== null && s.prior !== null && s.prior !== undefined && !s.partial);
       const sm = (l, k) => l.reduce((a, s) => a + s[k], 0);
       document.getElementById('per-table').innerHTML = `<table class="t"><tr><th class="l">기간</th><th>이번</th><th>${nLy}</th><th>${nLy} 대비</th><th>${nPr}</th><th>${nPr} 대비</th></tr>` +
