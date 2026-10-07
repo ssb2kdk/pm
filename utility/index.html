@@ -1684,9 +1684,13 @@
     function renderEquip() {
       const el = document.getElementById('cz-equip'); if (!el) return;
       const ro = !isAdmin(); EQ_EDIT = EQ_EDIT || JSON.parse(JSON.stringify(equipList()));
-      const rows = EQ_EDIT.map((x, i) => ({ x, i })).sort((a, b) => a.x.d < b.x.d ? 1 : -1);
+      const ym = causeYm, inM = x => (x.d || '').slice(0, 7) === ym || x._new;
+      const all = EQ_EDIT.map((x, i) => ({ x, i })).sort((a, b) => a.x.d < b.x.d ? 1 : -1);
+      const rows = eqShowAll ? all : all.filter(o => inM(o.x));
       const inp = (i, k, v, w, type = 'text') => ro ? esc(v ?? '') : `<input class="eqi" data-i="${i}" data-k="${k}" type="${type}" value="${esc(v ?? '')}" style="width:${w}">`;
-      el.innerHTML = `<table class="t"><tr><th>시작일</th><th>구역</th><th class="l">설비</th><th>대당 kW</th><th>하루 가동시간 합<br><span class="hint">대수 × 시간</span></th><th>하루 전력</th><th class="l">내용</th>${ro ? '' : '<th></th>'}</tr>` +
+      const head = `<div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${eqShowAll ? '전체' : ymLabel(ym)}</b> <span class="hint">${eqShowAll ? `${all.length}건` : `이 달에 있었던 부하 변동 ${rows.length}건 (전체 ${all.length}건)`}</span>
+        <button class="chip ${eqShowAll ? '' : 'on'}" onclick="eqShowAll=false;renderEquip()">이 달만</button><button class="chip ${eqShowAll ? 'on' : ''}" onclick="eqShowAll=true;renderEquip()">전체 보기</button></div>`;
+      el.innerHTML = head + (!rows.length ? `<div class="empty">${ymLabel(ym)}에 적어 둔 부하 변동 사항이 없습니다.</div>` : '') + `<table class="t" ${rows.length ? '' : 'hidden'}><tr><th>시작일</th><th>구역</th><th class="l">설비</th><th>대당 kW</th><th>하루 가동시간 합<br><span class="hint">대수 × 시간</span></th><th>하루 전력</th><th class="l">내용</th>${ro ? '' : '<th></th>'}</tr>` +
         rows.map(({ x, i }) => `<tr><td>${inp(i, 'd', x.d, '120px', 'date')}</td><td>${ro ? esc(x.area) : `<select class="eqi" data-i="${i}" data-k="area">${['폐수동', '공조냉동', '생산동', '기타'].map(a => `<option ${x.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select>`}</td>
           <td class="l">${inp(i, 'name', x.name, '120px')}</td><td>${inp(i, 'kw', x.kw, '60px')}</td><td>${inp(i, 'hours', x.hours, '60px')}</td><td>${f0((Number(x.kw) || 0) * (Number(x.hours) || 0))} kWh</td>
           <td class="l">${inp(i, 'note', x.note, '100%')}</td>${ro ? '' : `<td><button class="chip" onclick="eqDel(${i})">삭제</button></td>`}</tr>`).join('') + '</table>' +
@@ -1694,10 +1698,11 @@
         `<div class="hint" style="margin-top:6px">폐수동·공조냉동은 계량기로 실측하므로 원인분석에 <b>그 기간에 있었던 변동 내용만 코멘트</b>로 붙습니다. 생산동·기타(계량기 없는 곳)는 kW × 하루 가동시간이 전기 원인분석의 '부하 변동' 줄로 계산에 들어갑니다. 같은 구역·설비는 가장 최근 시작일 줄이 적용됩니다. 대당 kW 계산: 3상 380V × 전류(A) × 1.732 × 0.85 ÷ 1000.</div>`;
       el.querySelectorAll('.eqi').forEach(e => e.addEventListener('change', () => { const x = EQ_EDIT[e.dataset.i], k = e.dataset.k; x[k] = (k === 'kw' || k === 'hours') ? Number(e.value) : e.value; document.getElementById('eq-st').textContent = '저장하지 않음'; }));
     }
-    function eqAdd() { EQ_EDIT.push({ d: todayStr, area: '생산동', name: '', kw: 0, hours: 0, note: '' }); renderEquip(); }
+    let eqShowAll = false;
+    function eqAdd() { const d = todayStr.slice(0, 7) === causeYm ? todayStr : causeYm + '-01'; EQ_EDIT.push({ d, area: '생산동', name: '', kw: 0, hours: 0, note: '', _new: true }); renderEquip(); }
     function eqDel(i) { if (!confirm('이 이력을 지울까요?')) return; EQ_EDIT.splice(i, 1); renderEquip(); }
     async function eqSave() {
-      try { await saveYear(9999, { equip: EQ_EDIT.filter(x => x.d && x.name) }); EQ_EDIT = null; resetCache && resetCache(); Object.keys(YEARDATA).forEach(y => { const t = YEARDATA[y] && YEARDATA[y].targets; if (t) delete t._models; }); await renderCause(); const st = document.getElementById('eq-st'); if (st) st.textContent = '저장됨 ✓'; }
+      try { await saveYear(9999, { equip: EQ_EDIT.filter(x => x.d && x.name).map(({ _new, ...x }) => x) }); EQ_EDIT = null; resetCache && resetCache(); Object.keys(YEARDATA).forEach(y => { const t = YEARDATA[y] && YEARDATA[y].targets; if (t) delete t._models; }); await renderCause(); const st = document.getElementById('eq-st'); if (st) st.textContent = '저장됨 ✓'; }
       catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     function czAutoText() {
