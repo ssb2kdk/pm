@@ -1086,10 +1086,10 @@
       // 일평균: 일일 사용량(전기는 한전 파워플래너 값)을 그 달 날짜별로 평균. 일일 값이 모자라면 월 사용량 ÷ 날수
       const dayAvg = (x, cx) => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = (UT.dailyUsage(DAILY, UT.dateStr(x, d)) || {})[uk]; if (v !== null && v !== undefined && !isNaN(v)) { t += Number(v); n++; } }
         return uk === 'elec' && n >= UT.daysIn(x) * 0.9 ? t / n : (cx.usage === null ? null : cx.usage / UT.daysIn(x)); };
-      if (uk === 'gas') { // 가스: 매일 가스검침(보일러+식당 ㎥)에서 쓴 날(0 초과)만 평균
-        const ga = x => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = (UT.dailyUsage(DAILY, UT.dateStr(x, d)) || {}).gas; if (v !== null && v !== undefined && !isNaN(v) && v > 0) { t += Number(v); n++; } } return n ? { v: t / n, n } : { v: null, n: 0 }; };
+      if (uk === 'gas') { // 가스: 매일 가스검침 중 보일러만(식당은 기숙사라 통제 밖), 보일러를 쓴 날(0 초과)만 평균
+        const ga = x => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = UT.diffReading(DAILY, UT.dateStr(x, d), ['gas_boiler']); if (v !== null && v !== undefined && !isNaN(v) && v > 0) { t += Number(v); n++; } } return n ? { v: t / n, n } : { v: null, n: 0 }; };
         const a1 = ga(ym), a0 = ga(UT.prevYm(ym));
-        sub.push(`일평균 가스사용량(사용일 ${a1.n}일) = ${exCmp(a1.v, a0.v, exF(1), '㎥')}`);
+        sub.push(`일평균 보일러 가스사용량(가동일 ${a1.n}일) = ${exCmp(a1.v, a0.v, exF(1), '㎥')}`);
       } else sub.push(`일평균 ${N}사용량 = ${exCmp(dayAvg(ym, c), dayAvg(UT.prevYm(ym), c0), exF(1), U.unit)}`);
       if (uk === 'elec') {
         const ww = meterKwh(ym, 'elec_ww_kwh'), ww0 = meterKwh(UT.prevYm(ym), 'elec_ww_kwh'), hv = meterKwh(ym, 'elec_hvac_kwh'), hv0 = meterKwh(UT.prevYm(ym), 'elec_hvac_kwh');
