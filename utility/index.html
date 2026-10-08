@@ -139,6 +139,11 @@
     table.t tr.sum td { font-weight: bold; background: #fafafa; }
     table.t td.na { color: #bbb; }
     table.t td.prov { background: #fffaf0; }
+    #year-table tr.cmp td { font-size: 11px; color: #8a8f98; background: #fbfcfd; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
+    #year-table tr.cmp td.l { padding-left: 16px; }
+    #year-table tr.cmp td.up { color: #d93025; } #year-table tr.cmp td.down { color: #1565c0; }
+    #year-table tr.cmp .pc { font-size: 10px; opacity: .85; }
+    #year-table tr.m1 td { border-top: 1px solid #e3e6ea; font-weight: 600; }
     table.t.rep th.key { background: #2c5aa0; color: #fff; }
     table.t.rep td.key { background: #e8f0fb; font-weight: bold; color: #1d3f73; }
     table.t.rep tr.sum td.key { background: #d3e2f7; }
@@ -3378,19 +3383,28 @@
       const sumOf = arr => arr.some(v => v !== null) ? arr.reduce((a, v) => a + (v || 0), 0) : null;
       const avgOf = arr => { const v = arr.filter(x => x !== null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
       const add = (label, vals, fmt, opts = {}) => rows.push({ label, vals, fmt, sum: opts.noSum ? null : sumOf(vals), avg: avgOf(vals), cls: opts.cls, prov: opts.prov });
+      // 전월대비 · 전년동월대비 (엑셀 Utility_SSB 처럼 항목 바로 아래 두 줄: 차이 + 증감률)
+      const cmpRows = (get, fmt) => [['전월대비', ym => UT.prevYm(ym)], ['전년동월대비', ym => UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)))]].forEach(([nm, ref]) => {
+        const d = [], p = [];
+        ms.forEach((ym, i) => { if (ym >= thisYm && !UT.monthComplete(DAILY, ym)) { d.push(null); p.push(null); return; } // 진행 중인 달은 비교 안 함
+          const c = get(cs[i]), b = get(S(ref(ym)));
+          if (c === null || c === undefined || isNaN(c) || b === null || b === undefined || isNaN(b)) { d.push(null); p.push(null); return; }
+          d.push(c - b); p.push(b ? (c / b - 1) * 100 : null); });
+        rows.push({ label: nm, cmp: true, vals: d, pct: p, fmt, sum: null, avg: null });
+      });
+      const addC = (label, get, fmt, opts = {}) => { add(label, cs.map(get), fmt, opts); cmpRows(get, fmt); };
       rows.push({ grp: '합계' });
       add('상태', cs.map(s => s.status), v => v ? `<span class="st st-${v}">${v}</span>` : '-', { noSum: true });
-      add('유틸리티 합계 (원)', cs.map(s => s.total), f0, { cls: 'sum', prov: cs.map(s => s.status === '가마감') });
+      addC('유틸리티 합계 (원)', s => s.total, f0, { cls: 'sum', prov: cs.map(s => s.status === '가마감') });
       add('VAT 별도 (원)', cs.map(s => s.exvat), f0);
-      add('원육 투입량 (kg)', cs.map(s => s.production), f0);
-      add('원육 kg당 비용 (원/kg)', cs.map(s => ratio(s.total, s.production)), f0, { noSum: true });
+      addC('원육 투입량 (kg)', s => s.production, f0);
+      addC('원육 kg당 비용 (원/kg)', s => ratio(s.total, s.production), f0, { noSum: true });
       UT.UTILS.forEach(u => {
         rows.push({ grp: u.name });
-        add('비용 (원)', cs.map(s => s[u.k].cost), f0, { prov: cs.map(s => s[u.k].status === '가마감') });
-        add(`사용량 (${u.unit})`, cs.map(s => s[u.k].usage), f0);
-        add(`단가 (원/${u.unit})`, cs.map(s => ratio(s[u.k].cost, s[u.k].usage)), f2, { noSum: true });
-        add(`원육 kg당 비용 (원/kg)`, cs.map(s => ratio(s[u.k].cost, s.production)), f1, { noSum: true });
-        add(`원육 kg당 사용량 (${u.unit}/kg)`, cs.map(s => ratio(s[u.k].usage, s.production)), v => fU(v, u.k), { noSum: true });
+        addC('비용 (원)', s => s[u.k].cost, f0, { cls: 'm1', prov: cs.map(s => s[u.k].status === '가마감') });
+        addC(`사용량 (${u.unit})`, s => s[u.k].usage, f0, { cls: 'm1' });
+        addC(`원육 kg당 비용 (원/kg)`, s => ratio(s[u.k].cost, s.production), f1, { cls: 'm1', noSum: true });
+        addC(`원육 kg당 사용량 (${u.unit}/kg)`, s => ratio(s[u.k].usage, s.production), v => fU(v, u.k), { cls: 'm1', noSum: true });
         if (u.k === 'elec') add('최대전력 (kW)', cs.map(s => s.elec.maxKw), f1, { noSum: true });
         if (u.k === 'ww') {
           add('위탁처리비 (원, 합계 제외)', cs.map(s => s.ww.outsource), f0);
@@ -3405,6 +3419,11 @@
       let h = `<table class="t"><tr><th class="l">구분</th>${monthLabels.map(m => `<th>${m}</th>`).join('')}<th>합계</th><th>평균</th></tr>`;
       rows.forEach(r => {
         if (r.grp) { h += `<tr class="grp"><td colspan="15">${esc(r.grp)}</td></tr>`; return; }
+        if (r.cmp) { // 차이 + 증감률 (늘면 빨강, 줄면 파랑)
+          h += `<tr class="cmp"><td class="l">└ ${esc(r.label)}</td>` + r.vals.map((d, i) => d === null ? '<td class="na">-</td>' :
+            `<td class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : d < 0 ? '−' : ''}${r.fmt(Math.abs(d))}${r.pct[i] === null ? '' : `<br><span class="pc">${r.pct[i] >= 0 ? '+' : ''}${nf1.format(r.pct[i])}%</span>`}</td>`).join('') + '<td></td><td></td></tr>';
+          return;
+        }
         h += `<tr class="${r.cls || ''}"><td class="l">${esc(r.label)}</td>` +
           r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}</td>`).join('') +
           `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.label === '상태' ? '' : (r.avg === null ? '' : r.fmt(r.avg))}</td></tr>`;
@@ -3431,6 +3450,7 @@
         rows.forEach(r => {
           if (r.grp) { grp = r.grp; aoa.push([`[${r.grp}]`]); return; }
           const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 100) / 100 : v);
+          if (r.cmp) { aoa.push([`${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
           aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), r.label === '상태' ? '' : clean(r.avg)]);
         });
         const wb = XLSX.utils.book_new();
