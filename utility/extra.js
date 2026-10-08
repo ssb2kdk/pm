@@ -1150,7 +1150,7 @@
       h += `<div class="card"><h3>지출결의 입력사항 <span class="sub">숫자를 누르면 복사됩니다</span></h3>
         <div class="tbl-wrap"><table class="t"><tr><th class="l">상세내용</th><th>공급가액</th><th>부가세</th><th>합계</th></tr>
         ${rows.map(r => `<tr><td class="l ex-cp" onclick="exCopy(this.textContent,this)">${esc(r[0])}</td>${[1, 2, 3].map(i => `<td class="ex-cp" onclick="exCopy('${r[i] || 0}',this)">${f0(r[i] || 0)}</td>`).join('')}</tr>`).join('')}
-        ${rows.length > 1 ? `<tr class="sum"><td class="l">지출결의계</td><td>${f0(tot[0])}</td><td>${f0(tot[1])}</td><td>${f0(tot[2])}</td></tr>` : ''}</table></div>
+        ${rows.length > 1 ? `<tr class="sum"><td class="l">지출결의계</td>${tot.map(v => `<td class="ex-cp" onclick="exCopy('${v}',this)">${f0(v)}</td>`).join('')}</tr>` : ''}</table></div>
         <div class="hint">${exUtil === 'elec' ? '공급가액 = 청구액 − 부가세 − 전력기금 (원단위 절사 반영). 전력기금은 부가세 없이 따로 한 줄.' : exUtil === 'gas' ? (rows.cut ? `※ 보일러 공급가액·합계는 원단위절사 ${f0(rows.cut)}원이 포함된 금액입니다 (고지서 보일러 소계 ${f0(rows[0][3] - rows.cut)}원).` : s.gas.status === '확정' && s.gas.calc ? '보일러·식당은 고지서 소계 그대로입니다.' : '보일러·식당은 검침 비율대로 고지서 금액을 나눈 값입니다 (월간입력 가스 칸을 고지서대로 넣으면 고지서 소계 그대로 나옵니다).') : ''}</div></div>`;
       h += `<div class="card"><h3>추가의견 <span class="sub">고쳐서 쓸 수 있습니다</span></h3>
         <textarea id="ex-text" class="ex-text" rows="${lines.length + 1}">${esc(lines.join('\n'))}</textarea>
