@@ -180,7 +180,9 @@
     .f input.filled { border-color: var(--brand); background: #f6f9fe; }
     .f input::placeholder { color: #b3b8c0; font-style: italic; }
     .f .src { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 13px; }
-    .preview { position: sticky; top: 12px; }
+    .preview { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    .pv-sub { color: #8a8f98; font-size: 11px; } .preview tr td .pv-sub { padding-left: 8px; }
+    .pv-ok { color: #1e6b33; font-weight: bold; margin-left: 4px; } .pv-ng { color: #d93025; font-weight: bold; margin-left: 4px; }
     .preview table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
     .preview td { padding: 4px 2px; border-bottom: 1px solid #f0f0f0; }
     .preview td:last-child { text-align: right; }
@@ -3597,34 +3599,69 @@
     }
 
     function renderMonthlyPreview() {
+      // 고지서와 같은 줄 순서로 계산값을 보여 주고, 고지서 금액을 넣었으면 맞는지 바로 표시
       const tmp = { ...MONTHLY, [monthlyYm]: monthlyDraft };
       const s = UT.summary(monthlyYm, tmp, DAILY, {});
-      const e = s.elec.calc, g = s.gas.calc;
-      const row = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
+      const e = s.elec.calc, g = s.gas.calc, m = s.m || {}, raw = monthlyDraft || {};
+      const has = v => v !== undefined && v !== null && v !== '' && !isNaN(Number(v));
+      const nv = k => has(m[k]) ? Number(m[k]) : 0;
+      const row = (a, b, cls = '') => `<tr class="${cls}"><td>${a}</td><td>${b}</td></tr>`;
+      const sub = (a, b) => row(`<span class="pv-sub">${a}</span>`, `<span class="pv-sub">${b}</span>`);
       const head = (u, st) => `<tr class="h"><td><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${st ? `<span class="st st-${st}">${st}</span>` : ''}</td></tr>`;
-      let h = `<h3>계산 결과 미리보기 <span class="sub">${ymLabel(monthlyYm)}</span></h3><table>`;
+      // 계산값 vs 고지서 값
+      const chk = (label, calc, billKey) => {
+        if (!has(raw[billKey])) return row(`<b>${label}</b>`, `<b>${won(calc)}</b> <span class="pv-sub">(고지서 금액 넣으면 비교)</span>`);
+        const bill = Number(raw[billKey]), d = calc === null || calc === undefined ? null : bill - calc;
+        return row(`<b>${label}</b>`, `<b>${won(calc)}</b>`) + row('고지서 입력값', `<b>${won(bill)}</b> ${d === null ? '' : Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`);
+      };
+      let h = `<h3>계산 결과 미리보기 <span class="sub">${ymLabel(monthlyYm)} · 고지서 줄 순서</span></h3><table>`;
+      // ---- 전기 (한전 청구서 순서) ----
       h += head(UT.UTILS[0], s.elec.status);
       if (e) {
-        h += row('사용량', `${f0(e.kwh)} kWh`) + row('기본요금', won(e.base)) + row('전력량요금', won(e.energy)) +
-          row('기후환경·연료비조정', won(e.climate + e.fuel)) + row('역률요금', won(e.pfFee + e.leadFee)) +
-          (e.settlement ? row('정산요금', won(e.settlement)) : '') +
-          row('부가세 + 전력기금', won(e.vat + e.fund)) + row('<b>계산 금액</b>', `<b>${won(e.total)}</b>`);
+        const wk = Math.floor(nv('elec_wkd_kwh_light') * nv('elec_wkd_rate_light')) + Math.floor(nv('elec_wkd_kwh_mid') * nv('elec_wkd_rate_mid'));
+        h += row('사용량', `${f0(e.kwh)} kWh`) + sub('경부하 · 중간 · 최대', `${f0(nv('elec_kwh_light'))} · ${f0(nv('elec_kwh_mid'))} · ${f0(nv('elec_kwh_peak'))}`);
+        h += row('기본요금', won(e.base)) + sub('요금적용전력 × 단가', `${f0(nv('elec_contract_kw'))} kW × ${f0(nv('elec_base_rate'))}`);
+        h += row('전력량요금', won(e.energy)) + (wk ? sub('주말 할인 포함', `−${won(wk)}`) : '');
+        h += row('기후환경요금', won(e.climate)) + row('연료비조정액', won(e.fuel));
+        h += row('지상역률료', won(e.pfFee)) + (e.leadFee ? row('진상역률료', won(e.leadFee)) : '') + (e.settlement ? row('정산요금', won(e.settlement)) : '');
+        h += row('<b>전기요금계</b>', `<b>${won(e.subtotal)}</b>`) + row('부가가치세', won(e.vat)) + row('전력기금', won(e.fund));
+        if (e.late) h += row('연체료', won(e.late));
+        h += row('원단위절사', won(e.total - (e.subtotal + e.vat + e.fund + e.late)));
+        h += chk('당월요금계', e.total, 'elec_bill_total');
+        if (has(raw.elec_bill_exvat)) { const d = Number(raw.elec_bill_exvat) - e.exvat; h += sub(`부가세 별도 (요금계+기금) ${won(e.exvat)}`, Math.abs(d) < 1 ? '<span class="pv-ok">✓</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}</span>`); }
       } else h += row('입력 없음', '');
-      if (s.elec.status === '확정') h += row('고지서 금액', `<b>${won(s.elec.cost)}</b>`);
+      // ---- 가스 (도시가스 고지서 순서) ----
       h += head(UT.UTILS[1], s.gas.status);
       if (g) {
-        h += row('사용량', `${f1(g.m3)} ㎥ / ${f0(g.mj)} MJ`) +
-          (g.boiler ? row('보일러', won(g.boiler.total)) : '') + (g.rest ? row('식당', won(g.rest.total)) : '') +
-          row('<b>계산 금액</b>', `<b>${won(g.total)}</b>`);
+        [['보일러', g.boiler, 'gas_boiler', 'gas_heat', 'gas_boiler_corr'], ['식당', g.rest, 'gas_rest', has(m.gas_rest_heat) ? 'gas_rest_heat' : 'gas_heat', 'gas_rest_corr']].forEach(([n, x, k, hk, ck]) => {
+          if (!x) return;
+          h += row(`<b>${n}</b>`, '') + sub('지침 (전월 → 당월)', `${f0(nv(k + '_prev'))} → ${f0(nv(k + '_cur'))} = ${f1(nv(k + '_cur') - nv(k + '_prev'))} ㎥`);
+          h += sub('× 보정계수 = 사용량', `× ${has(m[ck]) ? m[ck] : 1} = ${f1(x.m3)} ㎥`) + sub('× 열량 = 사용열량', `× ${has(m[hk]) ? m[hk] : '-'} = ${f0(x.mj)} MJ`);
+          h += row('사용요금', won(x.cost)) + sub('사용열량 × 단가', `${f0(x.mj)} × ${has(m.gas_price) ? m.gas_price : '-'}`);
+          if (x.fee) h += row('보정기교체비', won(x.fee));
+          h += row('공급가액', won(x.cost + x.fee)) + row('부가세', won(x.vat)) + row('계', won(x.total));
+        });
+        h += row('합계 사용량', `${f1(g.m3)} ㎥ / ${f0(g.mj)} MJ`);
+        h += row('<b>공급가액 합</b>', `<b>${won(g.exvat)}</b>`) + (has(raw.gas_bill_exvat) ? (() => { const d = Number(raw.gas_bill_exvat) - g.exvat; return row('고지서 공급가액', `${won(Number(raw.gas_bill_exvat))} ${Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`); })() : '');
+        h += chk('청구금액 (10원 미만 절사)', g.total, 'gas_bill_total');
       } else h += row('입력 없음', '');
-      if (s.gas.status === '확정') h += row('고지서 금액', `<b>${won(s.gas.cost)}</b>`);
+      // ---- 용수 (상수도 고지서 순서, 계량기별) ----
       h += head(UT.UTILS[2], s.water.status);
-      h += row('40A', `${f0(s.water.w40 && s.water.w40.usage)} ㎥ · ${won(s.water.w40cost)}`);
-      h += row('50A', `${f0(s.water.w50 && s.water.w50.usage)} ㎥ · ${won(s.water.w50cost)}`);
+      [['40A', s.water.w40, 'w40_bill'], ['50A', s.water.w50, 'w50_bill']].forEach(([n, w, bk]) => {
+        if (!w) { h += row(n, '입력 없음'); return; }
+        h += row(`<b>${n}</b>`, `${f0(w.usage)} ㎥`) + row('상수도 사용료', won(w.useFee));
+        if (w.reduce) h += row('감면', won(w.reduce));
+        h += row('구경별 요금', won(w.baseFee)) + row('물이용부담금', won(w.waterUse));
+        if (w.reduce2) h += row('물이용부담금 감면', won(w.reduce2));
+        h += chk(`${n} 합계`, w.total, bk);
+      });
+      // ---- 폐수 (익산시 고지서: 시설사용료·개선부담금) ----
       h += head(UT.UTILS[3], s.ww.status);
-      h += row('발생량 (폐수+오수)', `${f1(s.ww.usage)} ㎥`) + row('금액', won(s.ww.cost));
+      h += row('발생량 (폐수 + 오수)', `${f1(s.ww.usage)} ㎥`) + sub('폐수 · 오수', `${f1(s.ww.flow)} · ${f1(s.ww.sewage)} ㎥`);
+      if (s.ww.status === '확정') h += row('시설사용료', won(nv('ww_facility_fee'))) + row('개선부담금', won(nv('ww_improve_fee'))) + row('<b>계</b>', `<b>${won(s.ww.cost)}</b>`);
+      else h += row('<b>예상 금액</b>', `<b>${won(s.ww.cost)}</b>`) + sub('발생량 × 전월 ㎥당 금액', '고지서 금액 넣으면 확정');
       // 클러스터 검침값 비교
-      const m = s.m, pm = (UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {}));
+      const pm = (UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {}));
       if (m.cluster_water_reading !== undefined || m.cluster_ww_reading !== undefined) {
         const cw = (m.cluster_water_reading != null && pm.cluster_water_reading != null) ? m.cluster_water_reading - pm.cluster_water_reading : null;
         const cww = (m.cluster_ww_reading != null && pm.cluster_ww_reading != null) ? m.cluster_ww_reading - pm.cluster_ww_reading : null;
