@@ -1118,7 +1118,16 @@
         const sup = ep.total - ep.vat - ep.fund - (ep.late || 0);
         return [[tag, sup, ep.vat, ep.total - ep.fund - (ep.late || 0)], [`2공장 전기요금_공통전력기금_${y}년${m}월`, ep.fund, 0, ep.fund], ...(ep.late ? [[`2공장 전기요금_연체료_${y}년${m}월`, ep.late, 0, ep.late]] : [])];
       }
-      if (exUtil === 'gas') return gasSplit(s).map(x => [`2공장 도시가스요금_${x.name}_${y}년${m}월`, x.exvat, x.total - x.exvat, x.total]);
+      if (exUtil === 'gas') {
+        // 계산이 고지서와 맞으면(10원 미만 절사 차이만) 고지서 소계 그대로 + 원단위 절사 한 줄
+        const g = s.gas.calc;
+        if (g && s.gas.status === '확정' && Math.abs(Math.floor((((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) / 10) * 10 - s.gas.cost) < 1) {
+          const L = [['보일러', g.boiler], ['식당', g.rest]].filter(([, x]) => x).map(([n, x]) => [`2공장 도시가스요금_${n}_${y}년${m}월`, x.cost + x.fee, x.vat, x.total]);
+          const cut = s.gas.cost - L.reduce((a, r) => a + r[3], 0);
+          return cut ? L.concat([[`2공장 도시가스요금_원단위절사_${y}년${m}월`, cut, 0, cut]]) : L;
+        }
+        return gasSplit(s).map(x => [`2공장 도시가스요금_${x.name}_${y}년${m}월`, x.exvat, x.total - x.exvat, x.total]);
+      }
       if (exUtil === 'water') return [['40A', s.water.w40cost], ['50A', s.water.w50cost]].filter(x => x[1]).map(([n, v]) => [`2공장 상수도요금_${n}_${y}년${m}월`, v, 0, v]);
       const ff = Number(raw.ww_facility_fee) || 0, fi = Number(raw.ww_improve_fee) || 0;
       if (ff || fi) return [['시설사용료', ff], ['개선부담금', fi]].filter(x => x[1]).map(([n, v]) => [`2공장 폐수_${n}_${y}년${m}월`, v, 0, v]);
@@ -1137,7 +1146,7 @@
         <div class="tbl-wrap"><table class="t"><tr><th class="l">상세내용</th><th>공급가액</th><th>부가세</th><th>합계</th></tr>
         ${rows.map(r => `<tr><td class="l ex-cp" onclick="exCopy(this.textContent,this)">${esc(r[0])}</td>${[1, 2, 3].map(i => `<td class="ex-cp" onclick="exCopy('${r[i] || 0}',this)">${f0(r[i] || 0)}</td>`).join('')}</tr>`).join('')}
         ${rows.length > 1 ? `<tr class="sum"><td class="l">지출결의계</td><td>${f0(tot[0])}</td><td>${f0(tot[1])}</td><td>${f0(tot[2])}</td></tr>` : ''}</table></div>
-        <div class="hint">${exUtil === 'elec' ? '공급가액 = 청구액 − 부가세 − 전력기금 (원단위 절사 반영). 전력기금은 부가세 없이 따로 한 줄.' : exUtil === 'gas' ? '보일러·식당은 검침 비율대로 고지서 금액을 나눈 값입니다.' : ''}</div></div>`;
+        <div class="hint">${exUtil === 'elec' ? '공급가액 = 청구액 − 부가세 − 전력기금 (원단위 절사 반영). 전력기금은 부가세 없이 따로 한 줄.' : exUtil === 'gas' ? (rows.some(r => /원단위절사/.test(r[0])) ? '보일러·식당은 고지서 소계 그대로, 청구액의 10원 미만 절사는 따로 한 줄.' : '보일러·식당은 검침 비율대로 고지서 금액을 나눈 값입니다 (월간입력 가스 칸을 고지서대로 넣으면 고지서 소계 그대로 나옵니다).') : ''}</div></div>`;
       h += `<div class="card"><h3>추가의견 <span class="sub">고쳐서 쓸 수 있습니다</span></h3>
         <textarea id="ex-text" class="ex-text" rows="${lines.length + 1}">${esc(lines.join('\n'))}</textarea>
         <div class="toolbar" style="margin-top:6px"><button class="btn" onclick="exCopy(document.getElementById('ex-text').value,this)">📋 추가의견 복사</button><span class="hint">전월(${ymLabel(UT.prevYm(exYm))})과 비교 · 비용은 부가세 포함 청구액 기준</span></div></div>`;
