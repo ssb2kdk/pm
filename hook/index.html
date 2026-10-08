@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>후크메타 부하 측정</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root { --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB; --radius: 12px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 640px; margin: 0 auto; } .wrap.wide { max-width: 1200px; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 14px; position: sticky; top: 0; z-index: 10; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .title { font-size: 17px; font-weight: 700; }
+    .vtabs { display: flex; gap: 6px; }
+    .vtab { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .vtab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .date-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+    .date-row button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); cursor: pointer; }
+    .date-row input { flex: 1; font-size: 15px; font-weight: 600; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; text-align: center; background: var(--card); }
+    .date-row .today { width: auto; padding: 0 10px; font-size: 12px; }
+    .panels { display: flex; gap: 6px; overflow-x: auto; margin-top: 10px; padding-bottom: 2px; }
+    .panels button { flex: none; font-size: 13px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); cursor: pointer; white-space: nowrap; }
+    .panels button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .panels button .n { font-size: 11px; opacity: .8; margin-left: 4px; }
+    .content { padding: 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 120px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+    .card.run { border-color: var(--teal); }
+    .card.off { opacity: .75; }
+    .c-top { display: flex; gap: 6px; align-items: center; }
+    .c-top .nm { flex: 1; font-size: 15px; font-weight: 700; border: none; border-bottom: 1px dashed transparent; padding: 2px 0; background: transparent; min-width: 0; }
+    .c-top .nm:focus { border-bottom-color: var(--border); outline: none; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: none; }
+    .seg button { border: none; background: #fff; padding: 5px 8px; font-size: 12px; cursor: pointer; color: var(--muted); }
+    .seg button.on { background: var(--primary); color: #fff; }
+    .run-btn { flex: none; font-size: 12px; padding: 6px 10px; border-radius: 16px; border: 1px solid var(--border); background: #fff; cursor: pointer; color: var(--muted); }
+    .run-btn.on { background: var(--teal-bg); color: var(--teal); border-color: var(--teal); font-weight: 700; }
+    .amps { display: grid; grid-template-columns: repeat(3, 1fr) 1.1fr; gap: 6px; margin-top: 8px; align-items: end; }
+    .amps label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+    .amps input { font-size: 17px; padding: 8px 6px; border: 1px solid var(--border); border-radius: 8px; text-align: right; width: 100%; }
+    .amps .kw { text-align: right; font-size: 12px; color: var(--muted); }
+    .amps .kw b { display: block; font-size: 17px; color: var(--text); }
+    .meta { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .meta input { font-size: 12px; border: none; border-bottom: 1px solid var(--border); padding: 4px 2px; background: transparent; }
+    .meta .rk { width: 52px; text-align: right; } .meta .ra { width: 46px; text-align: right; } .meta .ml { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; } .meta .nt { flex: 1; min-width: 140px; }
+    .last { font-size: 11px; color: var(--blue); margin-top: 4px; }
+    .dirty { box-shadow: 0 0 0 2px var(--amber-bg); border-color: var(--amber); }
+    .addbtn { padding: 12px; border: 1px dashed #bbb; border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; }
+    .footer { background: var(--card); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; }
+    .footer-in { max-width: 640px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+    .footer .sum { flex: 1; font-size: 12px; color: var(--muted); line-height: 1.4; } .footer .sum b { color: var(--text); font-size: 14px; }
+    .save { padding: 13px 22px; background: var(--primary); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; cursor: pointer; }
+    .save.has { background: var(--blue); }
+    .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 50; }
+    .toast.show { opacity: 1; }
+    .loading { text-align: center; padding: 40px 0; color: var(--muted); }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    /* 결과 */
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 12px; }
+    table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.t th, table.t td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: right; white-space: nowrap; }
+    table.t th { background: #f0f2f5; font-weight: 600; text-align: center; position: sticky; top: 0; }
+    table.t td.l, table.t th.l { text-align: left; }
+    table.t tr.grp td { background: #f7f9fb; font-weight: 700; text-align: left; color: var(--blue); }
+    table.t tr.off td { color: #aaa; }
+    .tbl { overflow: auto; max-height: calc(100vh - 220px); }
+    .bar { display: inline-block; height: 8px; background: var(--blue); border-radius: 4px; vertical-align: middle; }
+    .lr-hi { color: var(--red); font-weight: 700; } .lr-lo { color: var(--amber); }
+    .tool { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .tool select, .tool input { font-size: 13px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+    .btn { background: #2c5aa0; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn.sec { background: #666; } .mini { font-size: 11px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; }
+    .hist { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="head">
+      <div class="wrap" id="head-wrap">
+        <div class="head-row">
+          <span class="title">⚡ 후크메타 부하 측정</span>
+          <div class="vtabs">
+            <button class="vtab on" data-v="input" onclick="setView('input')">측정</button>
+            <button class="vtab" data-v="sum" onclick="setView('sum')">결과·이력</button>
+          </div>
+        </div>
+        <div id="input-head">
+          <div class="date-row">
+            <button onclick="shiftDate(-1)">◀</button>
+            <input type="date" id="work-date" onchange="changeDate(this.value)">
+            <button onclick="shiftDate(1)">▶</button>
+            <button class="today" onclick="changeDate(todayStr())">오늘</button>
+          </div>
+          <div class="panels" id="panels"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="v-input">
+      <div class="wrap"><div class="content" id="content"><div class="loading">불러오는 중...</div></div></div>
+      <div class="footer"><div class="footer-in"><div class="sum" id="sum"></div><button class="save" id="save-btn" onclick="saveAll()">저장</button></div></div>
+    </div>
+
+    <div id="v-sum" hidden>
+      <div class="wrap wide"><div class="panel" id="sum-body"></div></div>
+    </div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script>
+    let sb = null, me = null;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const todayStr = () => ymd(new Date());
+    const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+    const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+    const nf = (v, d = 1) => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { maximumFractionDigits: d });
+    const isAdmin = () => me && me.role === 'admin';
+    const PF = 0.85; // 역률 가정 (모터 일반값)
+    // 전력 kW: 상전압 220V × 상별 전류 합 × 역률 (380V 3상이면 √3×380×평균전류×역률과 같음)
+    function kwOf(b, x) {
+      const a = [x.r, x.s, x.t].map(num).filter(v => v !== null);
+      if (!a.length) return null;
+      if (b.volt === 380) { const avg = a.reduce((p, c) => p + c, 0) / a.length; return Math.sqrt(3) * 0.38 * avg * PF; }
+      return 0.22 * a.reduce((p, c) => p + c, 0) * PF;
+    }
+    function toast(t) { const e = document.getElementById('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 1800); }
+
+    let BRK = [], READ = [], workDate = todayStr(), panelSel = null, DRAFT = {}, BDRAFT = {}, NEWB = [], view = 'input';
+    async function fetchAll(q) { const out = []; for (let from = 0; ; from += 1000) { const { data, error } = await q().range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; } return out; }
+    async function loadAll() {
+      BRK = await fetchAll(() => sb.from('hook_breakers').select('*').eq('active', true).order('panel').order('sort').order('created_at'));
+      READ = await fetchAll(() => sb.from('hook_readings').select('*').order('d'));
+    }
+    const panels = () => [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)))];
+    const readOn = (bid, d) => READ.find(r => r.breaker_id === bid && r.d === d);
+    const lastBefore = (bid, d) => READ.filter(r => r.breaker_id === bid && r.d < d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
+
+    function setView(v) {
+      if (v === 'sum' && dirtyCount() && !confirm('저장하지 않은 측정값이 있습니다. 저장하지 않고 이동할까요?')) return;
+      view = v; document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+      document.getElementById('v-input').hidden = v !== 'input'; document.getElementById('v-sum').hidden = v !== 'sum';
+      document.getElementById('input-head').hidden = v !== 'input'; document.getElementById('head-wrap').classList.toggle('wide', v === 'sum');
+      if (v === 'sum') renderSum(); else renderInput();
+    }
+    function changeDate(d) { if (dirtyCount() && !confirm('저장하지 않은 측정값이 있습니다. 버리고 날짜를 바꿀까요?')) { document.getElementById('work-date').value = workDate; return; } workDate = d; DRAFT = {}; renderInput(); }
+    function shiftDate(n) { changeDate(addDays(workDate, n)); }
+    const dirtyCount = () => Object.keys(DRAFT).length + Object.keys(BDRAFT).length + NEWB.filter(b => b.name.trim()).length;
+
+    function renderInput() {
+      document.getElementById('work-date').value = workDate;
+      const ps = panels(); if (!panelSel || !ps.includes(panelSel)) panelSel = ps[0] || null;
+      const cnt = p => { const bs = BRK.filter(b => b.panel === p); return `${bs.filter(b => readOn(b.id, workDate) || DRAFT[b.id]).length}/${bs.length}`; };
+      document.getElementById('panels').innerHTML = ps.map(p => `<button class="${p === panelSel ? 'on' : ''}" onclick="panelSel=${JSON.stringify(p).replace(/"/g, '&quot;')};renderInput()">${esc(p)}<span class="n">${cnt(p)}</span></button>`).join('') +
+        `<button onclick="addPanel()">＋ 분전반</button>`;
+      const el = document.getElementById('content');
+      if (!panelSel) { el.innerHTML = `<div class="card"><b>분전반을 먼저 만들어 주세요.</b><div class="hint">위의 「＋ 분전반」을 누르고 분전반 이름(예: P-레토르트, 기계실 MCC)을 넣은 뒤, 차단기를 추가합니다.</div></div>`; renderSumBar(); return; }
+      const bs = BRK.filter(b => b.panel === panelSel).concat(NEWB.filter(b => b.panel === panelSel));
+      el.innerHTML = `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
+        bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(panelSel)})</button>`;
+      renderSumBar();
+    }
+    function cur(b) { // 화면에 보일 값 = 고친 값 > 그날 기록
+      const r = readOn(b.id, workDate) || {}, d = DRAFT[b.id] || {};
+      const g = k => (k in d) ? d[k] : (r[k] ?? '');
+      const running = ('running' in d) ? d.running : (r.id ? r.running : null);
+      return { r: g('r'), s: g('s'), t: g('t'), note: g('note'), running, saved: !!r.id };
+    }
+    function bv(b) { return Object.assign({}, b, BDRAFT[b.id] || {}); }
+    function cardHtml(b0) {
+      const b = bv(b0), c = cur(b), kw = kwOf(b, c), last = b.id && !b._new ? lastBefore(b.id, workDate) : null;
+      const run = c.running === true || (c.running === null && kw !== null), off = c.running === false;
+      const dirty = DRAFT[b.id] || BDRAFT[b.id] || b._new;
+      const lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
+      const id = esc(b.id);
+      return `<div class="card ${run ? 'run' : ''} ${off ? 'off' : ''} ${dirty ? 'dirty' : ''}" data-id="${id}">
+        <div class="c-top"><input class="nm" value="${esc(b.name)}" placeholder="차단기 명칭 (예: 레토르트 1호기)" onchange="bset('${id}','name',this.value)">
+          <span class="seg"><button class="${b.volt === 380 ? 'on' : ''}" onclick="bset('${id}','volt',380)">380V</button><button class="${b.volt === 220 ? 'on' : ''}" onclick="bset('${id}','volt',220)">220V</button></span>
+          <button class="run-btn ${run ? 'on' : ''}" onclick="rset('${id}','running',${off ? 'true' : 'false'})">${off ? '정지' : run ? '가동중' : '가동?'}</button></div>
+        <div class="amps">${['r', 's', 't'].map(k => `<label>${k.toUpperCase()}상 (A)<input inputmode="decimal" value="${esc(c[k])}" ${off ? 'disabled' : ''} oninput="rset('${id}','${k}',this.value,true)"></label>`).join('')}
+          <div class="kw" id="kw-${id}">${kw === null ? '-' : `<b>${nf(kw, 1)} kW</b>${lr === null ? '' : `정격의 ${nf(lr, 0)}%`}`}</div></div>
+        <div class="meta"><label class="ml">정격<input class="rk" inputmode="decimal" placeholder="-" value="${esc(b.rated_kw ?? '')}" onchange="bset('${id}','rated_kw',this.value)">kW</label>
+          <label class="ml">차단기<input class="ra" inputmode="decimal" placeholder="-" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)">A</label>
+          <input class="nt" placeholder="비고 (정격용량·모터 사양 등)" value="${esc(b.note ?? '')}" onchange="bset('${id}','note',this.value)"></div>
+        <div class="meta"><input class="nt" placeholder="이번 측정 메모 (운전 상태 등)" value="${esc(c.note)}" onchange="rset('${id}','note',this.value)"></div>
+        ${last ? `<div class="last">지난 측정 ${last.d.slice(2).replace(/-/g, '.')} · ${last.running ? `${[last.r, last.s, last.t].map(v => v ?? '-').join(' / ')} A → ${nf(kwOf(b, last), 1)} kW` : '정지'}</div>` : ''}
+      </div>`;
+    }
+    function rset(id, k, v, soft) {
+      const d = DRAFT[id] = DRAFT[id] || {};
+      if (k === 'running') { d.running = v; if (v === false) { d.r = ''; d.s = ''; d.t = ''; } } else d[k] = v;
+      if (['r', 's', 't'].includes(k) && String(v).trim() !== '' && d.running !== false) d.running = true;
+      if (soft) { // 입력 중엔 다시 그리지 않고 kW만 갱신
+        const b = bv(BRK.find(x => x.id === id) || NEWB.find(x => x.id === id)), c = cur(b), kw = kwOf(b, c), lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
+        const el = document.getElementById('kw-' + id); if (el) el.innerHTML = kw === null ? '-' : `<b>${nf(kw, 1)} kW</b>${lr === null ? '' : `정격의 ${nf(lr, 0)}%`}`;
+        const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`); if (card) { card.classList.add('dirty'); card.classList.add('run'); const rb = card.querySelector('.run-btn'); if (rb) { rb.classList.add('on'); rb.textContent = '가동중'; } }
+        renderSumBar(); return;
+      }
+      renderInput();
+    }
+    function bset(id, k, v) {
+      const nb = NEWB.find(x => x.id === id);
+      if (nb) nb[k] = k === 'volt' ? v : v; else { const d = BDRAFT[id] = BDRAFT[id] || {}; d[k] = v; }
+      renderInput();
+    }
+    function addPanel() {
+      const n = (prompt('분전반 이름 (예: P-레토르트, 기계실 MCC, 생산동 LP-1)') || '').trim(); if (!n) return;
+      panelSel = n; if (!BRK.some(b => b.panel === n) && !NEWB.some(b => b.panel === n)) addBreaker(); else renderInput();
+    }
+    function addBreaker() {
+      NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), _new: true, panel: panelSel, name: '', volt: 380, rated_kw: '', rated_a: '', note: '', sort: BRK.filter(b => b.panel === panelSel).length + NEWB.length });
+      renderInput(); setTimeout(() => { const c = document.querySelectorAll('.card .nm'); if (c.length) c[c.length - 1].focus(); }, 30);
+    }
+    function renderSumBar() {
+      const bs = BRK.concat(NEWB).filter(b => b.panel === panelSel); let tot = 0, n = 0;
+      bs.forEach(b => { const c = cur(bv(b)); const k = kwOf(bv(b), c); if (k !== null && c.running !== false) { tot += k; n++; } });
+      const dc = dirtyCount();
+      document.getElementById('sum').innerHTML = panelSel ? `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : '';
+      const sbtn = document.getElementById('save-btn'); sbtn.classList.toggle('has', !!dc); sbtn.textContent = dc ? `저장 (${dc})` : '저장';
+    }
+    async function saveAll() {
+      const btn = document.getElementById('save-btn'); if (!dirtyCount()) { toast('바뀐 내용이 없습니다'); return; }
+      btn.disabled = true;
+      try {
+        // ① 새 차단기
+        const idMap = {};
+        for (const nb of NEWB.filter(b => b.name.trim())) {
+          const row = { id: (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))), panel: nb.panel, name: nb.name.trim(), volt: nb.volt, rated_kw: num(nb.rated_kw), rated_a: num(nb.rated_a), note: nb.note || '', sort: nb.sort, active: true };
+          const { error } = await sb.from('hook_breakers').insert(row);
+          if (error) throw error; idMap[nb.id] = row.id; BRK.push(row);
+        }
+        // ② 차단기 정보 수정
+        for (const [id, d] of Object.entries(BDRAFT)) {
+          const patch = {}; Object.entries(d).forEach(([k, v]) => { patch[k] = ['rated_kw', 'rated_a'].includes(k) ? num(v) : k === 'name' ? String(v).trim() : v; });
+          const { error } = await sb.from('hook_breakers').update(patch).eq('id', id); if (error) throw error;
+          Object.assign(BRK.find(b => b.id === id), patch);
+        }
+        // ③ 측정값
+        const rows = Object.entries(DRAFT).map(([id, d]) => { const bid = idMap[id] || id; if (String(bid).startsWith('new-')) return null; const b = BRK.find(x => x.id === bid); const c = cur(b);
+          const ex = readOn(bid, workDate) || {}; const v = k => (k in d) ? num(d[k]) : num(ex[k]);
+          const running = ('running' in d) ? d.running : (ex.id ? ex.running : true);
+          return { breaker_id: bid, d: workDate, r: running ? v('r') : null, s: running ? v('s') : null, t: running ? v('t') : null, running, note: ('note' in d) ? d.note : (ex.note || ''), updated_at: new Date().toISOString() }; }).filter(Boolean);
+        if (rows.length) { const { error } = await sb.from('hook_readings').upsert(rows, { onConflict: 'breaker_id,d' }); if (error) throw error; }
+        NEWB = NEWB.filter(b => !b.name.trim() && false); DRAFT = {}; BDRAFT = {};
+        READ = await fetchAll(() => sb.from('hook_readings').select('*').order('d'));
+        toast(`저장했습니다${rows.length ? ` (측정 ${rows.length}건)` : ''}`); renderInput();
+      } catch (e) { alert('저장 실패: ' + errMsg(e) + (/relation|does not exist|schema cache/i.test(errMsg(e)) ? '\n\nSupabase에 17번 SQL을 실행했는지 확인해 주세요.' : '')); }
+      finally { btn.disabled = false; }
+    }
+
+    // ---------------- 결과·이력 ----------------
+    let sumPanel = '', sumSort = 'kw';
+    function renderSum() {
+      const el = document.getElementById('sum-body'), ps = panels();
+      const latest = b => READ.filter(r => r.breaker_id === b.id).sort((a, c) => a.d < c.d ? 1 : -1)[0];
+      const lastRun = b => READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0];
+      let list = BRK.filter(b => !sumPanel || b.panel === sumPanel).map(b => { const l = lastRun(b), any = latest(b), kw = l ? kwOf(b, l) : null; return { b, l, any, kw, lr: kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null, n: READ.filter(r => r.breaker_id === b.id && r.running).length }; });
+      if (sumSort === 'kw') list.sort((a, c) => (c.kw ?? -1) - (a.kw ?? -1)); else if (sumSort === 'lr') list.sort((a, c) => (c.lr ?? -1) - (a.lr ?? -1)); else list.sort((a, c) => a.b.panel < c.b.panel ? -1 : a.b.panel > c.b.panel ? 1 : a.b.sort - c.b.sort);
+      const tot = list.reduce((a, x) => a + (x.kw || 0), 0), mx = Math.max(1, ...list.map(x => x.kw || 0));
+      const byPanel = {}; list.forEach(x => { byPanel[x.b.panel] = (byPanel[x.b.panel] || 0) + (x.kw || 0); });
+      let h = `<div class="tool"><b>가동 중 부하 (차단기별 가장 최근 가동 측정값)</b>
+        <select onchange="sumPanel=this.value;renderSum()"><option value="">전체 분전반</option>${ps.map(p => `<option ${p === sumPanel ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
+        <select onchange="sumSort=this.value;renderSum()"><option value="kw" ${sumSort === 'kw' ? 'selected' : ''}>큰 부하 순</option><option value="lr" ${sumSort === 'lr' ? 'selected' : ''}>부하율 높은 순</option><option value="panel" ${sumSort === 'panel' ? 'selected' : ''}>분전반 순</option></select>
+        <button class="btn sec" onclick="downloadSum()">📥 엑셀</button></div>
+        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})</div>
+        <div class="tbl"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>R</th><th>S</th><th>T (A)</th><th class="l">가동 부하 (kW)</th><th>정격 kW</th><th>부하율</th><th>측정일</th><th>횟수</th><th class="l">비고</th></tr>`;
+      list.forEach(x => { const l = x.l;
+        h += `<tr class="${l ? '' : 'off'}"><td class="l">${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a></td><td>${x.b.volt}V</td>
+          <td>${l ? nf(l.r) : '-'}</td><td>${l ? nf(l.s) : '-'}</td><td>${l ? nf(l.t) : '-'}</td>
+          <td class="l">${x.kw === null ? (x.any ? '<span class="hist">정지 중만 측정</span>' : '<span class="hist">측정 없음</span>') : `<span class="bar" style="width:${Math.round(x.kw / mx * 90)}px"></span> <b>${nf(x.kw, 1)}</b>`}</td>
+          <td>${x.b.rated_kw ?? '-'}</td><td class="${x.lr === null ? '' : x.lr > 90 ? 'lr-hi' : x.lr < 40 ? 'lr-lo' : ''}">${x.lr === null ? '-' : nf(x.lr, 0) + '%'}</td>
+          <td>${l ? l.d.slice(2).replace(/-/g, '.') : '-'}</td><td>${x.n}</td><td class="l hist">${esc(x.b.note || '')}</td></tr>`; });
+      h += `</table></div><div class="hint" style="margin-top:8px">· 부하율 <span class="lr-lo">40% 미만</span> = 정격보다 훨씬 작게 도는 설비 (용량 과다·인버터 검토 대상) · <span class="lr-hi">90% 넘음</span> = 과부하 주의 · 차단기 이름을 누르면 측정 이력이 나옵니다.</div><div id="hist"></div>`;
+      el.innerHTML = h;
+    }
+    function histOf(id) {
+      const b = BRK.find(x => x.id === id), rs = READ.filter(r => r.breaker_id === id).sort((a, c) => a.d < c.d ? 1 : -1);
+      document.getElementById('hist').innerHTML = `<h4 style="margin:14px 0 6px">${esc(b.panel)} · ${esc(b.name)} 측정 이력</h4><table class="t"><tr><th>날짜</th><th>상태</th><th>R</th><th>S</th><th>T (A)</th><th>kW</th><th class="l">메모</th>${isAdmin() ? '<th></th>' : ''}</tr>` +
+        rs.map(r => `<tr><td>${r.d}</td><td>${r.running ? '가동' : '정지'}</td><td>${nf(r.r)}</td><td>${nf(r.s)}</td><td>${nf(r.t)}</td><td>${r.running ? nf(kwOf(b, r), 1) : '-'}</td><td class="l">${esc(r.note || '')}</td>${isAdmin() ? `<td><button class="mini" onclick="delReading('${r.id}','${id}')">삭제</button></td>` : ''}</tr>`).join('') +
+        `</table>${isAdmin() ? `<div style="margin-top:8px"><button class="mini" onclick="retireBreaker('${id}')">이 차단기 목록에서 빼기</button> <span class="hint">(설비 철거 등 — 기록은 남음)</span></div>` : ''}`;
+      document.getElementById('hist').scrollIntoView({ behavior: 'smooth' });
+    }
+    async function delReading(rid, bid) { if (!confirm('이 측정 기록을 지울까요?')) return; const { error } = await sb.from('hook_readings').delete().eq('id', rid); if (error) { alert(errMsg(error)); return; } READ = READ.filter(r => r.id !== rid); renderSum(); histOf(bid); }
+    async function retireBreaker(id) { if (!confirm('이 차단기를 목록에서 뺄까요? (측정 기록은 남습니다)')) return; const { error } = await sb.from('hook_breakers').update({ active: false }).eq('id', id); if (error) { alert(errMsg(error)); return; } BRK = BRK.filter(b => b.id !== id); renderSum(); }
+    async function downloadSum() {
+      if (!window.XLSX) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+      const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', '차단기A', '비고', '메모']];
+      READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note]); });
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '부하측정'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
+    }
+    window.addEventListener('beforeunload', e => { if (dirtyCount()) { e.preventDefault(); e.returnValue = ''; } });
+
+    Portal.start({
+      appId: 'hook',
+      title: '후크메타 부하 측정',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        try { await loadAll(); renderInput(); }
+        catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 17번 SQL(17_hook_load.sql)을 실행했는지 확인해 주세요.</div>`; }
+      }
+    });
+  </script>
+</body>
+</html>

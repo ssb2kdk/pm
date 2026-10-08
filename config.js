@@ -15,6 +15,7 @@ window.APP_CONFIG = {
   APPS: [
     { id: 'pm',      icon: '🔧', name: '예방정비 점검일정관리',     desc: '연간·월간·주간·일일 점검/정비 일정, 완료 기록, 월간 점검표 출력', path: 'pm/',      ready: true },
     { id: 'meter',   icon: '📟', name: '설비검침',                  desc: '현장 검침값 입력 (핸드폰) · 유틸리티 분석과 자동 연결',            path: 'meter/',   ready: true },
+    { id: 'hook',    icon: '🔌', name: '후크메타 부하 측정',        desc: '분전반 차단기별 R·S·T 전류를 가끔 재서 설비 가동 부하(kW) 기록 · 절감 포인트 찾기', path: 'hook/',    ready: true },
     { id: 'insp',    icon: '📋', name: '설비점검일지',              desc: '유틸리티 일일 점검 ○Ⅹ△◎ 입력 (핸드폰) · 점검일지 출력',            path: 'insp/',    ready: true },
     { id: 'env',     icon: '🌿', name: '환경일지',                  desc: '다온산업 장부 입력 · 폐수일지 · 대기일지 출력',                     path: 'env/',     ready: true, partner: true },
     { id: 'utility', icon: '📊', name: '유틸리티 사용량·비용 분석', desc: '전기·가스·용수·폐수 월별 사용량과 금액, 목표 대비, 원단위 추이',   path: 'utility/', ready: true },
