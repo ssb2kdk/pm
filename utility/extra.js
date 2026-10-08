@@ -1204,3 +1204,137 @@
       const a = document.createElement('a'); a.href = document.getElementById('ex-canvas').toDataURL('image/png');
       a.download = `${exYm}_${EX_NAME[exUtil]}_${{ unit: '원육사용량당사용량', ucost: '원육사용량당비용', usage: '사용량' }[exChartKind]}.png`; a.click();
     }
+
+    // =====================================================================
+    // 유틸리티별 상세 내역 (엑셀 전기상세·연료상세·용수상세·폐수상세 탭처럼) — 분석 탭 유틸 칸을 누르면 열림
+    // =====================================================================
+    let CMP_SHOW = { prev: true, ly: true };
+    try { const v = JSON.parse(localStorage.getItem('ut_cmp_show') || 'null'); if (v) CMP_SHOW = Object.assign(CMP_SHOW, v); } catch (e) { }
+    function setCmpShow(k) { CMP_SHOW[k] = !CMP_SHOW[k]; try { localStorage.setItem('ut_cmp_show', JSON.stringify(CMP_SHOW)); } catch (e) { } renderYearTable(); if (!document.getElementById('udet').hidden) renderUDet(); }
+    const cmpChips = () => `<span class="chips no-print"><button class="chip ${CMP_SHOW.prev ? 'on' : ''}" onclick="setCmpShow('prev')">전월대비</button><button class="chip ${CMP_SHOW.ly ? 'on' : ''}" onclick="setCmpShow('ly')">전년동월대비</button></span>`;
+    let udUtil = 'elec', udYear = null, udRows = [];
+    function openUDet(uk) { udUtil = uk; udYear = Number((dashYm || thisYm).slice(0, 4)); document.getElementById('udet').hidden = false; renderUDet(); }
+    function closeUDet() { document.getElementById('udet').hidden = true; }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('udet') && !document.getElementById('udet').hidden) closeUDet(); });
+    const fxd = d => v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const fmax = d => v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { maximumFractionDigits: d });
+    function udSpec(uk) {
+      const M = (s, k) => { const v = (s.m || {})[k]; return v === undefined || v === null || v === '' || isNaN(Number(v)) ? null : Number(v); };
+      const E = s => s.elec.calc || null, G = s => s.gas.calc || null;
+      const nz = v => v === null || v === undefined ? null : v;
+      const r = (l, f, fmt = f0, o = {}) => ({ l, f, fmt, ...o });
+      const prodRows = [{ grp: '원육 투입량 기준' }, r('원육 투입량 (kg)', s => s.production, f0, { cmp: true, sum: true }),
+        r('원육 kg당 비용 (원/kg)', s => ratio(s[uk].cost, s.production), fxd(1), { cmp: true }),
+        r(`원육 kg당 사용량 (${UT.UTILS.find(u => u.k === uk).unit}/kg)`, s => ratio(s[uk].usage, s.production), v => fU(v, uk), { cmp: true })];
+      if (uk === 'elec') return [
+        { grp: '1) 비용' },
+        r('기본요금', s => nz(E(s) && E(s).base), f0, { sum: true, cmp: true }), r('전력량요금', s => nz(E(s) && E(s).energy), f0, { sum: true }),
+        r('기후환경요금', s => nz(E(s) && E(s).climate), f0, { sum: true }), r('연료비조정액', s => nz(E(s) && E(s).fuel), f0, { sum: true }),
+        r('지상역률료', s => nz(E(s) && E(s).pfFee), f0, { sum: true }), r('진상역률료', s => nz(E(s) && E(s).leadFee), f0, { sum: true }), r('정산 요금', s => nz(E(s) && E(s).settlement), f0, { sum: true }),
+        r('전기요금계', s => nz(E(s) && E(s).subtotal), f0, { sum: true, b: true }), r('부가가치세', s => nz(E(s) && E(s).vat), f0, { sum: true }), r('연체료', s => nz(E(s) && E(s).late), f0, { sum: true }),
+        r('전력기금', s => nz(E(s) && E(s).fund), f0, { sum: true }), r('원단위 절사', s => E(s) ? s.elec.cost - (E(s).subtotal + E(s).vat + E(s).fund + E(s).late) : null, f0, { sum: true }),
+        r('당월요금계', s => s.elec.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.elec.status === '가마감' }), r('부가세 별도', s => s.elec.exvat, f0, { sum: true }),
+        r('kWh당 전기요금 (원)', s => ratio(s.elec.cost, s.elec.usage), fxd(1), { cmp: true }),
+        { grp: '2) 사용량' },
+        r('요금적용 전력 (kW)', s => M(s, 'elec_contract_kw'), f0), r('최대 전력 (kW)', s => s.elec.maxKw, fmax(1)),
+        r('사용량 (kWh)', s => s.elec.usage, f0, { sum: true, b: true, cmp: true }),
+        r('경부하', s => M(s, 'elec_kwh_light'), f0, { sum: true }), r('중간부하', s => M(s, 'elec_kwh_mid'), f0, { sum: true }), r('최대부하', s => M(s, 'elec_kwh_peak'), f0, { sum: true }),
+        r('주말 경부하 할인', s => M(s, 'elec_wkd_kwh_light'), f0, { sum: true }), r('주말 중간부하 할인', s => M(s, 'elec_wkd_kwh_mid'), f0, { sum: true }),
+        { grp: '3) 단가' },
+        r('기본요금 (원/kW)', s => M(s, 'elec_base_rate'), f0), r('경부하 (원/kWh)', s => M(s, 'elec_rate_light'), fmax(2)), r('중간부하', s => M(s, 'elec_rate_mid'), fmax(2)), r('최대부하', s => M(s, 'elec_rate_peak'), fmax(2)),
+        r('주말 경부하 할인', s => M(s, 'elec_wkd_rate_light'), fmax(2)), r('주말 중간부하 할인', s => M(s, 'elec_wkd_rate_mid'), fmax(2)),
+        r('지상역률', s => M(s, 'elec_pf'), fmax(2)), r('진상역률', s => M(s, 'elec_pf_lead'), fmax(2)),
+        ...prodRows];
+      if (uk === 'gas') {
+        const part = (n, k, hk, ck) => [{ grp: n },
+          r('계', s => { const x = G(s) && G(s)[k]; return x ? x.total : null; }, f0, { sum: true, b: true }),
+          r('가스사용료', s => { const x = G(s) && G(s)[k]; return x ? x.cost : null; }, f0, { sum: true }),
+          r('부가세', s => { const x = G(s) && G(s)[k]; return x ? x.vat : null; }, f0, { sum: true }),
+          r('보정기교체', s => { const x = G(s) && G(s)[k]; return x ? x.fee : null; }, f0, { sum: true }),
+          r('청구량 (MJ)', s => { const x = G(s) && G(s)[k]; return x ? x.mj : null; }, fxd(4), { sum: true }),
+          r('사용량 (㎥)', s => { const x = G(s) && G(s)[k]; return x ? x.m3 : null; }, fxd(4), { sum: true }),
+          r('전월지침 (㎥)', s => M(s, k === 'boiler' ? 'gas_boiler_prev' : 'gas_rest_prev'), fxd(0)), r('당월지침 (㎥)', s => M(s, k === 'boiler' ? 'gas_boiler_cur' : 'gas_rest_cur'), fxd(0)),
+          r('보정계수', s => M(s, ck), fmax(6)), r('열량계수 (MJ/㎥)', s => M(s, hk) ?? M(s, 'gas_heat'), fxd(4))];
+        return [{ grp: '1) 비용' },
+          r('비용 총계 (VAT 포함)', s => s.gas.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.gas.status === '가마감' }),
+          r('공급가액 (VAT 별도)', s => s.gas.exvat, f0, { sum: true }),
+          r('부가세', s => s.gas.cost === null || s.gas.exvat === null ? null : s.gas.cost - s.gas.exvat, f0, { sum: true }),
+          r('원단위 절사', s => { const g = G(s); return g && s.gas.status === '확정' ? s.gas.cost - (((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) : null; }, f0, { sum: true }),
+          r('실행 단가 (원/MJ)', s => ratio(s.gas.exvat, s.gas.usage), fxd(2), { cmp: true }),
+          { grp: '2) 사용량' }, r('사용량 (MJ)', s => s.gas.usage, f0, { sum: true, b: true, cmp: true }), r('사용량 (㎥)', s => s.gas.m3, fxd(1), { sum: true, cmp: true }),
+          ...part('관류보일러', 'boiler', 'gas_heat', 'gas_boiler_corr'), ...part('식당', 'rest', 'gas_rest_heat', 'gas_rest_corr'),
+          { grp: '3) 단가' }, r('단가 (원/MJ)', s => M(s, 'gas_price'), fxd(4), { cmp: true }),
+          ...prodRows];
+      }
+      if (uk === 'water') {
+        const tiers = u => { if (u === null || u === undefined) return [null, null, null, null, null]; const t1 = Math.min(u, 50), t2 = Math.min(Math.max(0, u - 50), 50), t3 = Math.min(Math.max(0, u - 100), 200), t4 = Math.min(Math.max(0, u - 300), 700), t5 = Math.max(0, u - 1000); return [t1, t2, t3, t4, t5]; };
+        const meter = (n, k, ck) => [{ grp: n },
+          r('합계', s => s.water[ck], f0, { sum: true, b: true, cmp: true }),
+          r('상수도 금월사용료', s => (s.water[k] || {}).useFee ?? null, f0, { sum: true }), r('상수도 감면', s => (s.water[k] || {}).reduce ?? null, f0, { sum: true }),
+          r('구경별요금', s => (s.water[k] || {}).baseFee ?? null, f0, { sum: true }),
+          r('물이용 금월사용료', s => (s.water[k] || {}).waterUse ?? null, f0, { sum: true }), r('물이용 감면', s => (s.water[k] || {}).reduce2 ?? null, f0, { sum: true }),
+          r('사용량 (㎥)', s => (s.water[k] || {}).usage ?? null, f0, { sum: true, cmp: true }),
+          ...['1~50㎥', '51~100㎥', '101~300㎥', '301~1000㎥', '1001㎥~'].map((t, i) => r(`  ${t}`, s => tiers((s.water[k] || {}).usage ?? null)[i], f0, { sum: true }))];
+        return [{ grp: '1) 비용 (부가세 없음)' }, r('비용 총계', s => s.water.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.water.status === '가마감' }),
+          r('실행 단가 (원/㎥)', s => ratio(s.water.cost, s.water.usage), fxd(1), { cmp: true }),
+          { grp: '2) 사용량' }, r('사용량 합계 (㎥)', s => s.water.usage, f0, { sum: true, b: true, cmp: true }),
+          ...meter('40A', 'w40', 'w40cost'), ...meter('50A', 'w50', 'w50cost'),
+          { grp: '3) 단가' }, ...[['w_rate1', '1~50㎥'], ['w_rate2', '51~100㎥'], ['w_rate3', '101~300㎥'], ['w_rate4', '301~1000㎥'], ['w_rate5', '1001㎥~'], ['w_use_rate', '물이용부담금']].map(([k, t]) => r(`${t} (원/㎥)`, s => M(s, k), f0)),
+          r('40A 구경별요금 (원)', s => M(s, 'w40_base_fee'), f0), r('50A 구경별요금 (원)', s => M(s, 'w50_base_fee'), f0),
+          ...prodRows];
+      }
+      return [{ grp: '1) 비용 (부가세 없음)' },
+        r('비용 총계', s => s.ww.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.ww.status === '가마감' }),
+        r('시설사용료 (기타사용료)', s => M(s, 'ww_facility_fee'), f0, { sum: true }), r('개선부담금', s => M(s, 'ww_improve_fee'), f0, { sum: true }),
+        r('실행 단가 (원/㎥)', s => ratio(s.ww.cost, s.ww.usage), fxd(1), { cmp: true }),
+        r('위탁처리비 (합계 제외)', s => s.ww.outsource, f0, { sum: true }), r('슬러지처리비 (합계 제외)', s => s.ww.sludge, f0, { sum: true }),
+        { grp: '2) 사용량' }, r('발생량 합계 (㎥)', s => s.ww.usage, fxd(1), { sum: true, b: true, cmp: true }),
+        r('폐수 발생량', s => s.ww.flow, fxd(1), { sum: true }), r('오수량', s => s.ww.sewage, fxd(1), { sum: true }),
+        ...prodRows];
+    }
+    function renderUDet() {
+      const y = udYear, ms = yearMonths(y), cs = ms.map(S), U = UT.UTILS.find(u => u.k === udUtil);
+      document.getElementById('udet-title').textContent = `${U.name} 상세 내역 · ${y}년`;
+      document.getElementById('udet-utils').innerHTML = UT.UTILS.map(u => `<button class="chip ${u.k === udUtil ? 'on' : ''}" onclick="udUtil='${u.k}';renderUDet()">${u.name}</button>`).join('');
+      document.getElementById('udet-cmp').innerHTML = cmpChips();
+      const spec = udSpec(udUtil), rows = [];
+      const sumOf = a => a.some(v => v !== null && v !== undefined) ? a.reduce((x, v) => x + (v || 0), 0) : null;
+      const avgOf = a => { const v = a.filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+      spec.forEach(sp => {
+        if (sp.grp) { rows.push({ grp: sp.grp }); return; }
+        const vals = cs.map(s => { const v = sp.f(s); return v === undefined ? null : v; });
+        if (vals.every(v => v === null || v === 0) && !sp.b && !sp.cmp) return; // 한 번도 안 쓴 줄은 숨김
+        rows.push({ label: sp.l, vals, fmt: sp.fmt, b: sp.b, sum: sp.sum ? sumOf(vals) : null, avg: avgOf(vals), prov: sp.prov ? cs.map(sp.prov) : null });
+        if (sp.cmp) [['prev', '전월대비', ym => UT.prevYm(ym)], ['ly', '전년동월대비', ym => UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)))]].forEach(([k, nm, ref]) => {
+          if (!CMP_SHOW[k]) return;
+          const d = [], p = [];
+          ms.forEach((ym, i) => { if (ym >= thisYm && !UT.monthComplete(DAILY, ym)) { d.push(null); p.push(null); return; }
+            const c = vals[i], b = sp.f(S(ref(ym))); if (c === null || c === undefined || isNaN(c) || b === null || b === undefined || isNaN(b)) { d.push(null); p.push(null); return; }
+            d.push(c - b); p.push(b ? (c / b - 1) * 100 : null); });
+          rows.push({ label: nm, cmp: true, vals: d, pct: p, fmt: sp.fmt });
+        });
+      });
+      udRows = rows;
+      let h = `<table class="t ud"><tr><th class="l">구분</th>${monthLabels.map(m => `<th>${m}</th>`).join('')}<th>합계</th><th>평균</th></tr>`;
+      rows.forEach(r => {
+        if (r.grp) { h += `<tr class="grp"><td colspan="15">${esc(r.grp)}</td></tr>`; return; }
+        if (r.cmp) { h += `<tr class="cmp"><td class="l">└ ${esc(r.label)}</td>` + r.vals.map((d, i) => d === null ? '<td class="na">-</td>' : `<td class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : d < 0 ? '−' : ''}${r.fmt(Math.abs(d))}${r.pct[i] === null ? '' : `<br><span class="pc">${r.pct[i] >= 0 ? '+' : ''}${nf1.format(r.pct[i])}%</span>`}</td>`).join('') + '<td></td><td></td></tr>'; return; }
+        h += `<tr class="${r.b ? 'm1' : ''}"><td class="l">${esc(r.label)}</td>` + r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}</td>`).join('') +
+          `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.avg === null ? '' : r.fmt(r.avg)}</td></tr>`;
+      });
+      document.getElementById('udet-table').innerHTML = h + '</table>';
+    }
+    async function downloadUDet() {
+      try {
+        await ensureXLSX();
+        const U = UT.UTILS.find(u => u.k === udUtil), aoa = [['구분', ...monthLabels, '합계', '평균']];
+        const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 10000) / 10000 : v);
+        udRows.forEach(r => {
+          if (r.grp) { aoa.push([r.grp]); return; }
+          if (r.cmp) { aoa.push([`${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
+          aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), clean(r.avg)]);
+        });
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `${U.name}상세`);
+        XLSX.writeFile(wb, `유틸리티_${U.name}상세_${udYear}.xlsx`);
+      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
+    }
