@@ -3635,13 +3635,16 @@
       if (g) {
         [['보일러', g.boiler, 'gas_boiler', 'gas_heat', 'gas_boiler_corr'], ['식당', g.rest, 'gas_rest', has(m.gas_rest_heat) ? 'gas_rest_heat' : 'gas_heat', 'gas_rest_corr']].forEach(([n, x, k, hk, ck]) => {
           if (!x) return;
-          h += row(`<b>${n}</b>`, '') + sub('지침 (전월 → 당월)', `${f0(nv(k + '_prev'))} → ${f0(nv(k + '_cur'))} = ${f1(nv(k + '_cur') - nv(k + '_prev'))} ㎥`);
-          h += sub('× 보정계수 = 사용량', `× ${has(m[ck]) ? m[ck] : 1} = ${f1(x.m3)} ㎥`) + sub('× 열량 = 사용열량', `× ${has(m[hk]) ? m[hk] : '-'} = ${f0(x.mj)} MJ`);
-          h += row('사용요금', won(x.cost)) + sub('사용열량 × 단가', `${f0(x.mj)} × ${has(m.gas_price) ? m.gas_price : '-'}`);
-          if (x.fee) h += row('보정기교체비', won(x.fee));
-          h += row('공급가액', won(x.cost + x.fee)) + row('부가세', won(x.vat)) + row('계', won(x.total));
+          const fx = (v, d) => v === null || v === undefined || v === '' || isNaN(Number(v)) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+          const pv = nv(k + '_prev'), cv = nv(k + '_cur');
+          h += row(`<b>${n}</b>`, '') + sub('전월지침 → 당월지침', `${fx(pv, 4)} → ${fx(cv, 4)}`);
+          h += sub('보정계수', has(m[ck]) && Number(m[ck]) !== 1 ? fx(m[ck], 6) : '(없음)') + sub('사용량 (㎥)', fx(x.m3, 4));
+          h += sub('열량계수 (MJ/㎥)', fx(m[hk], 4)) + sub('청구량 (MJ)', fx(x.mj, 4)) + sub('단가 (원/MJ)', fx(m.gas_price, 4));
+          h += row('가스사용료', won(x.cost));
+          if (x.fee) h += row('보정기교체비용', won(x.fee));
+          h += row('부가세', won(x.vat)) + row('<b>소계</b>', `<b>${won(x.total)}</b>`) + sub('공급가액 (사용료 + 교체비)', won(x.cost + x.fee));
         });
-        h += row('합계 사용량', `${f1(g.m3)} ㎥ / ${f0(g.mj)} MJ`);
+        h += row('합계 청구량', `${Number(g.mj).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} MJ`) + sub('합계 사용량', `${Number(g.m3).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ㎥`);
         h += row('<b>공급가액 합</b>', `<b>${won(g.exvat)}</b>`) + (has(raw.gas_bill_exvat) ? (() => { const d = Number(raw.gas_bill_exvat) - g.exvat; return row('고지서 공급가액', `${won(Number(raw.gas_bill_exvat))} ${Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`); })() : '');
         h += chk('청구금액 (10원 미만 절사)', g.total, 'gas_bill_total');
       } else h += row('입력 없음', '');
