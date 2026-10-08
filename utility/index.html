@@ -3071,84 +3071,60 @@
     })();
 
     // =====================================================================
-    // 월간입력 · 생산팀 스마트팩토리(Firebase)에서 원육 투입량·생산일수 가져오기 (읽기 전용)
-    //  - 생산팀 웹 '분석 → 월별현황'의 총 원육 사용량·작업일 = monthly_summary/{YYYY-MM}
-    //  - 그 문서가 없으면 생산일수만 내포장 기록 날짜로 계산
+    // 월간입력 · 생산팀 생산 대시보드(Firebase 프로젝트 ssbon-factory)에서 월별 원육 사용량·작업일수 가져오기
+    //  - Firestore REST 로 monthly_summary/{YYYY-MM} 문서 하나만 GET (읽기 전용 — 쓰기·수정·삭제 요청은 절대 보내지 않음)
+    //  - rmKgAdjusted = 월 총 원육 사용량(공식값), rmKgRecorded = 현장 기록 그대로(참고), workDays = 작업일수, updatedAt = 마지막 갱신
+    //  - 이 문서는 대시보드 '월별현황' 화면을 열 때마다 갱신됨. 해동 등 원본 기록을 직접 더해 계산하지 않음 (화면 값과 달라짐)
     // =====================================================================
-    const SSB = {
-      cfg: { apiKey: 'AIzaSyA0Y6VK8EOahDE607LEWtyG9-U8YP3yqDE', authDomain: 'ssbon-factory.firebaseapp.com', projectId: 'ssbon-factory', appId: '1:815013258298:web:a80156143cf742ece8c103' },
-      sdk: ['https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js', 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'],
-      url: 'https://wooms19-del.github.io/ssbon-2factory/',
-      db: null
-    };
-    async function ssbDb() {
-      if (SSB.db) return SSB.db;
-      for (const u of SSB.sdk) await loadScript(u);
-      const app = firebase.apps.find(a => a.name === 'ssbon') || firebase.initializeApp(SSB.cfg, 'ssbon');
-      const auth = app.auth();
-      if (!auth.currentUser) await auth.signInAnonymously();
-      SSB.db = app.firestore();
-      return SSB.db;
+    const SSB = { doc: ym => `https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/monthly_summary/${encodeURIComponent(ym)}` };
+    function fsVal(v) { // Firestore REST 값 → JS 값
+      if (!v || typeof v !== 'object') return null;
+      if ('doubleValue' in v) return Number(v.doubleValue);
+      if ('integerValue' in v) return Number(v.integerValue);
+      if ('stringValue' in v) return v.stringValue;
+      if ('timestampValue' in v) return v.timestampValue;
+      if ('booleanValue' in v) return v.booleanValue;
+      if ('nullValue' in v) return null;
+      if ('arrayValue' in v) return (v.arrayValue.values || []).map(fsVal);
+      if ('mapValue' in v) return Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, fsVal(x)]));
+      return null;
     }
     async function ssbMonth(ym) {
-      const db = await ssbDb();
-      const from = ym + '-01', to = ym + '-' + String(UT.daysIn(ym)).padStart(2, '0');
-      const res = { ym, rm: null, days: null, src: '', updatedAt: null, sumDays: 0, pkDays: 0, missing: [] };
-      // ① 생산팀 월별 요약 (생산팀 웹에 저장 기능이 들어간 경우 — 월별현황 숫자와 똑같음)
-      try {
-        const doc = await db.collection('monthly_summary').doc(ym).get();
-        if (doc.exists) { const d = doc.data() || {}; if (d.rawMeatKg != null) { res.rm = Number(d.rawMeatKg); res.days = d.workDays != null ? Number(d.workDays) : null; res.updatedAt = d.updatedAt || null; res.src = 'monthly'; } }
-      } catch (e) { }
-      // ② 생산팀 일별 요약(daily_summary): 전처리 투입량(방혈 원육) 합계 · 요약 있는 날 수
-      const snap = await db.collection('daily_summary').where('date', '>=', from).where('date', '<=', to).get();
-      let rm = 0; const sd = new Set();
-      snap.docs.forEach(x => {
-        const d = x.data() || {}, ds = String(d.date || x.id).slice(0, 10);
-        const pp = (d.processes || []).filter(p => p && p.process === '전처리');
-        const kg = pp.reduce((s, p) => s + (Number(p.inputKg) || 0), 0);
-        if (kg > 0) { rm += kg; sd.add(ds); }
-      });
-      res.sumDays = sd.size;
-      // ③ 내포장 기록이 있는 날 (시운전·테스트 제외) — 빠진 날 확인용
-      const pk = await db.collection('packing').where('date', '>=', from).where('date', '<=', to + '').get();
-      const pd = new Set();
-      pk.docs.forEach(x => { const r = x.data() || {}; if (r.testRun || r.isTest) return; const d = String(r.date || '').slice(0, 10); if (d) pd.add(d); });
-      res.pkDays = pd.size;
-      res.missing = [...pd].filter(d => !sd.has(d)).sort();
-      if (res.src !== 'monthly') {
-        if (sd.size) { res.rm = Math.round(rm * 100) / 100; res.days = sd.size; res.src = 'daily'; }
-        if (res.missing.length && pd.size > sd.size) res.days = pd.size; // 생산일수는 내포장 기록 날 수가 더 정확
-      }
-      return res;
+      const r = await fetch(SSB.doc(ym), { method: 'GET', cache: 'no-store' });
+      if (r.status === 404) return { ym, missing: true };
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json(), f = Object.fromEntries(Object.entries(j.fields || {}).map(([k, v]) => [k, fsVal(v)]));
+      const n = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+      return { ym, rm: n(f.rmKgAdjusted), rec: n(f.rmKgRecorded), days: n(f.workDays), updatedAt: f.updatedAt || j.updateTime || null, daily: Array.isArray(f.daily) ? f.daily : [] };
     }
+    const ssbTime = t => { if (!t) return '-'; const d = new Date(t); return isNaN(d) ? String(t) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
     async function openProdImport() {
       if (!isAdmin()) return;
       const ym = monthlyYm;
       openBill();
-      billStatus(`생산팀 웹에서 ${ymLabel(ym)} 실적 읽는 중…`);
+      billStatus(`생산 대시보드에서 ${ymLabel(ym)} 월별현황 읽는 중…`);
       try {
         const r = await ssbMonth(ym);
         const out = [], warn = [];
-        const srcTxt = r.src === 'monthly' ? '생산팀 월별현황 · 총 원육 사용량' : '생산팀 일별 요약 · 전처리 투입량 합계';
-        out.push({ k: 'production_kg', label: `원육 투입량 (${srcTxt})`, v: r.rm, raw: '' });
-        out.push({ k: 'prod_days', label: `생산일수 (${r.src === 'monthly' ? '생산팀 월별현황 · 작업일' : '생산 기록이 있는 날'})`, v: r.days, raw: '' });
-        const md = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
-        if (r.src === 'monthly') warn.push(`생산팀 월별현황과 같은 숫자입니다.${r.updatedAt ? ` (갱신 ${String(r.updatedAt).slice(0, 16).replace('T', ' ')})` : ''}`);
-        else {
-          warn.push(`일별 요약이 있는 날 ${r.sumDays}일 / 내포장 기록이 있는 날 ${r.pkDays}일`);
-          if (r.missing.length) warn.push(`일별 요약이 없는 날 ${r.missing.length}일: ${r.missing.map(md).join(', ')} → 원육 투입량이 그만큼 적게 잡혔습니다. 생산팀 웹 일별 실적에서 그 날짜를 한 번 열면 채워집니다.`);
-          if (r.rm === null) warn.push(`생산팀 웹에 ${ymLabel(ym)} 일별 요약이 없습니다.`);
-          warn.push('일별 요약 합계는 월별현황 "총 원육 사용량"과 조금 다를 수 있습니다 (코스트코 가안·테스트 부위 등 보정 전 값). 월 마감 후 한 번 비교해 주세요.');
+        if (r.missing) {
+          billStatus('');
+          alert(`생산 대시보드에 ${ymLabel(ym)} 월별 요약이 아직 없습니다.\n\n대시보드의 '월별현황' 화면에서 ${ymLabel(ym)}을 한 번 열면 만들어집니다. 그 다음 다시 눌러 주세요.`);
+          closeBill(); return;
         }
+        out.push({ k: 'production_kg', label: '원육 투입량 (생산 대시보드 월별현황 · 총 원육 사용량)', v: r.rm, raw: '' });
+        out.push({ k: 'prod_days', label: '생산일수 (생산 대시보드 · 작업일수)', v: r.days, raw: '' });
+        warn.push(`생산 대시보드 월별현황 값입니다 · 마지막 갱신 ${ssbTime(r.updatedAt)}`);
+        if (r.rec !== null && r.rm !== null && Math.abs(r.rec - r.rm) >= 0.01) warn.push(`참고: 현장 기록 그대로 합계는 ${fmtB(r.rec)} kg (공식값과 ${fmtB(Math.round((r.rec - r.rm) * 100) / 100)} kg 차이 — 생산팀 보정 반영 전 값)`);
+        warn.push('생산팀이 월 마감 때 값을 고치면 대시보드 월별현황 화면을 다시 연 뒤 가져와야 바뀐 값이 들어옵니다.');
         if (ym === thisYm) warn.push('이번 달은 아직 진행 중이라 값이 계속 바뀝니다.');
         // 이미 넣어 둔 값과 다르면 체크를 꺼 둠 (실수로 덮어쓰지 않게 — 비교해 보고 직접 체크)
         out.forEach(o => { const c = billCurVal(ym, o.k); if (c !== undefined && c !== '' && o.v != null && Number(c) !== Number(o.v)) { o.off = true; o.note = `지금 값과 ${(o.v - Number(c) >= 0 ? '+' : '')}${fmtB(Math.round((o.v - Number(c)) * 100) / 100)} 차이 — 바꾸려면 체크`; } });
-        billPages.push({ file: '생산팀 스마트팩토리', page: 1, pages: 1, name: `생산팀 실적 · ${ymLabel(ym)}`, how: '생산팀 웹', ym, out, warn, prev: null });
+        billPages.push({ file: '생산 대시보드 (ssbon-factory)', page: 1, pages: 1, name: `생산팀 실적 · ${ymLabel(ym)}`, how: '월별현황', ym, out, warn, prev: null });
         billStatus('');
         const sel = document.getElementById('bill-ym'); sel.dataset.touched = ''; renderBill();
       } catch (e) {
         console.error(e); billStatus('');
-        alert('생산팀 웹 자료를 읽지 못했습니다: ' + (e.message || e) + '\n\n회사 네트워크에서 gstatic.com / googleapis.com 이 막혀 있거나, 생산팀 웹 보안 설정이 바뀌었을 수 있습니다.');
+        alert('생산 대시보드 자료를 읽지 못했습니다: ' + (e.message || e) + '\n\n회사 네트워크에서 firestore.googleapis.com 이 막혀 있거나, 생산 대시보드 보안 설정이 바뀌었을 수 있습니다.');
       }
     }
 
