@@ -76,6 +76,15 @@
     .btn { background: #2c5aa0; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
     .btn.sec { background: #666; } .mini { font-size: 11px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; }
     .hist { font-size: 12px; color: var(--muted); }
+    .plist { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .prow { display: flex; align-items: center; gap: 8px; padding: 12px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+    .prow:last-child { border-bottom: none; } .prow:active, .prow:hover { background: #f6f8fb; }
+    .prow .tree { color: #bbb; } .prow .pn { font-weight: 700; font-size: 15px; } .prow .pc { flex: 1; font-size: 11px; color: var(--muted); }
+    .prow .pk { font-size: 13px; font-weight: 700; color: var(--blue); } .prow .chev { color: #bbb; font-size: 18px; }
+    .crumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 14px; padding: 2px 2px 4px; }
+    .crumb a { color: var(--blue); text-decoration: none; }
+    .pe { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; } .pe label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+    .pe input, .pe select { font-size: 14px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; min-width: 160px; }
     .card.feed { border-left: 4px solid #7a4fbf; }
     .feedtag { font-size: 11px; color: #5b3a96; background: #f2ecfb; border-radius: 6px; padding: 4px 6px; margin-top: 6px; }
     .feedtag-s { font-size: 11px; color: #5b3a96; }
@@ -127,7 +136,7 @@
             <button onclick="shiftDate(1)">▶</button>
             <button class="today" onclick="changeDate(todayStr())">오늘</button>
           </div>
-          <div class="panels" id="panels"></div>
+          <div class="panels" id="panels" hidden></div>
         </div>
       </div>
     </div>
@@ -170,20 +179,25 @@
 
     let BRK = [], READ = [], workDate = todayStr(), panelSel = null, DRAFT = {}, BDRAFT = {}, NEWB = [], view = 'input';
     async function fetchAll(q) { const out = []; for (let from = 0; ; from += 1000) { const { data, error } = await q().range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; } return out; }
+    async function loadPanels() { try { PANELS = await fetchAll(() => sb.from('hook_panels').select('*').order('sort').order('created_at')); panelErr = ''; } catch (e) { PANELS = []; panelErr = errMsg(e); } }
     async function loadAll() {
       BRK = await fetchAll(() => sb.from('hook_breakers').select('*').eq('active', true).order('panel').order('sort').order('created_at'));
       READ = await fetchAll(() => sb.from('hook_readings').select('*').order('d'));
     }
     const allB = () => BRK.map(b => bv(b)).concat(NEWB);
     const feedOf = b => String((b && b.feeds) || '').trim(); // 하위 분전반 메인(피더)이면 그 분전반 이름
-    const parentOf = p => { const f = allB().find(b => feedOf(b) === p && b.panel !== p); return f || null; };
+    const parentOf = p => { const f = allB().find(b => feedOf(b) === p && b.panel !== p); return f || null; }; // 메인(피더) 차단기
+    let PANELS = [], panelErr = '';
+    const pRow = p => PANELS.find(x => x.name === p);
+    const parentName = p => { const r = pRow(p); if (r && r.parent && r.parent !== p) return r.parent; const f = parentOf(p); return f ? f.panel : ''; };
     function panels() { // 위 분전반 → 하위 분전반 순서 (트리)
-      const set = [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)).concat(PHOTOS.map(p => p.panel).filter(Boolean)).concat(allB().map(feedOf).filter(Boolean)))];
-      const kids = p => allB().filter(b => b.panel === p && feedOf(b) && feedOf(b) !== p).sort((a, c) => (a.sort || 0) - (c.sort || 0)).map(feedOf);
+      const set = [...new Set(PANELS.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(x => x.name).concat(BRK.map(b => b.panel), NEWB.map(b => b.panel), PHOTOS.map(p => p.panel).filter(Boolean), allB().map(feedOf).filter(Boolean), [...PH_EXTRA]))];
+      const kids = p => set.filter(x => x !== p && parentName(x) === p);
       const out = [], seen = new Set(), walk = (p, d) => { if (seen.has(p)) return; seen.add(p); out.push(p); PDEPTH[p] = d; kids(p).forEach(k => walk(k, d + 1)); };
-      set.filter(p => !parentOf(p)).forEach(p => walk(p, 0)); set.forEach(p => walk(p, 0)); // 순환 연결이 있어도 빠지지 않게
+      set.filter(p => !parentName(p) || !set.includes(parentName(p))).forEach(p => walk(p, 0)); set.forEach(p => walk(p, 0)); // 순환 연결이 있어도 빠지지 않게
       return out;
     }
+    const childPanels = p => panels().filter(x => x !== p && parentName(x) === p);
     const PDEPTH = {};
     const readOn = (bid, d) => READ.find(r => r.breaker_id === bid && r.d === d);
     const lastBefore = (bid, d) => READ.filter(r => r.breaker_id === bid && r.d < d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
@@ -199,27 +213,93 @@
     function shiftDate(n) { changeDate(addDays(workDate, n)); }
     const dirtyCount = () => Object.keys(DRAFT).length + Object.keys(BDRAFT).length + NEWB.filter(b => b.name.trim()).length;
 
+    const qj = v => JSON.stringify(v).replace(/"/g, '&quot;');
     function renderInput() {
       document.getElementById('work-date').value = workDate;
-      const ps = panels(); if (!panelSel || !ps.includes(panelSel)) panelSel = ps[0] || null;
-      const cnt = p => { const bs = BRK.filter(b => b.panel === p); return `${bs.filter(b => readOn(b.id, workDate) || DRAFT[b.id]).length}/${bs.length}`; };
-      document.getElementById('panels').innerHTML = ps.map(p => `<button class="${p === panelSel ? 'on' : ''}" onclick="panelSel=${JSON.stringify(p).replace(/"/g, '&quot;')};renderInput()">${PDEPTH[p] ? '<span class="sub">' + '↳'.repeat(PDEPTH[p]) + '</span> ' : ''}${esc(p)}<span class="n">${cnt(p)}</span></button>`).join('') +
-        `<button onclick="addPanel()">＋ 분전반</button>`;
-      const el = document.getElementById('content');
-      if (!panelSel) { el.innerHTML = `<div class="card"><b>분전반을 먼저 만들어 주세요.</b><div class="hint">위의 「＋ 분전반」을 누르고 분전반 이름(예: P-레토르트, 기계실 MCC)을 넣은 뒤, 차단기를 추가합니다.</div></div>`; renderSumBar(); return; }
-      const bs = BRK.filter(b => b.panel === panelSel).concat(NEWB.filter(b => b.panel === panelSel));
-      const par = parentOf(panelSel);
-      el.innerHTML = `<datalist id="pl">${ps.filter(p => p !== panelSel).map(p => `<option value="${esc(p)}">`).join('')}</datalist>` +
-        (par ? `<div class="card feedinfo">↳ <b>${esc(panelSel)}</b>은(는) <a href="#" onclick="panelSel=${JSON.stringify(par.panel).replace(/"/g, '&quot;')};renderInput();return false">${esc(par.panel)}</a> 의 「${esc(par.name || '차단기')}」에서 분기된 하위 분전반입니다.</div>` : '') +
-        photoStrip(panelSel) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
-        bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(panelSel)})</button>`;
+      const ps = panels(); if (panelSel && !ps.includes(panelSel)) panelSel = null;
+      if (!panelSel) renderPanelList(ps); else renderPanelDetail(panelSel, ps);
       renderSumBar();
+    }
+    function openPanel(p) { panelSel = p; renderInput(); window.scrollTo(0, 0); }
+    function pStat(p) { // 차단기 수, 오늘 잰 수, 하위 포함 kW
+      const bs = allB().filter(b => b.panel === p && String(b.name || '').trim()), m = bs.filter(b => readOn(b.id, workDate) || DRAFT[b.id]).length, st = subtreeKw(p, true);
+      return { n: bs.length, m, kw: st.kw, kn: st.n };
+    }
+    function pRowHtml(p, depth) {
+      const t = pStat(p), kids = childPanels(p).length;
+      return `<div class="prow" style="padding-left:${12 + depth * 22}px" onclick="openPanel(${qj(p)})">
+        ${depth ? '<span class="tree">└</span>' : ''}<span class="pn">${esc(p)}</span>
+        <span class="pc">${t.n ? `차단기 ${t.n} · 오늘 ${t.m}/${t.n}` : '차단기 없음'}${kids ? ` · 하위 ${kids}` : ''}</span>
+        <span class="pk">${t.kn ? nf(t.kw, 1) + ' kW' : ''}</span><span class="chev">›</span></div>`;
+    }
+    function renderPanelList(ps) {
+      const el = document.getElementById('content');
+      let h = panelErr ? `<div class="card" style="border-color:var(--red)"><b>분전반 목록을 저장할 표가 없습니다.</b><div class="hint">Supabase에 19번 SQL(19_hook_photos.sql)을 실행해 주세요. 실행 전에는 새로 만든 분전반이 새로고침하면 사라집니다.</div></div>` : '';
+      h += `<div class="hint">분전반을 누르면 차단기가 나옵니다. 오른쪽 kW = 오늘 잰 부하 합 (하위 분전반 포함, 메인 차단기 이중 합산 없음).</div>`;
+      h += ps.length ? `<div class="plist">${ps.map(p => pRowHtml(p, PDEPTH[p] || 0)).join('')}</div>` : `<div class="card"><b>분전반을 먼저 만들어 주세요.</b></div>`;
+      h += `<button class="addbtn" onclick="addPanel('')">＋ 분전반 추가 (최상위)</button>`;
+      el.innerHTML = h;
+    }
+    function renderPanelDetail(p, ps) {
+      const el = document.getElementById('content'), bs = BRK.filter(b => b.panel === p).concat(NEWB.filter(b => b.panel === p));
+      const chain = []; for (let x = parentName(p), g = 0; x && g < 10; x = parentName(x), g++) chain.unshift(x);
+      const feeder = parentOf(p), kids = childPanels(p), desc = new Set([p]); (function d(x) { childPanels(x).forEach(c => { if (!desc.has(c)) { desc.add(c); d(c); } }); })(p);
+      let h = `<datalist id="pl">${ps.filter(x => x !== p).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+        <div class="crumb"><a href="#" onclick="openPanel(null);return false">◀ 분전반 목록</a>${chain.map(x => ` › <a href="#" onclick="openPanel(${qj(x)});return false">${esc(x)}</a>`).join('')} › <b>${esc(p)}</b>
+          <button class="mini" style="margin-left:auto" onclick="document.getElementById('pedit').hidden=!document.getElementById('pedit').hidden">⚙ 분전반 정보</button></div>
+        <div class="card" id="pedit" hidden><div class="pe">
+          <label>이름 <input id="pe-name" value="${esc(p)}"></label>
+          <label>상위 분전반 <select id="pe-par"><option value="">(최상위)</option>${ps.filter(x => !desc.has(x)).map(x => `<option ${x === parentName(p) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+          <div class="tool" style="margin:0"><button class="btn" onclick="savePanelInfo(${qj(p)})">저장</button><button class="btn sec" onclick="delPanel(${qj(p)})">분전반 삭제</button></div></div>
+          <div class="hint">이름을 바꾸면 차단기·사진도 같이 옮겨집니다. 삭제는 차단기가 없을 때만 되고, 하위 분전반은 한 단계 위로 올라갑니다.</div></div>`;
+      if (feeder) h += `<div class="card feedinfo">↳ <b>${esc(p)}</b>은(는) <a href="#" onclick="openPanel(${qj(feeder.panel)});return false">${esc(feeder.panel)}</a> 의 「${esc(feeder.name || '차단기')}」에서 분기된 하위 분전반입니다.</div>`;
+      if (kids.length) h += `<div class="hint" style="margin-top:4px">하위 분전반</div><div class="plist">${kids.map(k => pRowHtml(k, 1)).join('')}</div>`;
+      h += photoStrip(p) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
+        bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(p)})</button><button class="addbtn" onclick="addPanel(${qj(p)})">＋ 하위 분전반 추가 (${esc(p)} 아래)</button>`;
+      el.innerHTML = h;
+    }
+    async function addPanel(parent) {
+      const n = (prompt(parent ? `「${parent}」 아래에 만들 하위 분전반 이름` : '분전반 이름 (예: P-레토르트, 기계실 MCC, 생산동 LP-1)') || '').trim(); if (!n) return;
+      if (panels().includes(n)) { alert('같은 이름의 분전반이 이미 있습니다.'); return; }
+      const row = { name: n, parent: parent || '', sort: PANELS.reduce((a, x) => Math.max(a, x.sort || 0), 0) + 1 };
+      const { error } = await sb.from('hook_panels').insert(row);
+      if (error) { alert('분전반 저장 실패: ' + errMsg(error) + (/relation|does not exist|schema cache/i.test(errMsg(error)) ? '\n\nSupabase에 19번 SQL을 실행해 주세요.' : '')); return; }
+      PANELS.push(row); openPanel(n);
+    }
+    async function ensurePanelRow(p) { if (pRow(p)) return; const row = { name: p, parent: parentName(p) || '', sort: PANELS.reduce((a, x) => Math.max(a, x.sort || 0), 0) + 1 }; const { error } = await sb.from('hook_panels').insert(row); if (error) throw error; PANELS.push(row); }
+    async function savePanelInfo(old) {
+      const nn = document.getElementById('pe-name').value.trim(), par = document.getElementById('pe-par').value;
+      if (!nn) { alert('이름을 넣어 주세요.'); return; }
+      if (nn !== old && panels().includes(nn)) { alert('같은 이름의 분전반이 이미 있습니다.'); return; }
+      try {
+        await ensurePanelRow(old);
+        { const { error } = await sb.from('hook_panels').update({ name: nn, parent: par }).eq('name', old); if (error) throw error; }
+        if (nn !== old) {
+          for (const [t, col] of [['hook_breakers', 'panel'], ['hook_breakers', 'feeds'], ['hook_photos', 'panel'], ['hook_panels', 'parent']]) {
+            const { error } = await sb.from(t).update({ [col]: nn }).eq(col, old); if (error && !/relation|does not exist/i.test(errMsg(error))) throw error; }
+          BRK.forEach(b => { if (b.panel === old) b.panel = nn; if (b.feeds === old) b.feeds = nn; }); NEWB.forEach(b => { if (b.panel === old) b.panel = nn; if (b.feeds === old) b.feeds = nn; });
+          Object.values(BDRAFT).forEach(d => { if (d.feeds === old) d.feeds = nn; }); PHOTOS.forEach(x => { if (x.panel === old) x.panel = nn; }); PANELS.forEach(x => { if (x.parent === old) x.parent = nn; });
+        }
+        Object.assign(pRow(old) || pRow(nn) || {}, { name: nn, parent: par }); toast('분전반 정보 저장'); openPanel(nn);
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
+    async function delPanel(p) {
+      if (allB().some(b => b.panel === p && String(b.name || '').trim())) { alert('차단기가 있는 분전반은 지울 수 없습니다. 차단기를 먼저 다른 분전반으로 옮기거나 목록에서 빼 주세요.'); return; }
+      if (!confirm(`「${p}」 분전반을 지울까요?`)) return;
+      const up = parentName(p);
+      try {
+        { const { error } = await sb.from('hook_panels').update({ parent: up }).eq('parent', p); if (error) throw error; }
+        { const { error } = await sb.from('hook_panels').delete().eq('name', p); if (error) throw error; }
+        PANELS.forEach(x => { if (x.parent === p) x.parent = up; }); PANELS = PANELS.filter(x => x.name !== p); NEWB = NEWB.filter(b => b.panel !== p); PH_EXTRA.delete(p);
+        openPanel(up || null);
+      } catch (e) { alert('삭제 실패: ' + errMsg(e)); }
     }
     // 분전반 아래(하위 포함) 말단 부하 합 — today=true면 측정 화면 날짜 값, 아니면 차단기별 최근 가동 측정값
     function subtreeKw(p, today, seen = new Set()) {
       if (seen.has(p)) return { kw: 0, n: 0 }; seen.add(p); let kw = 0, n = 0;
+      childPanels(p).forEach(c => { const s = subtreeKw(c, today, seen); kw += s.kw; n += s.n; });
       allB().filter(b => b.panel === p).forEach(b => {
-        if (feedOf(b) && feedOf(b) !== p) { const s = subtreeKw(feedOf(b), today, seen); kw += s.kw; n += s.n; return; }
+        if (feedOf(b) && feedOf(b) !== p) return; // 하위 분전반 메인은 하위 쪽 차단기로 합산
         let k = null; if (today) { const c = cur(b); if (c.running !== false) k = kwOf(b, c); } else { const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0]; if (l) k = kwOf(b, l); }
         if (k !== null) { kw += k; n++; } });
       return { kw, n };
@@ -269,10 +349,6 @@
       if (nb) nb[k] = k === 'volt' ? v : v; else { const d = BDRAFT[id] = BDRAFT[id] || {}; d[k] = v; }
       renderInput();
     }
-    function addPanel() {
-      const n = (prompt('분전반 이름 (예: P-레토르트, 기계실 MCC, 생산동 LP-1)') || '').trim(); if (!n) return;
-      panelSel = n; if (!BRK.some(b => b.panel === n) && !NEWB.some(b => b.panel === n)) addBreaker(); else renderInput();
-    }
     function addBreaker() {
       NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), _new: true, panel: panelSel, name: '', volt: 380, rated_kw: '', rated_a: '', note: '', sort: BRK.filter(b => b.panel === panelSel).length + NEWB.length });
       renderInput(); setTimeout(() => { const c = document.querySelectorAll('.card .nm'); if (c.length) c[c.length - 1].focus(); }, 30);
@@ -281,7 +357,8 @@
       const bs = BRK.concat(NEWB).filter(b => b.panel === panelSel); let tot = 0, n = 0, ft = 0;
       bs.forEach(b => { const c = cur(bv(b)); const k = kwOf(bv(b), c); if (k !== null && c.running !== false) { if (feedOf(bv(b))) ft += k; else { tot += k; n++; } } });
       const dc = dirtyCount();
-      document.getElementById('sum').innerHTML = panelSel ? `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${ft ? ` <span title="하위 분전반 메인 차단기 — 합계 제외">+ 하위 피더 ${nf(ft, 1)}</span>` : ''}${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : '';
+      const all = panels().filter(x => !parentName(x)).reduce((a, x) => { const t = subtreeKw(x, true); return { kw: a.kw + t.kw, n: a.n + t.n }; }, { kw: 0, n: 0 });
+      document.getElementById('sum').innerHTML = !panelSel ? `전체 · 오늘 가동 ${all.n}개 합 <b>${nf(all.kw, 1)} kW</b>${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${ft ? ` <span title="하위 분전반 메인 차단기 — 합계 제외">+ 하위 피더 ${nf(ft, 1)}</span>` : ''}${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}`;
       const sbtn = document.getElementById('save-btn'); sbtn.classList.toggle('has', !!dc); sbtn.textContent = dc ? `저장 (${dc})` : '저장';
     }
     async function saveAll() {
@@ -409,7 +486,7 @@
       toast(`사진 ${ok}장 올림${fail.length ? ` · 실패 ${fail.length}` : ''}`);
       if (fail.length) alert('올리지 못한 사진:\n' + fail.join('\n') + (/relation|does not exist|schema cache/i.test(fail.join(' ')) ? '\n\nSupabase에 19번 SQL을 실행했는지 확인해 주세요.' : ''));
     }
-    function phPickPanel(v) { if (v === '__new') { const n = (prompt('분전반 이름 (예: P-레토르트, 기계실 MCC)') || '').trim(); if (n) { phPanel = n; if (!NEWB.some(b => b.panel === n) && !BRK.some(b => b.panel === n)) PH_EXTRA.add(n); } } else phPanel = v; renderPhoto(); }
+    function phPickPanel(v) { if (v === '__new') { const n = (prompt('분전반 이름 (예: P-레토르트, 기계실 MCC)') || '').trim(); if (n) { phPanel = n; if (!panels().includes(n)) { PH_EXTRA.add(n); ensurePanelRow(n).catch(() => {}); } } } else phPanel = v; renderPhoto(); }
     const PH_EXTRA = new Set(); // 사진 올리기 전 새로 적은 분전반 이름
     async function phSet(id, k, v) {
       if (k === 'panel' && v === '__new') { v = (prompt('분전반 이름') || '').trim(); if (!v) { renderPhoto(); return; } }
@@ -478,6 +555,7 @@
       const add = IMP.filter(r => !r.dup); if (!add.length) return;
       add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note, feeds: r.feeds || '',
         sort: BRK.filter(b => b.panel === r.panel).length + NEWB.filter(b => b.panel === r.panel).length }); });
+      [...new Set(add.map(r => r.panel).concat(add.map(r => r.feeds).filter(Boolean)))].forEach(p => { if (!pRow(p)) ensurePanelRow(p).catch(() => {}); });
       panelSel = add[0].panel; IMP = []; setView('input'); toast(`차단기 ${add.length}개 추가 — 확인 후 [저장]`);
     }
     function lbOpen(p, i) { LB = { list: phOf(p), i }; lbShow(); document.getElementById('lb').hidden = false; }
@@ -493,7 +571,7 @@
       title: '후크메타 부하 측정',
       onReady: async P => {
         sb = P.sb; me = P.me;
-        try { await loadAll(); await loadPhotos(); renderInput(); }
+        try { await loadAll(); await loadPanels(); await loadPhotos(); panelSel = null; renderInput(); }
         catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 17번 SQL(17_hook_load.sql)을 실행했는지 확인해 주세요.</div>`; }
       }
     });
