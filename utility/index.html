@@ -2308,7 +2308,7 @@
         if (u5(c) !== null) sub.push(`50A 사용량 = ${exCmp(u5(c), u5(c0), exF(0), '㎥')}`);
       }
       const GA = '가나다라마바사아';
-      if (uk !== 'gas' && uk !== 'water') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스·용수는 세부 항목 없이 1~4번만
+      if (uk === 'elec') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스·용수·폐수는 세부 항목 없이 1~4번만
       L.push(`3. 원육 사용량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
       L.push(`4. 원육 사용량당 ${N}${exUW(uk)} = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
       return { lines: L, s, c };
