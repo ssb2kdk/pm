@@ -150,6 +150,9 @@
     .dc-t td { text-align: center; white-space: nowrap; } .dc-t td.l { text-align: left; }
     table.t.dc-t td:first-child { text-align: center; }
     .dc-t td.dc-note { white-space: normal; min-width: 180px; max-width: 320px; font-size: 12px; } .dc-note div { margin-bottom: 2px; }
+    .dc-t td.dc-pack { white-space: normal; min-width: 170px; font-size: 12px; } .dc-pn { color: #555; }
+    table.t.dc-corr td { text-align: center; min-width: 92px; vertical-align: middle; } table.t.dc-corr th { white-space: nowrap; }
+    .dc-lv { font-size: 11px; } .dc-sl { font-size: 10px; color: #333; opacity: .8; }
     .dc-sun { color: #d93025; } .dc-sat { color: #1565c0; }
     .dc-t tr.dc-off td { color: #999; background: #fafafa; }
     .dc-t tr.dc-sum td { background: #f2f5fa; font-weight: 600; }
@@ -2729,7 +2732,11 @@
     // =====================================================================
     // 이상감지 · 생산 일별 요약과 유틸리티 비교 (원육 부위별 투입·포장 수량·공정별 시간 ↔ 전기·보일러·용수·폐수)
     // =====================================================================
-    let dcYm = null, dcU = 'elec', dcP = 'rm';
+    let dcYm = null, dcU = 'elec', dcP = 'rm', dcRange = 3;
+    const dcProdName = (n) => { const a = String(n || '').split('·').map(x => x.trim()).filter(Boolean); return a.length > 1 ? a.slice(1).join(' · ') : (a[0] || '(제품명 없음)'); };
+    function pearson(xs, ys) { const n = xs.length; if (n < 3) return null; const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+      let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+      if (sxx < 1e-9 || syy < 1e-9) return null; return { r: sxy / Math.sqrt(sxx * syy), b: sxy / sxx, a: my - sxy / sxx * mx, n }; }
     const DC_U = [['elec', '전기', 'kWh', '#2a78d6', ds => (UT.dailyUsage(DAILY, ds) || {}).elec], ['gas', '보일러 가스', '㎥', '#eb6834', ds => UT.diffReading(DAILY, ds, ['gas_boiler'])],
       ['water', '용수', '㎥', '#1baf7a', ds => (UT.dailyUsage(DAILY, ds) || {}).water], ['ww', '폐수', '㎥', '#eda100', ds => (UT.dailyUsage(DAILY, ds) || {}).ww]];
     const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h']];
@@ -2738,6 +2745,7 @@
       if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 요약 불러오는 중...</div>';
         try { await loadProdDaily(); } catch (e) { el.innerHTML = `<div class="empty">생산 대시보드 자료를 읽지 못했습니다: ${esc(errMsg(e))}</div>`; return; } }
       if (!dcYm) dcYm = thisYm;
+      try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
       const W = ['일', '월', '화', '수', '목', '금', '토'], n = UT.daysIn(dcYm), nh = v => v ? nf1.format(v) : '';
       const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p = PRODD[ds] || null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); }
       const uv = v => v === null || v === undefined || isNaN(v) ? '<span class="hint">-</span>' : (Math.abs(v) >= 100 ? f0(v) : nf1.format(v));
@@ -2746,24 +2754,26 @@
         <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
         <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
-        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2">포장 EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
+        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2" class="l">포장 제품 · EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
         <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>파쇄</th><th>포장</th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
         rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
           const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
           return `<tr class="${!p ? 'dc-off' : ''}"><td>${Number(r.ds.slice(8))}일 (<span class="${w === 0 ? 'dc-sun' : w === 6 ? 'dc-sat' : ''}">${W[w]}</span>)</td>
             <td class="l">${parts.length ? parts.map(([k]) => esc(k)).join('<br>') : (p ? '' : '<span class="hint">생산 없음</span>')}</td><td>${parts.length ? parts.map(([, v]) => f0(v)).join('<br>') : ''}</td>
-            <td ${items ? `title="${esc(items)}" style="cursor:help"` : ''}>${p && p.ea ? f0(p.ea) : ''}</td>
+            <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
+              return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
             <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
-            <td>${f0(sum(r => r.p && r.p.ea))}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}<td></td></tr>`;
+            <td class="l dc-pack">${(() => { const m = {}; pd.forEach(r => (r.p.packItems || []).forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; })); return Object.entries(m).map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join(''); })()}<div>계 ${f0(sum(r => r.p && r.p.ea))}</div></td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}<td></td></tr>`;
           const avg = (f, rs) => { const v = rs.map(f).filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
           const off = rows.filter(r => !r.p);
           const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
           const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="7"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 EA에 마우스를 올리면 제품별 수량이 보입니다. 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
+      h += dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
       mkChart('dc-chart', { data: { labels: rows.map(r => Number(r.ds.slice(8)) + '일'), datasets: [
@@ -2771,6 +2781,38 @@
           { type: 'line', label: PP[1], data: rows.map(r => r.p ? (r.p[dcP] || 0) : 0), borderColor: '#333', backgroundColor: '#333', pointRadius: 3, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
         options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom' } },
           scales: { y: { beginAtZero: true, title: { display: true, text: U[2] } }, y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: PP[1] } } } } });
+    }
+
+    // 연관성(상관계수) — 생산한 날만, 기간 끝 = 선택한 달 말일
+    function dcCorrHtml() {
+      const end = UT.dateStr(dcYm, UT.daysIn(dcYm)) > todayStr ? UT.addDays(todayStr, -1) : UT.dateStr(dcYm, UT.daysIn(dcYm));
+      let st = dcYm; for (let i = 1; i < dcRange; i++) st = UT.prevYm(st); const from = UT.dateStr(st, 1);
+      const days = []; for (let ds = from; ds <= end; ds = UT.addDays(ds, 1)) { const p = PRODD[ds]; if (p && p.rm > 0) days.push({ ds, p, t: (TEMPS || {})[ds], u: DC_U.map(u => u[4](ds)) }); }
+      const cols = [...DC_P, ['temp', '평균기온 ℃']], xv = (d, k) => k === 'temp' ? (d.t === undefined || d.t === null ? null : d.t) : (d.p[k] || 0);
+      const M = DC_U.map((u, ui) => cols.map(([k]) => { const v = days.filter(d => d.u[ui] !== null && d.u[ui] !== undefined && !isNaN(d.u[ui]) && xv(d, k) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => d.u[ui])); }));
+      const lvl = r => { const a = Math.abs(r); return a >= 0.7 ? '강함' : a >= 0.4 ? '보통' : a >= 0.2 ? '약함' : '거의 없음'; };
+      const bg = r => { const a = Math.min(1, Math.abs(r)); return r >= 0 ? `rgba(42,120,214,${(a * 0.75).toFixed(2)})` : `rgba(217,48,37,${(a * 0.6).toFixed(2)})`; };
+      const unitX = { rm: 'kg', ea: 'EA', prepH: 'h', steamH: 'h', crushH: 'h', packH: 'h', temp: '℃' }, per = { rm: 1000, ea: 10000, temp: 1 };
+      const slope = (c, k, u) => { const m = per[k] || 1, v = c.b * m; return `${unitX[k] === 'h' ? '1h' : k === 'temp' ? '1℃' : (m === 1000 ? '1,000' : '10,000') + unitX[k]}당 ${v >= 0 ? '+' : ''}${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${u[2]}`; };
+      // 생산 항목끼리의 연관 (서로 같이 움직이면 어느 게 진짜 원인인지 구분 어려움)
+      const PX = cols.map(([k]) => cols.map(([k2]) => { const v = days.filter(d => xv(d, k) !== null && xv(d, k2) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => xv(d, k2))); }));
+      let h = `<h4 style="margin:18px 0 6px">연관성 검토 (상관계수 r) <span class="hint">생산한 날 ${days.length}일 · ${from} ~ ${end}</span></h4>
+        <div class="toolbar"><span class="chips">${[[1, '이 달'], [3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 1년']].map(([n, l]) => `<button class="chip ${dcRange === n ? 'on' : ''}" onclick="dcRange=${n};renderDayCmp()">${l}</button>`).join('')}</span></div>`;
+      if (days.length < 8) return h + '<div class="empty">생산한 날이 8일 이상 있어야 계산합니다. 기간을 늘려 보세요.</div>';
+      h += `<div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>` +
+        DC_U.map((u, ui) => `<tr><th>${u[1]}</th>${M[ui].map((c, ci) => c === null ? '<td class="hint">-</td>' :
+          `<td style="background:${bg(c.r)};cursor:pointer" title="${u[1]} ↔ ${cols[ci][1]} · ${c.n}일\n${slope(c, cols[ci][0], u)} (단순 기울기)\n누르면 위 그래프가 이 조합으로 바뀝니다" onclick="${cols[ci][0] === 'temp' ? '' : `dcU='${u[0]}';dcP='${cols[ci][0]}';renderDayCmp();document.getElementById('dc-chart').scrollIntoView({behavior:'smooth',block:'center'})`}">
+            <b>${c.r.toFixed(2)}</b><div class="dc-lv">${lvl(c.r)}</div><div class="dc-sl">${slope(c, cols[ci][0], u)}</div></td>`).join('')}</tr>`).join('') + '</table></div>';
+      // 유틸별 가장 관련 큰 항목 요약
+      h += '<ul class="un-list" style="margin-top:8px">' + DC_U.map((u, ui) => { const c = M[ui].map((c, i) => ({ c, i })).filter(x => x.c).sort((a, b) => Math.abs(b.c.r) - Math.abs(a.c.r));
+        if (!c.length) return `<li>${u[1]}: 계산할 자료 부족</li>`; const t = c[0], t2 = c[1];
+        return `<li><b>${u[1]}</b> — ${cols[t.i][1]}과(와) 가장 관련 큼 (r ${t.c.r.toFixed(2)}, ${lvl(t.c.r)}: ${slope(t.c, cols[t.i][0], u)})${t2 ? `, 다음 ${cols[t2.i][1]} (r ${t2.c.r.toFixed(2)})` : ''}${Math.abs(t.c.r) < 0.4 ? ' → 생산량보다는 기본 부하·날씨·운전 방식 영향이 큰 편' : ''}</li>`; }).join('') + '</ul>';
+      h += `<details style="margin-top:8px"><summary class="hint" style="cursor:pointer">생산 항목끼리 얼마나 같이 움직이는지 보기 (서로 r 0.8 이상이면 둘 중 어느 쪽이 원인인지 구분하기 어려움)</summary>
+        <div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>${cols.map((c, i) => `<tr><th>${c[1]}</th>${PX[i].map((x, j) => i === j ? '<td class="hint">—</td>' : x === null ? '<td class="hint">-</td>' : `<td style="background:${bg(x.r)}">${x.r.toFixed(2)}</td>`).join('')}</tr>`).join('')}</table></div></details>
+        <div class="hint" style="margin-top:6px">• <b>상관계수 r</b>: −1 ~ 1. 1에 가까울수록 그 항목이 많은 날 사용량도 많음, 0이면 관계 없음, 음수면 반대로 움직임. 0.7 이상 강함 · 0.4~0.7 보통 · 0.2~0.4 약함.<br>
+        • <b>기울기</b>: 그 항목만 놓고 봤을 때 1단위 늘면 사용량이 평균 얼마 늘었는지 (다른 항목 영향이 섞여 있음). r²(= r×r)는 사용량 차이 중 그 항목으로 설명되는 비율입니다 (예: r 0.8 → 64%).<br>
+        • 생산한 날만 계산합니다 (쉬는 날을 넣으면 '생산했냐 안 했냐' 차이 때문에 모든 항목이 높게 나옴). 상관이 높아도 원인이라는 증거는 아니고, 원육·시간·EA는 서로 같이 움직이므로 위 '생산 항목끼리' 표도 같이 보세요.</div>`;
+      return h;
     }
 
   </script>
