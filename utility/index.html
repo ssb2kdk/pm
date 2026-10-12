@@ -2378,7 +2378,28 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('udet') && !document.getElementById('udet').hidden) closeUDet(); });
     const fxd = d => v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
     const fmax = d => v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { maximumFractionDigits: d });
+    const UD_SUM = [['sumTotal', '유틸리티 총비용'], ['sumProd', '원육 투입량'], ['sumUnit', '원육 kg당 비용']];
     function udSpec(uk) {
+      const r0 = (l, f, fmt = f0, o = {}) => ({ l, f, fmt, ...o });
+      if (uk === 'sumTotal') return [{ grp: '1) 유틸리티 총비용' },
+        r0('합계 (VAT 포함)', s => s.total, f0, { sum: true, b: true, cmp: true, prov: s => s.status === '가마감' }),
+        r0('VAT 별도', s => s.exvat, f0, { sum: true, cmp: true }), r0('부가세', s => s.total === null || s.exvat === null ? null : s.total - s.exvat, f0, { sum: true }),
+        { grp: '2) 유틸별 비용 (VAT 포함)' },
+        ...UT.UTILS.flatMap(u => [r0(`${u.name}`, s => s[u.k].cost, f0, { sum: true, b: true, cmp: true, prov: s => s[u.k].status === '가마감' }), r0(`  ${u.name} 비중 (%)`, s => ratio(s[u.k].cost, s.total) === null ? null : ratio(s[u.k].cost, s.total) * 100, fxd(1))]),
+        { grp: '3) 참고 (합계 제외)' }, r0('폐수 위탁처리비', s => s.ww.outsource, f0, { sum: true }), r0('슬러지처리비', s => s.ww.sludge, f0, { sum: true })];
+      if (uk === 'sumProd') return [{ grp: '1) 원육 투입량' },
+        r0('원육 투입량 (kg)', s => s.production, f0, { sum: true, b: true, cmp: true }),
+        r0('생산일수 (일)', s => { const v = (s.m || {}).prod_days ?? (MONTHLY[s.ym] || {}).prod_days; return v === undefined || v === null || v === '' ? null : Number(v); }, f0, { sum: true, cmp: true }),
+        r0('생산일 하루당 원육 (kg/일)', s => { const v = (s.m || {}).prod_days ?? (MONTHLY[s.ym] || {}).prod_days; return v ? ratio(s.production, Number(v)) : null; }, f0, { cmp: true }),
+        r0('달력 하루당 원육 (kg/일)', s => s.production ? s.production / UT.daysIn(s.ym) : null, f0, { cmp: true }),
+        { grp: '2) 원육 투입량 기준 사용량' },
+        ...UT.UTILS.map(u => r0(`${u.name} 원육 kg당 사용량 (${u.unit}/kg)`, s => ratio(s[u.k].usage, s.production), v => fU(v, u.k), { cmp: true }))];
+      if (uk === 'sumUnit') return [{ grp: '1) 원육 kg당 비용 (원/kg)' },
+        r0('합계', s => ratio(s.total, s.production), fxd(1), { b: true, cmp: true, prov: s => s.status === '가마감' }),
+        ...UT.UTILS.map(u => r0(u.name, s => ratio(s[u.k].cost, s.production), fxd(1), { cmp: true, prov: s => s[u.k].status === '가마감' })),
+        { grp: '2) 원육 kg당 사용량' },
+        ...UT.UTILS.map(u => r0(`${u.name} (${u.unit}/kg)`, s => ratio(s[u.k].usage, s.production), v => fU(v, u.k), { cmp: true })),
+        { grp: '3) 계산 근거' }, r0('유틸리티 합계 (원)', s => s.total, f0, { sum: true }), r0('원육 투입량 (kg)', s => s.production, f0, { sum: true })];
       const M = (s, k) => { const v = (s.m || {})[k]; return v === undefined || v === null || v === '' || isNaN(Number(v)) ? null : Number(v); };
       const E = s => s.elec.calc || null, G = s => s.gas.calc || null;
       const nz = v => v === null || v === undefined ? null : v;
@@ -2453,9 +2474,10 @@
         ...prodRows];
     }
     function renderUDet() {
-      const y = udYear, ms = yearMonths(y), cs = ms.map(S), U = UT.UTILS.find(u => u.k === udUtil);
+      const y = udYear, ms = yearMonths(y), cs = ms.map(S), U = UT.UTILS.find(u => u.k === udUtil) || { name: (UD_SUM.find(x => x[0] === udUtil) || [])[1] };
       document.getElementById('udet-title').textContent = `${U.name} 상세 내역 · ${y}년`;
-      document.getElementById('udet-utils').innerHTML = UT.UTILS.map(u => `<button class="chip ${u.k === udUtil ? 'on' : ''}" onclick="udUtil='${u.k}';renderUDet()">${u.name}</button>`).join('');
+      document.getElementById('udet-utils').innerHTML = UD_SUM.map(([k, n]) => `<button class="chip ${k === udUtil ? 'on' : ''}" onclick="udUtil='${k}';renderUDet()">${n}</button>`).join('') + '<span style="width:8px"></span>' +
+        UT.UTILS.map(u => `<button class="chip ${u.k === udUtil ? 'on' : ''}" onclick="udUtil='${u.k}';renderUDet()">${u.name}</button>`).join('');
       document.getElementById('udet-cmp').innerHTML = cmpChips();
       const spec = udSpec(udUtil), rows = [];
       const sumOf = a => a.some(v => v !== null && v !== undefined) ? a.reduce((x, v) => x + (v || 0), 0) : null;
@@ -2487,7 +2509,7 @@
     async function downloadUDet() {
       try {
         await ensureXLSX();
-        const U = UT.UTILS.find(u => u.k === udUtil), aoa = [['구분', ...monthLabels, '합계', '평균']];
+        const U = UT.UTILS.find(u => u.k === udUtil) || { name: (UD_SUM.find(x => x[0] === udUtil) || [])[1] }, aoa = [['구분', ...monthLabels, '합계', '평균']];
         const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 10000) / 10000 : v);
         udRows.forEach(r => {
           if (r.grp) { aoa.push([r.grp]); return; }
@@ -3391,8 +3413,8 @@
 
     function yearMonths(y) { return Array.from({ length: 12 }, (_, i) => UT.ym(y, i + 1)); }
 
-    function kpiTile(cls, label, valHtml, cmpHtml, status) {
-      const uk = UT.UTILS.some(u => u.k === cls) ? cls : null;
+    function kpiTile(cls, label, valHtml, cmpHtml, status, det) {
+      const uk = det || (UT.UTILS.some(u => u.k === cls) ? cls : null);
       return `<div class="kpi ${cls} ${uk ? 'clickable' : ''}" ${uk ? `onclick="openUDet('${uk}')" title="누르면 ${label} 상세 내역"` : ''}><div class="lab"><span>${label}</span>${status ? `<span class="st st-${status}">${status}</span>` : ''}</div>
         <div class="val">${valHtml}</div><div class="cmp">${cmpHtml}</div></div>`;
     }
@@ -3407,11 +3429,11 @@
 
       const unitCost = s => ratio(s.total, s.production);
       let html = kpiTile('total', '유틸리티 총비용 (VAT 포함)', `${man(cur.total)}`,
-        `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null);
+        `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null, 'sumTotal');
       html += kpiTile('prod', '원육 투입량', `${f0(cur.production)}<small> kg</small>`,
-        `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null);
+        `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null, 'sumProd');
       html += kpiTile('total', '원육 kg당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
-        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null);
+        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null, 'sumUnit');
       document.getElementById('kpis').innerHTML = html;
       document.getElementById('fc-box').innerHTML = forecastCard(thisYm); // 진행 중인 이번 달 월말 예상
       // 최근 7일 이상 사용
