@@ -2254,6 +2254,7 @@
     // =====================================================================
     let exYm = null, exUtil = 'elec', exChartKind = 'unit', exChart = null;
     const EX_NAME = { elec: '전력', gas: '가스', water: '용수', ww: '폐수' };
+    const exUW = uk => uk === 'ww' ? '발생량' : '사용량'; // 폐수는 발생량
     const EX_BILL = { elec: '전기요금', gas: '도시가스요금', water: '상수도요금', ww: '하수도(폐수)요금' };
     function shiftExMonth(d) { exYm = d > 0 ? UT.nextYm(exYm) : UT.prevYm(exYm); renderExpense(); }
     // "32,596천원 ~ 전월대비 : 345천원(-1.0%)감소."
@@ -2279,7 +2280,7 @@
         L.push('    -. 40A + 50A 사용량 합산하여 40A 고지서 사용량에 적용, 50A 고지서에는 구경요금만 부과');
       }
       L.push(`1. ${N} 비용 = ${exCmp(c.cost, c0.cost, v => exF(0)(v / 1000), '천원')}`);
-      L.push(`2. ${N} 사용량 = ${exCmp(c.usage, c0.usage, exF(0), U.unit)}`);
+      L.push(`2. ${N} ${exUW(uk)} = ${exCmp(c.usage, c0.usage, exF(0), U.unit)}`);
       const sub = [];
       // 일평균: 일일 사용량(전기는 한전 파워플래너 값)을 그 달 날짜별로 평균. 일일 값이 모자라면 월 사용량 ÷ 날수
       const dayAvg = (x, cx) => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = (UT.dailyUsage(DAILY, UT.dateStr(x, d)) || {})[uk]; if (v !== null && v !== undefined && !isNaN(v)) { t += Number(v); n++; } }
@@ -2288,7 +2289,7 @@
         const ga = x => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = UT.diffReading(DAILY, UT.dateStr(x, d), ['gas_boiler']); if (v !== null && v !== undefined && !isNaN(v) && v > 0) { t += Number(v); n++; } } return n ? { v: t / n, n } : { v: null, n: 0 }; };
         const a1 = ga(ym), a0 = ga(UT.prevYm(ym));
         sub.push(`일평균 보일러 가스사용량(가동일 ${a1.n}일) = ${exCmp(a1.v, a0.v, exF(1), '㎥')}`);
-      } else sub.push(`일평균 ${N} 사용량 = ${exCmp(dayAvg(ym, c), dayAvg(UT.prevYm(ym), c0), exF(1), U.unit)}`);
+      } else sub.push(`일평균 ${N} ${exUW(uk)} = ${exCmp(dayAvg(ym, c), dayAvg(UT.prevYm(ym), c0), exF(1), U.unit)}`);
       if (uk === 'elec') {
         const ww = meterKwh(ym, 'elec_ww_kwh'), ww0 = meterKwh(UT.prevYm(ym), 'elec_ww_kwh'), hv = meterKwh(ym, 'elec_hvac_kwh'), hv0 = meterKwh(UT.prevYm(ym), 'elec_hvac_kwh');
         if (ww !== null && hv !== null && c.usage !== null) {
@@ -2309,7 +2310,7 @@
       const GA = '가나다라마바사아';
       if (uk !== 'gas' && uk !== 'water') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스·용수는 세부 항목 없이 1~4번만
       L.push(`3. 원육 사용량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
-      L.push(`4. 원육 사용량당 ${N}사용량 = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
+      L.push(`4. 원육 사용량당 ${N}${exUW(uk)} = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
       return { lines: L, s, c };
     }
     // 지출결의 입력사항 줄: [상세내용, 공급가액, 부가세, 합계]
@@ -2354,7 +2355,7 @@
         <textarea id="ex-text" class="ex-text" rows="${lines.length + 1}">${esc(lines.join('\n'))}</textarea>
         <div class="toolbar" style="margin-top:6px"><button class="btn" onclick="exCopy(document.getElementById('ex-text').value,this)">📋 추가의견 복사</button><span class="hint">전월(${ymLabel(UT.prevYm(exYm))})과 비교 · 비용은 부가세 포함 청구액 기준</span></div></div>`;
       h += `<div class="card"><h3>그래프 <span class="sub">그림 복사 후 그룹웨어 「캡쳐자료」 칸에 붙여넣기</span></h3>
-        <div class="toolbar"><span class="chips"><button class="chip ${exChartKind === 'unit' ? 'on' : ''}" onclick="exChartKind='unit';renderExpense()">원육 사용량당 ${N}사용량</button><button class="chip ${exChartKind === 'ucost' ? 'on' : ''}" onclick="exChartKind='ucost';renderExpense()">원육 사용량당 ${N} 비용</button><button class="chip ${exChartKind === 'usage' ? 'on' : ''}" onclick="exChartKind='usage';renderExpense()">${N} 사용량</button></span>
+        <div class="toolbar"><span class="chips"><button class="chip ${exChartKind === 'unit' ? 'on' : ''}" onclick="exChartKind='unit';renderExpense()">원육 사용량당 ${N}${exUW(exUtil)}</button><button class="chip ${exChartKind === 'ucost' ? 'on' : ''}" onclick="exChartKind='ucost';renderExpense()">원육 사용량당 ${N} 비용</button><button class="chip ${exChartKind === 'usage' ? 'on' : ''}" onclick="exChartKind='usage';renderExpense()">${N} ${exUW(exUtil)}</button></span>
           <button class="btn" onclick="exCopyImg(this)">🖼 그림 복사</button><button class="btn secondary" onclick="exSaveImg()">💾 그림 저장</button></div>
         <div class="ex-chart"><canvas id="ex-canvas" width="900" height="460"></canvas></div></div>`;
       document.getElementById('ex-body').innerHTML = h;
@@ -2363,9 +2364,9 @@
     function exDraw() {
       const y = Number(exYm.slice(0, 4)), mEnd = Number(exYm.slice(5)), U = UT.UTILS.find(u => u.k === exUtil), N = EX_NAME[exUtil];
       const ud = exUtil === 'water' || exUtil === 'ww' ? 3 : 1;
-      const K = { unit: { t: `원육 사용량당 ${N}사용량`, u: `${U.unit}/kg`, d: ud, f: s => ratio(s[exUtil].usage, s.production) },
+      const K = { unit: { t: `원육 사용량당 ${N}${exUW(exUtil)}`, u: `${U.unit}/kg`, d: ud, f: s => ratio(s[exUtil].usage, s.production) },
         ucost: { t: `원육 사용량당 ${N} 비용`, u: '원/kg', d: 1, f: s => ratio(s[exUtil].cost, s.production) },
-        usage: { t: `${N} 사용량`, u: U.unit, d: 0, f: s => s[exUtil].usage } }[exChartKind];
+        usage: { t: `${N} ${exUW(exUtil)}`, u: U.unit, d: 0, f: s => s[exUtil].usage } }[exChartKind];
       const vals = Array.from({ length: 12 }, (_, i) => i < mEnd ? K.f(S(UT.ym(y, i + 1))) : null);
       const fmt = exF(K.d), i = mEnd - 1, pv = i > 0 ? vals[i - 1] : null, cv = vals[i];
       const chg = cv !== null && pv ? (cv / pv - 1) * 100 : null;
