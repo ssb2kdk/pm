@@ -149,6 +149,7 @@
     #pd-body tr.hl td { background: #fff5f4; }
     .dc-t td { text-align: center; white-space: nowrap; } .dc-t td.l { text-align: left; }
     table.t.dc-t td:first-child { text-align: center; }
+    .dc-t td.dc-note { white-space: normal; min-width: 180px; max-width: 320px; font-size: 12px; } .dc-note div { margin-bottom: 2px; }
     .dc-sun { color: #d93025; } .dc-sat { color: #1565c0; }
     .dc-t tr.dc-off td { color: #999; background: #fafafa; }
     .dc-t tr.dc-sum td { background: #f2f5fa; font-weight: 600; }
@@ -432,11 +433,11 @@
         </div>
         <div class="card"><div class="tbl-wrap" id="anom-table"></div></div>
         <div class="card"><h3>생산 실적과 비교 — 많이 쓴 날 원인 추정 <span class="sub">생산 대시보드 일별 원육·자숙시간·포장 EA + 기온</span></h3><div id="pd-body"></div></div>
-        <div class="card"><h3>생산 일별 요약과 비교 <span class="sub">원육 부위별 투입·포장 수량·공정별 작업시간 ↔ 전기·보일러 가스·용수·폐수</span></h3><div id="dc-body"></div></div>
       </div>
 
       <!-- ================= 특이사항 ================= -->
-      <div id="tab-notes" class="tab"><div id="notes-body"></div></div>
+      <div id="tab-notes" class="tab"><div id="notes-body"></div>
+        <div class="card"><h3>생산 일별 요약과 비교 <span class="sub">원육 부위별 투입·포장 수량·공정별 작업시간 ↔ 전기·보일러 가스·용수·폐수 — 이상한 날은 [+ 적기]로 원인을 기록</span></h3><div id="dc-body"></div></div></div>
 
       <!-- ================= 일일검침 ================= -->
       <div id="tab-daily" class="tab">
@@ -1877,7 +1878,7 @@
     // =====================================================================
     let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [];
     function renderAnomaly() {
-      setTimeout(renderProdCompare, 0); setTimeout(renderDayCmp, 0);
+      setTimeout(renderProdCompare, 0);
       const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
       anomList = UT.anomalies(DAILY, from, to, { ratio: anomRatio }).reverse();
       document.getElementById('anom-chips').innerHTML =
@@ -2689,6 +2690,12 @@
             ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='${n.id}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button></td>`}</tr>`).join('') + '</table></div>'
           : `<div class="empty">${unYm ? '이 달에 적은 특이사항이 없습니다.' : '적은 특이사항이 없습니다.'}</div>`) + '</div>';
       document.getElementById('notes-body').innerHTML = h;
+      if (unYm && dcYm !== unYm) dcYm = unYm; setTimeout(renderDayCmp, 0);
+    }
+    function unWriteFor(ds) { // 비교표에서 [+ 적기] → 위 입력칸에 날짜 넣고 내용으로 이동
+      if (unEditId) { unEditId = null; renderNotes(); }
+      const d = document.getElementById('un-d'), t = document.getElementById('un-text'); if (!d || !t) return;
+      d.value = ds; document.querySelector('#notes-body .card').scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => t.focus(), 300);
     }
     function unCatChange(c) { const set = UN_UTIL_DEF[c] || []; document.querySelectorAll('.un-ut').forEach(x => { x.checked = set.includes(x.value); }); }
     function unShift(n) { unYm = n > 0 ? UT.nextYm(unYm || thisYm) : UT.prevYm(unYm || thisYm); renderNotes(); }
@@ -2735,26 +2742,26 @@
       const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p = PRODD[ds] || null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); }
       const uv = v => v === null || v === undefined || isNaN(v) ? '<span class="hint">-</span>' : (Math.abs(v) >= 100 ? f0(v) : nf1.format(v));
       const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
-      let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);renderDayCmp()">▶</button></div>
+      let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);if(unYm){unYm=dcYm;renderNotes()}else renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);if(unYm){unYm=dcYm;renderNotes()}else renderDayCmp()">▶</button></div>
         <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
         <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
-        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2">포장 EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th></tr>
+        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2">포장 EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
         <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>파쇄</th><th>포장</th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
         rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
           const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
           return `<tr class="${!p ? 'dc-off' : ''}"><td>${Number(r.ds.slice(8))}일 (<span class="${w === 0 ? 'dc-sun' : w === 6 ? 'dc-sat' : ''}">${W[w]}</span>)</td>
             <td class="l">${parts.length ? parts.map(([k]) => esc(k)).join('<br>') : (p ? '' : '<span class="hint">생산 없음</span>')}</td><td>${parts.length ? parts.map(([, v]) => f0(v)).join('<br>') : ''}</td>
             <td ${items ? `title="${esc(items)}" style="cursor:help"` : ''}>${p && p.ea ? f0(p.ea) : ''}</td>
-            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}</tr>`; }).join('') +
+            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
-            <td>${f0(sum(r => r.p && r.p.ea))}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}</tr>`;
+            <td>${f0(sum(r => r.p && r.p.ea))}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}<td></td></tr>`;
           const avg = (f, rs) => { const v = rs.map(f).filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
           const off = rows.filter(r => !r.p);
-          const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}</tr>`;
-          const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="7"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}</tr>`;
+          const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
+          const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="7"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
         `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 EA에 마우스를 올리면 제품별 수량이 보입니다. 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
       el.innerHTML = h;
