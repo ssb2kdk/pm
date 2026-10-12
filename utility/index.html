@@ -147,6 +147,18 @@
     table.t td.na { color: #bbb; }
     table.t td.prov { background: #fffaf0; }
     #pd-body tr.hl td { background: #fff5f4; }
+    .un-form { display: grid; grid-template-columns: 160px 160px 1fr; gap: 8px 12px; align-items: end; }
+    .un-form label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 3px; }
+    .un-form .wide { grid-column: 1 / -1; font-size: 12px; color: #555; }
+    .un-form input, .un-form select, .un-form textarea { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; }
+    .un-u { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 3px; margin-right: 10px; font-size: 13px; color: #333; }
+    @media (max-width: 700px) { .un-form { grid-template-columns: 1fr 1fr; } }
+    .un-cat { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eef3fb; color: #1a4f8b; white-space: nowrap; }
+    #notes-body td { text-align: center; }
+    #notes-body td.l { text-align: left; }
+    td.un-txt { white-space: pre-wrap; min-width: 200px; max-width: 420px; }
+    .un-note { color: #6a3d9a; font-size: 12px; }
+    .un-list { margin: 4px 0 0 18px; padding: 0; line-height: 1.9; font-size: 13px; }
     #year-table tr.cmp td { font-size: 11px; color: #8a8f98; background: #fbfcfd; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
     #year-table tr.cmp td.l { padding-left: 16px; }
     #year-table tr.cmp td.up { color: #d93025; } #year-table tr.cmp td.down { color: #1565c0; }
@@ -258,6 +270,7 @@
         <button class="tab-btn" data-tab="target">목표</button>
         <button class="tab-btn" data-tab="cause">원인분석</button>
         <button class="tab-btn" data-tab="anom">이상감지</button>
+        <button class="tab-btn" data-tab="notes">특이사항</button>
         <button class="tab-btn" data-tab="daily">일일검침</button>
         <button class="tab-btn" data-tab="monthly">월간입력</button>
         <button class="tab-btn" data-tab="report">회계보고</button>
@@ -372,6 +385,7 @@
             <div class="chart-box cz-chart"><canvas id="chart-cz"></canvas></div>
           </div>
         </div>
+        <div class="card" id="cz-notes"></div>
         <div class="card">
           <h3>이 달 이상 사용일 <span class="sub">이상감지에서 찾은 날 · 메모는 이상감지 탭과 같이 저장됩니다</span></h3>
           <div class="tbl-wrap" id="cz-anom"></div>
@@ -414,6 +428,9 @@
         <div class="card"><div class="tbl-wrap" id="anom-table"></div></div>
         <div class="card"><h3>생산 실적과 비교 — 많이 쓴 날 원인 추정 <span class="sub">생산 대시보드 일별 원육·자숙시간·포장 EA + 기온</span></h3><div id="pd-body"></div></div>
       </div>
+
+      <!-- ================= 특이사항 ================= -->
+      <div id="tab-notes" class="tab"><div id="notes-body"></div></div>
 
       <!-- ================= 일일검침 ================= -->
       <div id="tab-daily" class="tab">
@@ -1724,6 +1741,7 @@
       if (!causeYm) causeYm = lastCompleteYm();
       const ym = causeYm, y = Number(ym.slice(0, 4)), ym0 = causeCmp === 'prev' ? UT.prevYm(ym) : UT.ym(y - 1, Number(ym.slice(5)));
       document.getElementById('cause-month').textContent = ymLabel(ym);
+      try { const cn = document.getElementById('cz-notes'); if (cn) cn.innerHTML = causeNotesHtml(ym, ym0, causeUtil); } catch (e) { }
       document.getElementById('cause-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${causeUtil === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderCause()">${u.name}</button>`).join('') +
         ' &nbsp; 비교: ' + [['prev', '전월'], ['ly', '작년 같은 달']].map(([k, n]) => `<button class="chip ${causeCmp === k ? 'on' : ''}" onclick="causeCmp='${k}';renderCause()">${n}</button>`).join('');
       const uk = causeUtil, U = UT.UTILS.find(u => u.k === uk);
@@ -2610,12 +2628,83 @@
             const txt = parts.map(([n, v]) => `${n} ${v >= 0 ? '+' : '−'}${f0(Math.abs(v))}`).join(', ');
             return (r.x.prod ? (txt ? `평소 생산일보다 ${txt}` : '생산 조건은 평소와 비슷') : '생산 없는 날') + (r.hi ? ` · <b class="up">설명 안 되는 +${f0(r.d)} ${U.unit}</b> → 설비 미차단·공회전·누수·특이 작업 확인` : '');
           })();
+          const nts = notesIn(r.ds, r.ds, pdUtil === 'gas' ? 'gas' : pdUtil); const ntH = nts.length ? `<br><span class="un-note">📝 ${nts.map(n => `${esc(n.cat)}: ${esc(n.text)}`).join(' / ')}</span>` : '';
           return `<tr class="${r.hi ? 'hl' : ''}"><td>${r.ds.slice(5).replace('-', '/')} (${W[new Date(r.ds + 'T00:00:00').getDay()]})</td><td>${r.p ? f0(r.p.rm) : '-'}</td><td>${r.p ? nf1.format(r.p.steamH) : '-'}</td><td>${r.p ? f0(r.p.ea) : '-'}</td><td>${r.t === undefined || r.t === null ? '-' : nf1.format(r.t) + '℃'}</td>
-            <td><b>${fmtV(r.y)}</b></td><td>${fmtV(r.e)}</td><td class="${r.d > 0 ? 'up' : 'down'}">${r.d === null ? '-' : (r.d >= 0 ? '+' : '−') + f0(Math.abs(r.d)) + (r.e ? ` <span class="hint">(${r.d >= 0 ? '+' : ''}${nf1.format(r.d / r.e * 100)}%)</span>` : '')}</td><td class="l">${why}</td></tr>`;
+            <td><b>${fmtV(r.y)}</b></td><td>${fmtV(r.e)}</td><td class="${r.d > 0 ? 'up' : 'down'}">${r.d === null ? '-' : (r.d >= 0 ? '+' : '−') + f0(Math.abs(r.d)) + (r.e ? ` <span class="hint">(${r.d >= 0 ? '+' : ''}${nf1.format(r.d / r.e * 100)}%)</span>` : '')}</td><td class="l">${why}${ntH}</td></tr>`;
         }).join('') : `<tr><td colspan="9" class="empty">최근 ${anomDays}일 동안 예상보다 크게 많이 쓴 날이 없습니다 👍</td></tr>`) + '</table></div>';
       h += `<div class="hint" style="margin-top:6px">· 생산 실적은 생산 대시보드 일별 요약(읽기 전용)에서 가져옵니다. 대시보드에서 그 날짜를 한 번도 안 연 날은 실적이 없을 수 있습니다.<br>· 「예상보다 많이 쓴 날」 = 예상보다 15% 넘게 더 쓴 날. 원인 추정의 ± 값은 그날 원육·작업시간·기온이 평소 생산일과 달라서 생긴 몫이고, 나머지가 설명 안 되는 몫입니다.<br>· 검침 시각(08시) 기준이라 전기(파워플래너, 0~24시)와 하루 정도 어긋날 수 있습니다.</div>`;
       el.innerHTML = h;
     }
+
+    // =====================================================================
+    // 유틸리티·생산설비 특이사항 (ut_monthly '9999-00' 줄의 notes) — 원인분석·이상감지에서 같이 보여 줌
+    // =====================================================================
+    const UN_CATS = ['전기', '가스·보일러', '용수', '폐수', '공조냉동', '공기압축기', '생산설비', '기타'];
+    const UN_UTIL_DEF = { '전기': ['elec'], '가스·보일러': ['gas'], '용수': ['water'], '폐수': ['ww'], '공조냉동': ['elec'], '공기압축기': ['elec'], '생산설비': ['elec', 'gas', 'water', 'ww'], '기타': [] };
+    let unYm = null, unCat = '', unEditId = null;
+    const utNotes = () => (Array.isArray((YEARDATA[9999] || {}).notes) ? YEARDATA[9999].notes : []).slice().sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (a.at < b.at ? 1 : -1));
+    const notesIn = (from, to, uk) => utNotes().filter(n => n.d >= from && n.d <= to && (!uk || (n.utils || []).includes(uk))).sort((a, b) => a.d < b.d ? -1 : 1);
+    const unLine = n => `<span class="un-cat">${esc(n.cat)}</span> <b>${Number(n.d.slice(5, 7))}/${Number(n.d.slice(8))}</b> ${n.eq ? `[${esc(n.eq)}] ` : ''}${esc(n.text)}${n.act ? ` <span class="hint">→ ${esc(n.act)}</span>` : ''}`;
+    async function unPut(fn) { // 저장 직전 최신 줄을 다시 읽어서 고침
+      const { data, error } = await sb.from('ut_monthly').select('data').eq('ym', '9999-00').maybeSingle(); if (error) throw error;
+      const cur = (data && data.data) || {}; const notes = fn(Array.isArray(cur.notes) ? cur.notes.slice() : []);
+      const nd = { ...cur, notes }; const r = await sb.from('ut_monthly').upsert({ ym: '9999-00', data: nd }, { onConflict: 'ym' }); if (r.error) throw r.error;
+      YEARDATA[9999] = nd;
+    }
+    function renderNotes() {
+      if (!unYm) unYm = thisYm;
+      const E = unEditId ? utNotes().find(n => n.id === unEditId) : null, ro = !isAdmin();
+      const utilBox = (n) => UT.UTILS.map(u => `<label class="un-u"><input type="checkbox" class="un-ut" value="${u.k}" ${(n ? (n.utils || []) : UN_UTIL_DEF['전기']).includes(u.k) ? 'checked' : ''}> ${u.name}</label>`).join('');
+      let h = ro ? '' : `<div class="card"><h3>${E ? '특이사항 고치기' : '특이사항 적기'} <span class="sub">유틸리티·생산설비 — 원인분석·이상감지에서 그 기간 기록이 같이 나옵니다</span></h3>
+        <div class="un-form">
+          <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : todayStr)}"></label>
+          <label>분류 <select id="un-cat" onchange="unCatChange(this.value)">${UN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+          <label>설비·장소 <input id="un-eq" value="${esc(E ? E.eq || '' : '')}" placeholder="예: 레토르트 2호기, 1번 공기압축기"></label>
+          <label class="wide">내용 <textarea id="un-text" rows="2" placeholder="예: 레토르트 2호기 스팀 트랩 누설, 야간 냉동기 수동 운전, 생산 연장(22시까지)">${esc(E ? E.text : '')}</textarea></label>
+          <label class="wide">조치 <input id="un-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 트랩 교체, 타이머 재설정"></label>
+          <div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸의 원인분석·이상감지에 나옵니다</span></div>
+          <div><button class="btn" onclick="unSave()">${E ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E ? ` <button class="btn secondary" onclick="unEditId=null;renderNotes()">취소</button>` : ''}</div>
+        </div></div>`;
+      const list = utNotes().filter(n => (!unYm || n.d.slice(0, 7) === unYm) && (!unCat || n.cat === unCat));
+      h += `<div class="card"><div class="toolbar">
+          <div class="month-nav"><button onclick="unShift(-1)">◀</button><span>${unYm ? ymLabel(unYm) : '전체'}</span><button onclick="unShift(1)">▶</button></div>
+          <button class="chip ${unYm ? '' : 'on'}" onclick="unYm=unYm?'':thisYm;renderNotes()">전체 기간</button>
+          <span class="chips"><button class="chip ${unCat ? '' : 'on'}" onclick="unCat='';renderNotes()">전체</button>${UN_CATS.map(c => `<button class="chip ${unCat === c ? 'on' : ''}" onclick="unCat='${c}';renderNotes()">${c}</button>`).join('')}</span>
+          <span class="hint">${list.length}건</span></div>` +
+        (list.length ? `<div class="tbl-wrap"><table class="t"><tr><th>날짜</th><th>분류</th><th class="l">설비·장소</th><th class="l">내용</th><th class="l">조치</th><th>관련</th><th>적은 사람</th>${ro ? '' : '<th></th>'}</tr>` +
+          list.map(n => `<tr><td>${n.d}</td><td><span class="un-cat">${esc(n.cat)}</span></td><td class="l">${esc(n.eq || '')}</td><td class="l un-txt">${esc(n.text)}</td><td class="l un-txt">${esc(n.act || '')}</td>
+            <td>${(n.utils || []).map(k => (UT.UTILS.find(u => u.k === k) || {}).name).filter(Boolean).join('·')}</td><td>${esc(n.by || '')}</td>
+            ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='${n.id}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button></td>`}</tr>`).join('') + '</table></div>'
+          : `<div class="empty">${unYm ? '이 달에 적은 특이사항이 없습니다.' : '적은 특이사항이 없습니다.'}</div>`) + '</div>';
+      document.getElementById('notes-body').innerHTML = h;
+    }
+    function unCatChange(c) { const set = UN_UTIL_DEF[c] || []; document.querySelectorAll('.un-ut').forEach(x => { x.checked = set.includes(x.value); }); }
+    function unShift(n) { unYm = n > 0 ? UT.nextYm(unYm || thisYm) : UT.prevYm(unYm || thisYm); renderNotes(); }
+    async function unSave() {
+      const d = document.getElementById('un-d').value, cat = document.getElementById('un-cat').value, eq = document.getElementById('un-eq').value.trim(),
+        text = document.getElementById('un-text').value.trim(), act = document.getElementById('un-act').value.trim(), utils = [...document.querySelectorAll('.un-ut:checked')].map(x => x.value);
+      if (!d || !text) { alert('날짜와 내용을 넣어 주세요.'); return; }
+      const id = unEditId, now = new Date().toISOString();
+      try {
+        await unPut(L => { if (id) { const x = L.find(n => n.id === id); if (x) Object.assign(x, { d, cat, eq, text, act, utils, edited: now }); return L; }
+          return L.concat([{ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), d, cat, eq, text, act, utils, by: (me && (me.name || me.username)) || '', at: now }]); });
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
+      unEditId = null; unYm = d.slice(0, 7); renderNotes();
+    }
+    async function unDel(id) {
+      const n = utNotes().find(x => x.id === id); if (!n || !confirm(`${n.d} 「${n.text.slice(0, 30)}」 기록을 지울까요?`)) return;
+      try { await unPut(L => L.filter(x => x.id !== id)); } catch (e) { alert('삭제 실패: ' + errMsg(e)); return; }
+      renderNotes();
+    }
+    // 원인분석 카드: 비교 기간(두 달)의 특이사항
+    function causeNotesHtml(ym, ym0, uk) {
+      const a = ym0 < ym ? ym0 : ym, b = ym0 < ym ? ym : ym0;
+      const L = notesIn(UT.dateStr(a, 1), UT.dateStr(b, UT.daysIn(b)), uk);
+      const U = UT.UTILS.find(u => u.k === uk);
+      return `<h3>이 기간 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 · [특이사항] 탭에서 적음</span></h3>` +
+        (L.length ? `<ul class="un-list">${L.map(n => `<li>${unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
+    }
+    function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
 
   </script>
   <script>
@@ -3490,7 +3579,7 @@
     }
 
     // ---------------- 탭 ----------------
-    const loaders = { dash: renderDash, period: renderPeriod, target: () => renderTargets(), cause: renderCause, anom: renderAnomaly, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief, expense: renderExpense };
+    const loaders = { dash: renderDash, period: renderPeriod, target: () => renderTargets(), cause: renderCause, anom: renderAnomaly, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief, expense: renderExpense, notes: renderNotes };
     function switchTab(t) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
       document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
