@@ -76,6 +76,13 @@
     .btn { background: #2c5aa0; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
     .btn.sec { background: #666; } .mini { font-size: 11px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; }
     .hist { font-size: 12px; color: var(--muted); }
+    .card.feed { border-left: 4px solid #7a4fbf; }
+    .feedtag { font-size: 11px; color: #5b3a96; background: #f2ecfb; border-radius: 6px; padding: 4px 6px; margin-top: 6px; }
+    .feedtag-s { font-size: 11px; color: #5b3a96; }
+    .feedinfo { background: #f2ecfb; border-color: #d8c8f0; font-size: 13px; }
+    tr.feedrow td { background: #faf7fe; }
+    .meta .fd { width: 150px; }
+    .panels .sub { opacity: .7; }
     /* 사진 */
     .ph-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
     .ph-strip img { height: 64px; border-radius: 6px; border: 1px solid var(--border); cursor: zoom-in; flex: none; }
@@ -167,7 +174,17 @@
       BRK = await fetchAll(() => sb.from('hook_breakers').select('*').eq('active', true).order('panel').order('sort').order('created_at'));
       READ = await fetchAll(() => sb.from('hook_readings').select('*').order('d'));
     }
-    const panels = () => [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)).concat(PHOTOS.map(p => p.panel).filter(Boolean)))];
+    const allB = () => BRK.map(b => bv(b)).concat(NEWB);
+    const feedOf = b => String((b && b.feeds) || '').trim(); // 하위 분전반 메인(피더)이면 그 분전반 이름
+    const parentOf = p => { const f = allB().find(b => feedOf(b) === p && b.panel !== p); return f || null; };
+    function panels() { // 위 분전반 → 하위 분전반 순서 (트리)
+      const set = [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)).concat(PHOTOS.map(p => p.panel).filter(Boolean)).concat(allB().map(feedOf).filter(Boolean)))];
+      const kids = p => allB().filter(b => b.panel === p && feedOf(b) && feedOf(b) !== p).sort((a, c) => (a.sort || 0) - (c.sort || 0)).map(feedOf);
+      const out = [], seen = new Set(), walk = (p, d) => { if (seen.has(p)) return; seen.add(p); out.push(p); PDEPTH[p] = d; kids(p).forEach(k => walk(k, d + 1)); };
+      set.filter(p => !parentOf(p)).forEach(p => walk(p, 0)); set.forEach(p => walk(p, 0)); // 순환 연결이 있어도 빠지지 않게
+      return out;
+    }
+    const PDEPTH = {};
     const readOn = (bid, d) => READ.find(r => r.breaker_id === bid && r.d === d);
     const lastBefore = (bid, d) => READ.filter(r => r.breaker_id === bid && r.d < d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
 
@@ -186,14 +203,26 @@
       document.getElementById('work-date').value = workDate;
       const ps = panels(); if (!panelSel || !ps.includes(panelSel)) panelSel = ps[0] || null;
       const cnt = p => { const bs = BRK.filter(b => b.panel === p); return `${bs.filter(b => readOn(b.id, workDate) || DRAFT[b.id]).length}/${bs.length}`; };
-      document.getElementById('panels').innerHTML = ps.map(p => `<button class="${p === panelSel ? 'on' : ''}" onclick="panelSel=${JSON.stringify(p).replace(/"/g, '&quot;')};renderInput()">${esc(p)}<span class="n">${cnt(p)}</span></button>`).join('') +
+      document.getElementById('panels').innerHTML = ps.map(p => `<button class="${p === panelSel ? 'on' : ''}" onclick="panelSel=${JSON.stringify(p).replace(/"/g, '&quot;')};renderInput()">${PDEPTH[p] ? '<span class="sub">' + '↳'.repeat(PDEPTH[p]) + '</span> ' : ''}${esc(p)}<span class="n">${cnt(p)}</span></button>`).join('') +
         `<button onclick="addPanel()">＋ 분전반</button>`;
       const el = document.getElementById('content');
       if (!panelSel) { el.innerHTML = `<div class="card"><b>분전반을 먼저 만들어 주세요.</b><div class="hint">위의 「＋ 분전반」을 누르고 분전반 이름(예: P-레토르트, 기계실 MCC)을 넣은 뒤, 차단기를 추가합니다.</div></div>`; renderSumBar(); return; }
       const bs = BRK.filter(b => b.panel === panelSel).concat(NEWB.filter(b => b.panel === panelSel));
-      el.innerHTML = photoStrip(panelSel) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
+      const par = parentOf(panelSel);
+      el.innerHTML = `<datalist id="pl">${ps.filter(p => p !== panelSel).map(p => `<option value="${esc(p)}">`).join('')}</datalist>` +
+        (par ? `<div class="card feedinfo">↳ <b>${esc(panelSel)}</b>은(는) <a href="#" onclick="panelSel=${JSON.stringify(par.panel).replace(/"/g, '&quot;')};renderInput();return false">${esc(par.panel)}</a> 의 「${esc(par.name || '차단기')}」에서 분기된 하위 분전반입니다.</div>` : '') +
+        photoStrip(panelSel) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
         bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(panelSel)})</button>`;
       renderSumBar();
+    }
+    // 분전반 아래(하위 포함) 말단 부하 합 — today=true면 측정 화면 날짜 값, 아니면 차단기별 최근 가동 측정값
+    function subtreeKw(p, today, seen = new Set()) {
+      if (seen.has(p)) return { kw: 0, n: 0 }; seen.add(p); let kw = 0, n = 0;
+      allB().filter(b => b.panel === p).forEach(b => {
+        if (feedOf(b) && feedOf(b) !== p) { const s = subtreeKw(feedOf(b), today, seen); kw += s.kw; n += s.n; return; }
+        let k = null; if (today) { const c = cur(b); if (c.running !== false) k = kwOf(b, c); } else { const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0]; if (l) k = kwOf(b, l); }
+        if (k !== null) { kw += k; n++; } });
+      return { kw, n };
     }
     function cur(b) { // 화면에 보일 값 = 고친 값 > 그날 기록
       const r = readOn(b.id, workDate) || {}, d = DRAFT[b.id] || {};
@@ -208,7 +237,7 @@
       const dirty = DRAFT[b.id] || BDRAFT[b.id] || b._new;
       const lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
       const id = esc(b.id);
-      return `<div class="card ${run ? 'run' : ''} ${off ? 'off' : ''} ${dirty ? 'dirty' : ''}" data-id="${id}">
+      return `<div class="card ${run ? 'run' : ''} ${off ? 'off' : ''} ${dirty ? 'dirty' : ''} ${feedOf(b) ? 'feed' : ''}" data-id="${id}">
         <div class="c-top"><input class="nm" value="${esc(b.name)}" placeholder="차단기 명칭 (예: 레토르트 1호기)" onchange="bset('${id}','name',this.value)">
           <span class="seg"><button class="${b.volt === 380 ? 'on' : ''}" onclick="bset('${id}','volt',380)">380V</button><button class="${b.volt === 220 ? 'on' : ''}" onclick="bset('${id}','volt',220)">220V</button></span>
           <button class="run-btn ${run ? 'on' : ''}" onclick="rset('${id}','running',${off ? 'true' : 'false'})">${off ? '정지' : run ? '가동중' : '가동?'}</button></div>
@@ -217,6 +246,8 @@
         <div class="meta"><label class="ml">정격<input class="rk" inputmode="decimal" placeholder="-" value="${esc(b.rated_kw ?? '')}" onchange="bset('${id}','rated_kw',this.value)">kW</label>
           <label class="ml">차단기<input class="ra" inputmode="decimal" placeholder="-" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)">A</label>
           <input class="nt" placeholder="비고 (정격용량·모터 사양 등)" value="${esc(b.note ?? '')}" onchange="bset('${id}','note',this.value)"></div>
+        <div class="meta"><label class="ml">⤷ 하위 분전반 메인<input class="fd" list="pl" placeholder="해당 없으면 비움" value="${esc(b.feeds ?? '')}" onchange="bset('${id}','feeds',this.value.trim())"></label></div>
+        ${feedOf(b) ? `<div class="feedtag">⤷ 하위 분전반 <a href="#" onclick="panelSel=${JSON.stringify(feedOf(b)).replace(/"/g, '&quot;')};renderInput();return false"><b>${esc(feedOf(b))}</b></a> 메인 차단기 — 전체 합계에서는 빠지고 하위 분전반 차단기들로 합산 (이중 합산 방지)${(() => { const sub = subtreeKw(feedOf(b), true); return sub.n ? ` · 하위 측정 합 ${nf(sub.kw, 1)} kW${kw !== null ? ` / 이 차단기 ${nf(kw, 1)} kW` : ''}` : ''; })()}</div>` : ''}
         <div class="meta"><input class="nt" placeholder="이번 측정 메모 (운전 상태 등)" value="${esc(c.note)}" onchange="rset('${id}','note',this.value)"></div>
         ${last ? `<div class="last">지난 측정 ${last.d.slice(2).replace(/-/g, '.')} · ${last.running ? `${[last.r, last.s, last.t].map(v => v ?? '-').join(' / ')} A → ${nf(kwOf(b, last), 1)} kW` : '정지'}</div>` : ''}
       </div>`;
@@ -247,10 +278,10 @@
       renderInput(); setTimeout(() => { const c = document.querySelectorAll('.card .nm'); if (c.length) c[c.length - 1].focus(); }, 30);
     }
     function renderSumBar() {
-      const bs = BRK.concat(NEWB).filter(b => b.panel === panelSel); let tot = 0, n = 0;
-      bs.forEach(b => { const c = cur(bv(b)); const k = kwOf(bv(b), c); if (k !== null && c.running !== false) { tot += k; n++; } });
+      const bs = BRK.concat(NEWB).filter(b => b.panel === panelSel); let tot = 0, n = 0, ft = 0;
+      bs.forEach(b => { const c = cur(bv(b)); const k = kwOf(bv(b), c); if (k !== null && c.running !== false) { if (feedOf(bv(b))) ft += k; else { tot += k; n++; } } });
       const dc = dirtyCount();
-      document.getElementById('sum').innerHTML = panelSel ? `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : '';
+      document.getElementById('sum').innerHTML = panelSel ? `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${ft ? ` <span title="하위 분전반 메인 차단기 — 합계 제외">+ 하위 피더 ${nf(ft, 1)}</span>` : ''}${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : '';
       const sbtn = document.getElementById('save-btn'); sbtn.classList.toggle('has', !!dc); sbtn.textContent = dc ? `저장 (${dc})` : '저장';
     }
     async function saveAll() {
@@ -260,13 +291,13 @@
         // ① 새 차단기
         const idMap = {};
         for (const nb of NEWB.filter(b => b.name.trim())) {
-          const row = { id: (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))), panel: nb.panel, name: nb.name.trim(), volt: nb.volt, rated_kw: num(nb.rated_kw), rated_a: num(nb.rated_a), note: nb.note || '', sort: nb.sort, active: true };
+          const row = { id: (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))), panel: nb.panel, name: nb.name.trim(), volt: nb.volt, rated_kw: num(nb.rated_kw), rated_a: num(nb.rated_a), note: nb.note || '', sort: nb.sort, active: true, ...(feedOf(nb) ? { feeds: feedOf(nb) } : {}) };
           const { error } = await sb.from('hook_breakers').insert(row);
           if (error) throw error; idMap[nb.id] = row.id; BRK.push(row);
         }
         // ② 차단기 정보 수정
         for (const [id, d] of Object.entries(BDRAFT)) {
-          const patch = {}; Object.entries(d).forEach(([k, v]) => { patch[k] = ['rated_kw', 'rated_a'].includes(k) ? num(v) : k === 'name' ? String(v).trim() : v; });
+          const patch = {}; Object.entries(d).forEach(([k, v]) => { patch[k] = ['rated_kw', 'rated_a'].includes(k) ? num(v) : k === 'name' || k === 'feeds' ? String(v).trim() : v; });
           const { error } = await sb.from('hook_breakers').update(patch).eq('id', id); if (error) throw error;
           Object.assign(BRK.find(b => b.id === id), patch);
         }
@@ -291,22 +322,31 @@
       const lastRun = b => READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0];
       let list = BRK.filter(b => !sumPanel || b.panel === sumPanel).map(b => { const l = lastRun(b), any = latest(b), kw = l ? kwOf(b, l) : null; return { b, l, any, kw, lr: kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null, n: READ.filter(r => r.breaker_id === b.id && r.running).length }; });
       if (sumSort === 'kw') list.sort((a, c) => (c.kw ?? -1) - (a.kw ?? -1)); else if (sumSort === 'lr') list.sort((a, c) => (c.lr ?? -1) - (a.lr ?? -1)); else list.sort((a, c) => a.b.panel < c.b.panel ? -1 : a.b.panel > c.b.panel ? 1 : a.b.sort - c.b.sort);
-      const tot = list.reduce((a, x) => a + (x.kw || 0), 0), mx = Math.max(1, ...list.map(x => x.kw || 0));
-      const byPanel = {}; list.forEach(x => { byPanel[x.b.panel] = (byPanel[x.b.panel] || 0) + (x.kw || 0); });
+      const leaf = list.filter(x => !feedOf(x.b)), tot = leaf.reduce((a, x) => a + (x.kw || 0), 0), mx = Math.max(1, ...list.map(x => x.kw || 0));
+      const byPanel = {}; leaf.forEach(x => { byPanel[x.b.panel] = (byPanel[x.b.panel] || 0) + (x.kw || 0); });
       let h = `<div class="tool"><b>가동 중 부하 (차단기별 가장 최근 가동 측정값)</b>
         <select onchange="sumPanel=this.value;renderSum()"><option value="">전체 분전반</option>${ps.map(p => `<option ${p === sumPanel ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
         <select onchange="sumSort=this.value;renderSum()"><option value="kw" ${sumSort === 'kw' ? 'selected' : ''}>큰 부하 순</option><option value="lr" ${sumSort === 'lr' ? 'selected' : ''}>부하율 높은 순</option><option value="panel" ${sumSort === 'panel' ? 'selected' : ''}>분전반 순</option></select>
         <button class="btn sec" onclick="downloadSum()">📥 엑셀</button></div>
-        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})</div>
+        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})${list.some(x => feedOf(x.b)) ? ' · <span class="feedtag-s">하위 분전반 메인 차단기는 합계에서 뺌 (이중 합산 방지)</span>' : ''}</div>
+        ${treeHtml()}
         <div class="tbl"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>R</th><th>S</th><th>T (A)</th><th class="l">가동 부하 (kW)</th><th>정격 kW</th><th>부하율</th><th>측정일</th><th>횟수</th><th class="l">비고</th></tr>`;
       list.forEach(x => { const l = x.l;
-        h += `<tr class="${l ? '' : 'off'}"><td class="l">${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a></td><td>${x.b.volt}V</td>
+        h += `<tr class="${l ? '' : 'off'} ${feedOf(x.b) ? 'feedrow' : ''}"><td class="l">${PDEPTH[x.b.panel] ? '↳'.repeat(PDEPTH[x.b.panel]) + ' ' : ''}${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a>${feedOf(x.b) ? ` <span class="feedtag-s">⤷ ${esc(feedOf(x.b))} 메인 · 합계 제외</span>` : ''}</td><td>${x.b.volt}V</td>
           <td>${l ? nf(l.r) : '-'}</td><td>${l ? nf(l.s) : '-'}</td><td>${l ? nf(l.t) : '-'}</td>
           <td class="l">${x.kw === null ? (x.any ? '<span class="hist">정지 중만 측정</span>' : '<span class="hist">측정 없음</span>') : `<span class="bar" style="width:${Math.round(x.kw / mx * 90)}px"></span> <b>${nf(x.kw, 1)}</b>`}</td>
           <td>${x.b.rated_kw ?? '-'}</td><td class="${x.lr === null ? '' : x.lr > 90 ? 'lr-hi' : x.lr < 40 ? 'lr-lo' : ''}">${x.lr === null ? '-' : nf(x.lr, 0) + '%'}</td>
           <td>${l ? l.d.slice(2).replace(/-/g, '.') : '-'}</td><td>${x.n}</td><td class="l hist">${esc(x.b.note || '')}</td></tr>`; });
       h += `</table></div><div class="hint" style="margin-top:8px">· 부하율 <span class="lr-lo">40% 미만</span> = 정격보다 훨씬 작게 도는 설비 (용량 과다·인버터 검토 대상) · <span class="lr-hi">90% 넘음</span> = 과부하 주의 · 차단기 이름을 누르면 측정 이력이 나옵니다.</div><div id="hist"></div>`;
       el.innerHTML = h;
+    }
+    function treeHtml() { // 분전반 구조: 위→아래, 피더 측정값과 하위 합 비교
+      const ps = panels(); if (!ps.some(p => parentOf(p))) return '';
+      const rows = ps.map(p => { const own = allB().filter(b => b.panel === p && !feedOf(b)).reduce((a, b) => { const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((x, y) => x.d < y.d ? 1 : -1)[0]; return a + (l ? kwOf(b, l) || 0 : 0); }, 0);
+        const sub = subtreeKw(p, false), par = parentOf(p); let fk = null; if (par) { const l = READ.filter(r => r.breaker_id === par.id && r.running).sort((x, y) => x.d < y.d ? 1 : -1)[0]; if (l) fk = kwOf(par, l); }
+        return `<tr><td class="l">${'　'.repeat(PDEPTH[p] || 0)}${PDEPTH[p] ? '↳ ' : ''}<b>${esc(p)}</b>${par ? ` <span class="hist">(${esc(par.panel)} · ${esc(par.name)})</span>` : ''}</td><td>${nf(own, 1)}</td><td><b>${nf(sub.kw, 1)}</b></td><td>${fk === null ? '-' : nf(fk, 1)}</td><td>${fk === null || !sub.n ? '-' : `${fk - sub.kw >= 0 ? '+' : ''}${nf(fk - sub.kw, 1)}`}</td></tr>`; }).join('');
+      return `<h4 style="margin:10px 0 4px">분전반 구조</h4><div class="tbl" style="max-height:none;margin-bottom:10px"><table class="t"><tr><th class="l">분전반</th><th>자체 부하 kW</th><th>하위 포함 합 kW</th><th>메인(피더) 측정 kW</th><th>차이</th></tr>${rows}</table></div>
+        <div class="hint" style="margin-bottom:10px">차이 = 메인 차단기 측정값 − 하위 차단기 합. 크면 안 잰 차단기가 있거나 측정 시각이 달라서입니다.</div>`;
     }
     function histOf(id) {
       const b = BRK.find(x => x.id === id), rs = READ.filter(r => r.breaker_id === id).sort((a, c) => a.d < c.d ? 1 : -1);
@@ -319,8 +359,8 @@
     async function retireBreaker(id) { if (!confirm('이 차단기를 목록에서 뺄까요? (측정 기록은 남습니다)')) return; const { error } = await sb.from('hook_breakers').update({ active: false }).eq('id', id); if (error) { alert(errMsg(error)); return; } BRK = BRK.filter(b => b.id !== id); renderSum(); }
     async function downloadSum() {
       if (!window.XLSX) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
-      const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', '차단기A', '비고', '메모']];
-      READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note]); });
+      const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', '차단기A', '비고', '메모', '하위 분전반(메인)']];
+      READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note, b.feeds || '']); });
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '부하측정'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
     }
     // ---------------- 사진 (분전반 전체·차단기 근접) ----------------
@@ -406,7 +446,7 @@
       });
       if (!PHOTOS.length && !photoErr) h += '<div class="hint">아직 올린 사진이 없습니다.</div>';
       h += `<div class="tool" style="margin-top:18px"><b>3. 작성표 붙여넣기 → 차단기 한꺼번에 등록</b></div>
-        <div class="hint">Claude 채팅에 사진을 보내 분류를 받으면, 받은 작성표를 그대로 붙여넣으세요. 엑셀에서 복사한 표도 됩니다.<br>칸 순서: <b>분전반 · 차단기 명칭 · 전압(380/220) · 정격 kW · 차단기 A · 비고</b> (탭, |, 쉼표로 구분 · 제목 줄은 자동으로 건너뜀)</div>
+        <div class="hint">Claude 채팅에 사진을 보내 분류를 받으면, 받은 작성표를 그대로 붙여넣으세요. 엑셀에서 복사한 표도 됩니다.<br>칸 순서: <b>분전반 · 차단기 명칭 · 전압(380/220) · 정격 kW · 차단기 A · 비고 · 하위 분전반</b> (탭, |, 쉼표로 구분 · 제목 줄은 자동으로 건너뜀)<br>하위 분전반 칸: 그 차단기가 다른 분전반의 메인이면 그 분전반 이름 (합계에서 이중으로 안 더함), 아니면 비움</div>
         <textarea class="imp" id="imp-text" placeholder="P-레토르트\t레토르트 1호기 순환펌프\t380\t7.5\t30\t사진 3번&#10;P-레토르트\t조명\t220\t\t20\t"></textarea>
         <div class="tool" style="margin-top:6px"><button class="btn" onclick="impPreview()">미리보기</button><span class="hint" id="imp-st"></span></div><div id="imp-prev"></div>`;
       el.innerHTML = h;
@@ -420,7 +460,7 @@
         if (/분전반/.test(c[0]) && /차단기|명칭/.test(c[1] || '')) return; // 제목 줄
         if (!c[0] || !c[1]) return;
         const v = String(c[2] || '').replace(/[^0-9]/g, ''), n = x => { const s = String(x || '').replace(/[^0-9.]/g, ''); return s === '' ? '' : s; };
-        out.push({ panel: c[0], name: c[1], volt: v === '220' ? 220 : 380, voltRaw: c[2] || '', rated_kw: n(c[3]), rated_a: n(c[4]), note: c.slice(5).filter(Boolean).join(' / ') });
+        out.push({ panel: c[0], name: c[1], volt: v === '220' ? 220 : 380, voltRaw: c[2] || '', rated_kw: n(c[3]), rated_a: n(c[4]), note: c[5] || '', feeds: (c[6] || '').replace(/^[-–]$/, '').trim() });
       });
       return out;
     }
@@ -431,12 +471,12 @@
       IMP.forEach(r => { r.dup = dup(r); });
       const n = IMP.filter(r => !r.dup).length;
       document.getElementById('imp-st').textContent = IMP.length ? `${IMP.length}줄 읽음 · 새로 추가 ${n}개${IMP.length - n ? ` · 이미 있는 차단기 ${IMP.length - n}개는 건너뜀` : ''}` : '읽은 줄이 없습니다. 칸 순서를 확인해 주세요.';
-      document.getElementById('imp-prev').innerHTML = IMP.length ? `<div class="tbl" style="max-height:360px"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>정격 kW</th><th>차단기 A</th><th class="l">비고</th><th></th></tr>${IMP.map(r => `<tr class="${r.dup ? 'off' : ''}"><td class="l">${esc(r.panel)}</td><td class="l">${esc(r.name)}</td><td>${r.volt}V${r.voltRaw && !/220|380/.test(r.voltRaw) ? ' <span class="lr-lo">?</span>' : ''}</td><td>${esc(r.rated_kw)}</td><td>${esc(r.rated_a)}</td><td class="l hist">${esc(r.note)}</td><td>${r.dup ? '이미 있음' : '추가'}</td></tr>`).join('')}</table></div>
+      document.getElementById('imp-prev').innerHTML = IMP.length ? `<div class="tbl" style="max-height:360px"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>정격 kW</th><th>차단기 A</th><th class="l">비고</th><th class="l">하위 분전반</th><th></th></tr>${IMP.map(r => `<tr class="${r.dup ? 'off' : ''}"><td class="l">${esc(r.panel)}</td><td class="l">${esc(r.name)}</td><td>${r.volt}V${r.voltRaw && !/220|380/.test(r.voltRaw) ? ' <span class="lr-lo">?</span>' : ''}</td><td>${esc(r.rated_kw)}</td><td>${esc(r.rated_a)}</td><td class="l hist">${esc(r.note)}</td><td class="l">${r.feeds ? '⤷ ' + esc(r.feeds) : ''}</td><td>${r.dup ? '이미 있음' : '추가'}</td></tr>`).join('')}</table></div>
         ${n ? `<div class="tool" style="margin-top:8px"><button class="btn" onclick="impApply()">✓ ${n}개를 측정 화면에 추가 (저장 전 확인)</button><span class="hint">추가 후 측정 화면에서 확인·수정하고 [저장]을 눌러야 등록됩니다.</span></div>` : ''}` : '';
     }
     function impApply() {
       const add = IMP.filter(r => !r.dup); if (!add.length) return;
-      add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note,
+      add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note, feeds: r.feeds || '',
         sort: BRK.filter(b => b.panel === r.panel).length + NEWB.filter(b => b.panel === r.panel).length }); });
       panelSel = add[0].panel; IMP = []; setView('input'); toast(`차단기 ${add.length}개 추가 — 확인 후 [저장]`);
     }
