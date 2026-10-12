@@ -76,6 +76,29 @@
     .btn { background: #2c5aa0; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
     .btn.sec { background: #666; } .mini { font-size: 11px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; }
     .hist { font-size: 12px; color: var(--muted); }
+    /* 사진 */
+    .ph-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+    .ph-strip img { height: 64px; border-radius: 6px; border: 1px solid var(--border); cursor: zoom-in; flex: none; }
+    .ph-strip img.pn { border: 2px solid var(--blue); }
+    .ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 16px; }
+    .ph-it { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fafafa; display: flex; flex-direction: column; }
+    .ph-it img { width: 100%; height: 130px; object-fit: cover; cursor: zoom-in; background: #eee; }
+    .ph-it.pn { border-color: var(--blue); }
+    .ph-it .pc { padding: 5px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+    .ph-it select, .ph-it input { font-size: 11px; padding: 3px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
+    .ph-it .row { display: flex; gap: 4px; align-items: center; } .ph-it .mini { white-space: nowrap; flex: none; }
+    .ph-h { font-weight: 700; color: var(--blue); margin: 10px 0 2px; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { font-size: 12px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 16px; background: #fff; cursor: pointer; }
+    .chip.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .upbox { border: 2px dashed #bbb; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .upbox.over { border-color: var(--blue); background: var(--blue-bg); }
+    textarea.imp { width: 100%; min-height: 140px; font-family: Consolas, monospace; font-size: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+    #lb { position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 100; display: flex; align-items: center; justify-content: center; }
+    #lb img { max-width: 94vw; max-height: 86vh; object-fit: contain; }
+    #lb button { position: absolute; background: rgba(255,255,255,.15); color: #fff; border: none; font-size: 22px; width: 48px; height: 48px; border-radius: 24px; cursor: pointer; }
+    #lb .lb-x { top: 12px; right: 12px; } #lb .lb-p { left: 8px; top: 50%; } #lb .lb-n { right: 8px; top: 50%; }
+    #lb-cap { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -87,6 +110,7 @@
           <div class="vtabs">
             <button class="vtab on" data-v="input" onclick="setView('input')">측정</button>
             <button class="vtab" data-v="sum" onclick="setView('sum')">결과·이력</button>
+            <button class="vtab" data-v="photo" onclick="setView('photo')">사진·작성표</button>
           </div>
         </div>
         <div id="input-head">
@@ -109,6 +133,10 @@
     <div id="v-sum" hidden>
       <div class="wrap wide"><div class="panel" id="sum-body"></div></div>
     </div>
+    <div id="v-photo" hidden>
+      <div class="wrap wide"><div class="panel" id="photo-body"></div></div>
+    </div>
+    <div id="lb" hidden onclick="if(event.target.id==='lb')lbClose()"><button class="lb-x" onclick="lbClose()">✕</button><button class="lb-p" onclick="lbGo(-1)">◀</button><img id="lb-img" alt=""><button class="lb-n" onclick="lbGo(1)">▶</button><div id="lb-cap"></div></div>
     <div class="toast" id="toast"></div>
   </div>
 
@@ -139,16 +167,16 @@
       BRK = await fetchAll(() => sb.from('hook_breakers').select('*').eq('active', true).order('panel').order('sort').order('created_at'));
       READ = await fetchAll(() => sb.from('hook_readings').select('*').order('d'));
     }
-    const panels = () => [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)))];
+    const panels = () => [...new Set(BRK.map(b => b.panel).concat(NEWB.map(b => b.panel)).concat(PHOTOS.map(p => p.panel).filter(Boolean)))];
     const readOn = (bid, d) => READ.find(r => r.breaker_id === bid && r.d === d);
     const lastBefore = (bid, d) => READ.filter(r => r.breaker_id === bid && r.d < d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
 
     function setView(v) {
       if (v === 'sum' && dirtyCount() && !confirm('저장하지 않은 측정값이 있습니다. 저장하지 않고 이동할까요?')) return;
       view = v; document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-      document.getElementById('v-input').hidden = v !== 'input'; document.getElementById('v-sum').hidden = v !== 'sum';
-      document.getElementById('input-head').hidden = v !== 'input'; document.getElementById('head-wrap').classList.toggle('wide', v === 'sum');
-      if (v === 'sum') renderSum(); else renderInput();
+      document.getElementById('v-input').hidden = v !== 'input'; document.getElementById('v-sum').hidden = v !== 'sum'; document.getElementById('v-photo').hidden = v !== 'photo';
+      document.getElementById('input-head').hidden = v !== 'input'; document.getElementById('head-wrap').classList.toggle('wide', v !== 'input');
+      if (v === 'sum') renderSum(); else if (v === 'photo') renderPhoto(); else renderInput();
     }
     function changeDate(d) { if (dirtyCount() && !confirm('저장하지 않은 측정값이 있습니다. 버리고 날짜를 바꿀까요?')) { document.getElementById('work-date').value = workDate; return; } workDate = d; DRAFT = {}; renderInput(); }
     function shiftDate(n) { changeDate(addDays(workDate, n)); }
@@ -163,7 +191,7 @@
       const el = document.getElementById('content');
       if (!panelSel) { el.innerHTML = `<div class="card"><b>분전반을 먼저 만들어 주세요.</b><div class="hint">위의 「＋ 분전반」을 누르고 분전반 이름(예: P-레토르트, 기계실 MCC)을 넣은 뒤, 차단기를 추가합니다.</div></div>`; renderSumBar(); return; }
       const bs = BRK.filter(b => b.panel === panelSel).concat(NEWB.filter(b => b.panel === panelSel));
-      el.innerHTML = `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
+      el.innerHTML = photoStrip(panelSel) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
         bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(panelSel)})</button>`;
       renderSumBar();
     }
@@ -295,6 +323,129 @@
       READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note]); });
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '부하측정'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
     }
+    // ---------------- 사진 (분전반 전체·차단기 근접) ----------------
+    let PHOTOS = [], URLS = {}, photoErr = '', phFilter = null, phPanel = '', phKind = 'breaker', LB = { list: [], i: 0 };
+    async function loadPhotos() {
+      try { PHOTOS = await fetchAll(() => sb.from('hook_photos').select('*').order('panel').order('sort').order('created_at')); photoErr = ''; }
+      catch (e) { PHOTOS = []; photoErr = errMsg(e); }
+      await signUrls(PHOTOS.map(p => p.path));
+    }
+    async function signUrls(paths) {
+      const need = paths.filter(p => !URLS[p]); if (!need.length) return;
+      const st = sb.storage.from('pm-photos');
+      try { const { data } = await st.createSignedUrls(need, 60 * 60 * 6); (data || []).forEach(x => { if (x.signedUrl) URLS[x.path] = x.signedUrl; }); }
+      catch (e) { for (const p of need) { try { const { data } = await st.createSignedUrl(p, 60 * 60 * 6); if (data) URLS[p] = data.signedUrl; } catch (e2) { } } }
+    }
+    const phOf = p => PHOTOS.filter(x => (x.panel || '') === (p || '')).sort((a, b) => (a.kind === 'panel' ? 0 : 1) - (b.kind === 'panel' ? 0 : 1) || a.sort - b.sort || (a.created_at < b.created_at ? -1 : 1));
+    function photoStrip(p) {
+      const L = phOf(p); if (!L.length) return '';
+      return `<div class="card"><div class="hint" style="margin-bottom:4px">📷 ${esc(p)} 사진 ${L.length}장 (파란 테두리 = 분전반 전체) · 누르면 크게 보기</div><div class="ph-strip">${L.map((x, i) => `<img class="${x.kind === 'panel' ? 'pn' : ''}" loading="lazy" src="${esc(URLS[x.path] || '')}" onclick="lbOpen(${JSON.stringify(p).replace(/"/g, '&quot;')},${i})">`).join('')}</div></div>`;
+    }
+    async function compressImage(file) { // 긴 변 1600px · JPEG 0.82 (차단기 글씨가 읽히게)
+      const MAX = 1600;
+      const img = await new Promise((ok, no) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => no(new Error('사진을 읽지 못했습니다')); im.src = u; });
+      let w = img.naturalWidth, h = img.naturalHeight; const r = Math.min(1, MAX / Math.max(w, h)); w = Math.round(w * r); h = Math.round(h * r);
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      return await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('사진 변환 실패')), 'image/jpeg', 0.82));
+    }
+    const uuid = () => crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+    async function phUpload(files) {
+      files = [...files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)); if (!files.length) return;
+      const sel = document.getElementById('ph-panel'); let panel = sel ? sel.value : phPanel;
+      phPanel = panel; const st = document.getElementById('ph-st'); let ok = 0, fail = [];
+      const base = PHOTOS.filter(x => x.panel === panel).length;
+      for (let i = 0; i < files.length; i++) {
+        st.textContent = `올리는 중... ${i + 1}/${files.length}`;
+        try {
+          const blob = await compressImage(files[i]), id = uuid(), d = new Date(), path = `hook/${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${id}.jpg`;
+          const up = await sb.storage.from('pm-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false }); if (up.error) throw up.error;
+          const row = { id, panel, kind: phKind, path, note: files[i].name.replace(/\.[^.]+$/, ''), sort: base + i };
+          const { error } = await sb.from('hook_photos').insert(row); if (error) throw error;
+          PHOTOS.push(Object.assign({ created_at: new Date().toISOString() }, row)); ok++;
+        } catch (e) { fail.push(`${files[i].name}: ${errMsg(e)}`); }
+      }
+      await signUrls(PHOTOS.map(p => p.path));
+      phFilter = panel; renderPhoto();
+      toast(`사진 ${ok}장 올림${fail.length ? ` · 실패 ${fail.length}` : ''}`);
+      if (fail.length) alert('올리지 못한 사진:\n' + fail.join('\n') + (/relation|does not exist|schema cache/i.test(fail.join(' ')) ? '\n\nSupabase에 19번 SQL을 실행했는지 확인해 주세요.' : ''));
+    }
+    function phPickPanel(v) { if (v === '__new') { const n = (prompt('분전반 이름 (예: P-레토르트, 기계실 MCC)') || '').trim(); if (n) { phPanel = n; if (!NEWB.some(b => b.panel === n) && !BRK.some(b => b.panel === n)) PH_EXTRA.add(n); } } else phPanel = v; renderPhoto(); }
+    const PH_EXTRA = new Set(); // 사진 올리기 전 새로 적은 분전반 이름
+    async function phSet(id, k, v) {
+      if (k === 'panel' && v === '__new') { v = (prompt('분전반 이름') || '').trim(); if (!v) { renderPhoto(); return; } }
+      const { error } = await sb.from('hook_photos').update({ [k]: v }).eq('id', id); if (error) { alert('저장 실패: ' + errMsg(error)); return; }
+      Object.assign(PHOTOS.find(x => x.id === id), { [k]: v }); if (k !== 'note') renderPhoto(); else toast('메모 저장');
+    }
+    async function phDel(id) {
+      const x = PHOTOS.find(p => p.id === id); if (!x || !confirm('이 사진을 지울까요?')) return;
+      const { error } = await sb.from('hook_photos').delete().eq('id', id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; }
+      try { await sb.storage.from('pm-photos').remove([x.path]); } catch (e) { }
+      PHOTOS = PHOTOS.filter(p => p.id !== id); renderPhoto();
+    }
+    function renderPhoto() {
+      const el = document.getElementById('photo-body'), ps = [...new Set(panels().concat([...PH_EXTRA]))], q = s => JSON.stringify(s).replace(/"/g, '&quot;');
+      const groups = [...new Set(PHOTOS.map(x => x.panel || ''))].sort((a, b) => a === '' ? 1 : b === '' ? -1 : ps.indexOf(a) - ps.indexOf(b));
+      if (phFilter !== null && !groups.includes(phFilter)) phFilter = null;
+      const panelOpts = cur => `<option value="" ${!cur ? 'selected' : ''}>미분류</option>${ps.map(p => `<option ${p === cur ? 'selected' : ''}>${esc(p)}</option>`).join('')}<option value="__new">＋ 새 분전반…</option>`;
+      let h = photoErr ? `<div class="card" style="border-color:var(--red)"><b>사진 목록을 불러오지 못했습니다.</b><div class="hint">${esc(photoErr)}<br>Supabase에 <b>19번 SQL (19_hook_photos.sql)</b>을 실행해 주세요.</div></div>` : '';
+      h += `<div class="tool"><b>1. 사진 올리기</b></div>
+        <label class="upbox" id="ph-drop" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');phUpload(event.dataTransfer.files)">
+          <div class="tool" style="margin:0">분전반 <select id="ph-panel" onchange="phPickPanel(this.value)">${panelOpts(phPanel)}</select>
+            <span class="chips"><button type="button" class="chip ${phKind === 'panel' ? 'on' : ''}" onclick="phKind='panel';renderPhoto()">분전반 전체 사진</button><button type="button" class="chip ${phKind === 'breaker' ? 'on' : ''}" onclick="phKind='breaker';renderPhoto()">차단기 근접 사진</button></span></div>
+          <div><input type="file" id="ph-file" accept="image/*" multiple hidden onchange="phUpload(this.files);this.value=''"><button type="button" class="btn" onclick="document.getElementById('ph-file').click()">📷 사진 고르기 (여러 장)</button>
+            <span class="hint">또는 여기로 끌어다 놓기 · 한 번에 한 분전반씩 올리면 분류가 편합니다. 미분류로 올리고 나중에 분전반을 골라도 됩니다.</span></div>
+          <span class="hint" id="ph-st"></span></label>`;
+      h += `<div class="tool" style="margin-top:14px"><b>2. 사진 보기·분류</b> <span class="hint">${PHOTOS.length}장</span></div>
+        <div class="chips" style="margin-bottom:6px"><button class="chip ${phFilter === null ? 'on' : ''}" onclick="phFilter=null;renderPhoto()">전체</button>${groups.map(g => `<button class="chip ${phFilter === g ? 'on' : ''}" onclick="phFilter=${q(g)};renderPhoto()">${g ? esc(g) : '미분류'} ${phOf(g).length}</button>`).join('')}</div>`;
+      (phFilter === null ? groups : [phFilter]).forEach(g => {
+        const L = phOf(g);
+        h += `<div class="ph-h">${g ? esc(g) : '미분류'} <span class="hint">${L.length}장</span></div><div class="ph-grid">${L.map((x, i) => `<div class="ph-it ${x.kind === 'panel' ? 'pn' : ''}"><img loading="lazy" src="${esc(URLS[x.path] || '')}" onclick="lbOpen(${q(g)},${i})">
+          <div class="pc"><select onchange="phSet('${x.id}','panel',this.value)">${panelOpts(x.panel)}</select>
+            <div class="row"><select onchange="phSet('${x.id}','kind',this.value)"><option value="panel" ${x.kind === 'panel' ? 'selected' : ''}>분전반 전체</option><option value="breaker" ${x.kind === 'breaker' ? 'selected' : ''}>차단기</option></select>${isAdmin() ? `<button class="mini" onclick="phDel('${x.id}')">삭제</button>` : ''}</div>
+            <input placeholder="메모 (예: 1~3번 차단기)" value="${esc(x.note || '')}" onchange="phSet('${x.id}','note',this.value)"></div></div>`).join('')}</div>`;
+      });
+      if (!PHOTOS.length && !photoErr) h += '<div class="hint">아직 올린 사진이 없습니다.</div>';
+      h += `<div class="tool" style="margin-top:18px"><b>3. 작성표 붙여넣기 → 차단기 한꺼번에 등록</b></div>
+        <div class="hint">Claude 채팅에 사진을 보내 분류를 받으면, 받은 작성표를 그대로 붙여넣으세요. 엑셀에서 복사한 표도 됩니다.<br>칸 순서: <b>분전반 · 차단기 명칭 · 전압(380/220) · 정격 kW · 차단기 A · 비고</b> (탭, |, 쉼표로 구분 · 제목 줄은 자동으로 건너뜀)</div>
+        <textarea class="imp" id="imp-text" placeholder="P-레토르트\t레토르트 1호기 순환펌프\t380\t7.5\t30\t사진 3번&#10;P-레토르트\t조명\t220\t\t20\t"></textarea>
+        <div class="tool" style="margin-top:6px"><button class="btn" onclick="impPreview()">미리보기</button><span class="hint" id="imp-st"></span></div><div id="imp-prev"></div>`;
+      el.innerHTML = h;
+    }
+    function impParse(text) {
+      const out = [];
+      String(text || '').split(/\r?\n/).forEach(line => {
+        let t = line.trim(); if (!t || /^[|\-\s:]+$/.test(t)) return;
+        let c = t.includes('\t') ? t.split('\t') : t.includes('|') ? t.replace(/^\||\|$/g, '').split('|') : t.split(',');
+        c = c.map(x => x.trim());
+        if (/분전반/.test(c[0]) && /차단기|명칭/.test(c[1] || '')) return; // 제목 줄
+        if (!c[0] || !c[1]) return;
+        const v = String(c[2] || '').replace(/[^0-9]/g, ''), n = x => { const s = String(x || '').replace(/[^0-9.]/g, ''); return s === '' ? '' : s; };
+        out.push({ panel: c[0], name: c[1], volt: v === '220' ? 220 : 380, voltRaw: c[2] || '', rated_kw: n(c[3]), rated_a: n(c[4]), note: c.slice(5).filter(Boolean).join(' / ') });
+      });
+      return out;
+    }
+    let IMP = [];
+    function impPreview() {
+      IMP = impParse(document.getElementById('imp-text').value);
+      const dup = r => BRK.some(b => b.panel === r.panel && b.name === r.name) || NEWB.some(b => b.panel === r.panel && b.name === r.name);
+      IMP.forEach(r => { r.dup = dup(r); });
+      const n = IMP.filter(r => !r.dup).length;
+      document.getElementById('imp-st').textContent = IMP.length ? `${IMP.length}줄 읽음 · 새로 추가 ${n}개${IMP.length - n ? ` · 이미 있는 차단기 ${IMP.length - n}개는 건너뜀` : ''}` : '읽은 줄이 없습니다. 칸 순서를 확인해 주세요.';
+      document.getElementById('imp-prev').innerHTML = IMP.length ? `<div class="tbl" style="max-height:360px"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>정격 kW</th><th>차단기 A</th><th class="l">비고</th><th></th></tr>${IMP.map(r => `<tr class="${r.dup ? 'off' : ''}"><td class="l">${esc(r.panel)}</td><td class="l">${esc(r.name)}</td><td>${r.volt}V${r.voltRaw && !/220|380/.test(r.voltRaw) ? ' <span class="lr-lo">?</span>' : ''}</td><td>${esc(r.rated_kw)}</td><td>${esc(r.rated_a)}</td><td class="l hist">${esc(r.note)}</td><td>${r.dup ? '이미 있음' : '추가'}</td></tr>`).join('')}</table></div>
+        ${n ? `<div class="tool" style="margin-top:8px"><button class="btn" onclick="impApply()">✓ ${n}개를 측정 화면에 추가 (저장 전 확인)</button><span class="hint">추가 후 측정 화면에서 확인·수정하고 [저장]을 눌러야 등록됩니다.</span></div>` : ''}` : '';
+    }
+    function impApply() {
+      const add = IMP.filter(r => !r.dup); if (!add.length) return;
+      add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note,
+        sort: BRK.filter(b => b.panel === r.panel).length + NEWB.filter(b => b.panel === r.panel).length }); });
+      panelSel = add[0].panel; IMP = []; setView('input'); toast(`차단기 ${add.length}개 추가 — 확인 후 [저장]`);
+    }
+    function lbOpen(p, i) { LB = { list: phOf(p), i }; lbShow(); document.getElementById('lb').hidden = false; }
+    function lbShow() { const x = LB.list[LB.i]; if (!x) return; document.getElementById('lb-img').src = URLS[x.path] || ''; document.getElementById('lb-cap').textContent = `${x.panel || '미분류'} · ${x.kind === 'panel' ? '분전반 전체' : '차단기'}${x.note ? ' · ' + x.note : ''} (${LB.i + 1}/${LB.list.length})`; }
+    function lbGo(n) { LB.i = (LB.i + n + LB.list.length) % LB.list.length; lbShow(); }
+    function lbClose() { document.getElementById('lb').hidden = true; }
+    document.addEventListener('keydown', e => { if (document.getElementById('lb').hidden) return; if (e.key === 'Escape') lbClose(); if (e.key === 'ArrowLeft') lbGo(-1); if (e.key === 'ArrowRight') lbGo(1); });
+
     window.addEventListener('beforeunload', e => { if (dirtyCount()) { e.preventDefault(); e.returnValue = ''; } });
 
     Portal.start({
@@ -302,7 +453,7 @@
       title: '후크메타 부하 측정',
       onReady: async P => {
         sb = P.sb; me = P.me;
-        try { await loadAll(); renderInput(); }
+        try { await loadAll(); await loadPhotos(); renderInput(); }
         catch (e) { document.getElementById('content').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 17번 SQL(17_hook_load.sql)을 실행했는지 확인해 주세요.</div>`; }
       }
     });
