@@ -692,7 +692,7 @@
     // =====================================================================
     let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [];
     function renderAnomaly() {
-      setTimeout(renderProdCompare, 0);
+      setTimeout(renderProdCompare, 0); setTimeout(renderHours, 0);
       const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
       anomList = UT.anomalies(DAILY, from, to, { ratio: anomRatio }).reverse();
       document.getElementById('anom-chips').innerHTML =
@@ -1369,8 +1369,9 @@
     //  날마다 '생산량·작업시간·기온으로 본 예상 사용량'과 실제를 비교
     // =====================================================================
     let PRODD = null, pdUtil = 'elec', pdOnlyHigh = true, pdFocus = null;
-    async function loadProdDaily() {
-      if (PRODD) return PRODD;
+    let PRODD_P = null;
+    function loadProdDaily() { if (PRODD) return Promise.resolve(PRODD); if (!PRODD_P) PRODD_P = loadProdDaily0().catch(e => { PRODD_P = null; throw e; }); return PRODD_P; }
+    async function loadProdDaily0() {
       const base = 'https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/daily_summary';
       const out = {}; let tok = '';
       for (let i = 0; i < 20; i++) {
@@ -1382,8 +1383,11 @@
           const d = String(f.date || doc.name.split('/').pop()).slice(0, 10);
           const P = n => (f.processes || []).filter(p => p && String(p.process).includes(n));
           const sum = (a, k) => a.reduce((s, p) => s + (Number(p[k]) || 0), 0);
-          out[d] = { d, rm: sum(P('전처리'), 'inputKg'), steamH: sum(P('자숙'), 'workHours'), steamKg: sum(P('자숙'), 'inputKg'), crushH: sum(P('파쇄'), 'workHours'),
-            packH: sum(P('포장'), 'workHours'), ea: Number(f.totalEa) || sum(P('포장'), 'ea') };
+          const all = (f.processes || []).filter(p => p);
+          out[d] = { d, rm: sum(P('전처리'), 'inputKg'), prepH: sum(P('전처리'), 'workHours'), steamH: sum(P('자숙'), 'workHours'), steamKg: sum(P('자숙'), 'inputKg'), crushH: sum(P('파쇄'), 'workHours'),
+            packH: sum(P('포장'), 'workHours'), ea: Number(f.totalEa) || sum(P('포장'), 'ea'),
+            manH: all.reduce((t, p) => t + (Number(p.workers) || 0) * (Number(p.workHours) || 0), 0) };
+          const o = out[d]; o.sumH = o.prepH + o.steamH + o.crushH + o.packH; o.maxH = Math.max(o.prepH, o.steamH, o.crushH, o.packH);
         });
         tok = j.nextPageToken; if (!tok) break;
       }
@@ -1526,3 +1530,78 @@
         (L.length ? `<ul class="un-list">${L.map(n => `<li>${unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
     }
     function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
+
+    // =====================================================================
+    // 이상감지 · 생산 가동시간과 맞춰보기 — 일별 사용량 vs 공정별 작업시간(생산 대시보드)
+    // =====================================================================
+    let phUtil = 'elecProd', phBasis = null, phDays = 120, phIdle = false;
+    const PH_UTIL = {
+      elec: { name: '전기 전체', unit: 'kWh', val: ds => (UT.dailyUsage(DAILY, ds) || {}).elec, def: 'maxH' },
+      elecProd: { name: '생산동 전기', unit: 'kWh', def: 'maxH', note: '전기 전체 − 폐수동 − 공조냉동 (그날 검침값이 다 있는 날만)',
+        val: ds => { const e = (UT.dailyUsage(DAILY, ds) || {}).elec, w = UT.diffReading(DAILY, ds, ['ww_power']), h = UT.diffReading(DAILY, ds, ['hvac_power']);
+          if (e === null || e === undefined || w === null || h === null) return null; const ct = Number((MONTHLY[ds.slice(0, 7)] || {}).elec_ww_ct) || 40; return e - w * ct - h; } },
+      gas: { name: '보일러 가스', unit: '㎥', val: ds => UT.diffReading(DAILY, ds, ['gas_boiler']), def: 'steamH' },
+      water: { name: '용수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).water, def: 'maxH' },
+      ww: { name: '폐수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).ww, def: 'maxH' }
+    };
+    const PH_BASIS = [['prepH', '전처리'], ['steamH', '자숙'], ['crushH', '파쇄'], ['packH', '포장'], ['maxH', '가장 긴 공정'], ['sumH', '공정 시간 합'], ['manH', '인시 (작업자×시간)']];
+    const phUnitH = b => b === 'manH' ? '인시' : 'h';
+    function linFit(pts) { // y = a + b·x, R²
+      const n = pts.length; if (n < 3) return null;
+      const mx = pts.reduce((s, p) => s + p.x, 0) / n, my = pts.reduce((s, p) => s + p.y, 0) / n;
+      let sxx = 0, sxy = 0, syy = 0; pts.forEach(p => { sxx += (p.x - mx) ** 2; sxy += (p.x - mx) * (p.y - my); syy += (p.y - my) ** 2; });
+      if (sxx < 1e-9) return null; const b = sxy / sxx, a = my - b * mx;
+      return { a, b, r2: syy > 0 ? sxy * sxy / (sxx * syy) : 0, n };
+    }
+    function phRows(uk, to, nDays) {
+      const U = PH_UTIL[uk], out = [];
+      for (let i = 0; i < nDays; i++) { const ds = UT.addDays(to, -i), y = U.val(ds); if (y === null || y === undefined || isNaN(y) || y < 0) continue;
+        const p = PRODD[ds], boiler = UT.diffReading(DAILY, ds, ['gas_boiler']);
+        if (!p && (boiler === null || boiler > 50)) continue; // 생산 기록이 없는데 보일러는 돈 날·판단 못 하는 날은 뺌
+        out.push({ ds, y, p, prod: !!(p && p.rm > 0) }); }
+      return out.reverse();
+    }
+    async function renderHours() {
+      const el = document.getElementById('ph-body'); if (!el || !window.Chart) return;
+      if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 작업시간 불러오는 중...</div>';
+        try { await loadProdDaily(); } catch (e) { el.innerHTML = `<div class="empty">생산 대시보드 자료를 읽지 못했습니다: ${esc(errMsg(e))}</div>`; return; } }
+      const U = PH_UTIL[phUtil], to = UT.addDays(todayStr, -1), rows = phRows(phUtil, to, phDays);
+      const use = rows.filter(r => r.prod || phIdle), H = (r, b) => r.prod ? (r.p[b] || 0) : 0;
+      const fits = PH_BASIS.map(([b, n]) => { const pts = use.map(r => ({ x: H(r, b), y: r.y })); const f = linFit(pts); const sh = pts.reduce((s, p) => s + p.x, 0), sy = use.filter(r => r.prod).reduce((s, r) => s + r.y, 0);
+        return { b, n, f, perH: sh > 0 ? sy / sh : null }; });
+      const best = fits.filter(x => x.f && x.f.b > 0).sort((a, b) => b.f.r2 - a.f.r2)[0];
+      if (!phBasis) phBasis = U.def;
+      const B = phBasis, BN = PH_BASIS.find(x => x[0] === B)[1], F = fits.find(x => x.b === B), uh = phUnitH(B);
+      const nf = v => v === null || v === undefined ? '-' : Math.abs(v) >= 100 ? f0(v) : nf1.format(v);
+      let h = `<div class="toolbar"><span class="chips">${Object.entries(PH_UTIL).map(([k, u]) => `<button class="chip ${k === phUtil ? 'on' : ''}" onclick="phUtil='${k}';phBasis=null;renderHours()">${u.name}</button>`).join('')}</span>
+          <span class="chips">${[60, 120, 365].map(n => `<button class="chip ${phDays === n ? 'on' : ''}" onclick="phDays=${n};renderHours()">최근 ${n}일</button>`).join('')}</span>
+          <label class="hint"><input type="checkbox" ${phIdle ? 'checked' : ''} onchange="phIdle=this.checked;renderHours()"> 쉬는 날(0시간)도 넣기</label></div>
+        <div class="hint" style="margin-bottom:6px">${U.note ? U.note + ' · ' : ''}검침은 그날 아침 → 다음날 아침 차이를 그날 사용량으로 봅니다. 작업시간은 생산 대시보드에 적힌 공정별 작업시간입니다 (설비가 실제로 돈 시간과 다를 수 있음).</div>`;
+      if (use.length < 10) { el.innerHTML = h + `<div class="empty">비교할 날이 부족합니다 (${use.length}일). 기간을 늘리거나 다른 항목을 골라 보세요.</div>`; return; }
+      // 1) 어떤 작업시간이 잘 맞나
+      h += `<div class="tbl-wrap"><table class="t ph-fit"><tr><th class="l">작업시간 기준</th><th>맞는 정도 (R²)</th><th>시간당 늘어나는 ${U.unit}</th><th>${phIdle ? '0시간일 때' : '시간과 무관한 몫'} ${U.unit}</th><th>${U.unit} ÷ 작업시간 (생산일 합계)</th><th>날 수</th></tr>` +
+        fits.map(x => `<tr class="${x.b === B ? 'on' : ''}" onclick="phBasis='${x.b}';renderHours()" style="cursor:pointer"><td class="l">${x.b === B ? '▶ ' : ''}${x.n}${best && best.b === x.b ? ' <span class="good">가장 잘 맞음</span>' : ''}</td>
+          <td>${x.f ? `<span class="ph-bar"><i style="width:${Math.round(Math.max(0, x.f.r2) * 100)}%"></i></span> ${x.f.r2.toFixed(2)}` : '-'}</td><td>${x.f ? nf(x.f.b) + ' /' + phUnitH(x.b) : '-'}</td><td>${x.f ? nf(x.f.a) : '-'}</td><td>${x.perH === null ? '-' : nf(x.perH) + ' /' + phUnitH(x.b)}</td><td>${x.f ? x.f.n : '-'}</td></tr>`).join('') + '</table></div>' +
+        `<div class="hint" style="margin:4px 0 10px">R²는 0~1, 1에 가까울수록 그 작업시간이 늘면 ${U.name} 사용량도 같이 늘어난다는 뜻입니다. 0.3 아래면 그 작업시간으로는 사용량 차이가 거의 설명되지 않습니다 (설비가 시간과 상관없이 돌거나, 기온 등 다른 요인이 큼). 줄을 누르면 아래 그래프 기준이 바뀝니다.</div>`;
+      // 2) 그래프
+      h += `<div class="ph-grid"><div><div class="hint"><b>일별 ${U.name}</b> (막대) · <b>${BN} ${uh}</b> (선)</div><div class="chart-box"><canvas id="ph-line"></canvas></div></div>
+        <div><div class="hint"><b>${BN} ${uh}</b> ↔ <b>${U.name}</b> — 점 하나가 하루${F.f ? ` · 선: ${nf(F.f.a)} + ${nf(F.f.b)} × ${uh}` : ''}</div><div class="chart-box"><canvas id="ph-sc"></canvas></div></div></div>`;
+      // 3) 월별 작업시간당 사용량
+      const byM = {}; rows.forEach(r => { const m = r.ds.slice(0, 7); const o = byM[m] = byM[m] || { pd: 0, h: 0, y: 0, idle: 0, idleY: 0 };
+        if (r.prod) { o.pd++; o.h += r.p[B] || 0; o.y += r.y; } else { o.idle++; o.idleY += r.y; } });
+      h += `<h4 style="margin:14px 0 4px">월별 — ${BN} 작업시간당 ${U.name}</h4><div class="tbl-wrap"><table class="t"><tr><th>월</th><th>생산일 (검침 있는 날)</th><th>${BN} 작업 ${uh} 합</th><th>생산일 ${U.unit} 합</th><th>${U.unit} / ${uh}</th><th>생산일 하루 평균 ${U.unit}</th><th>하루 평균 작업 ${uh}</th><th>쉬는 날 하루 평균 ${U.unit}</th></tr>` +
+        Object.keys(byM).sort().map(m => { const o = byM[m]; return `<tr><td>${ymLabel(m)}</td><td>${o.pd}</td><td>${nf(o.h)}</td><td>${f0(o.y)}</td><td><b>${o.h > 0 ? nf(o.y / o.h) : '-'}</b></td><td>${o.pd ? f0(o.y / o.pd) : '-'}</td><td>${o.pd ? nf1.format(o.h / o.pd) : '-'}</td><td>${o.idle ? f0(o.idleY / o.idle) + ` <span class="hint">(${o.idle}일)</span>` : '-'}</td></tr>`; }).join('') + '</table></div>' +
+        `<div class="hint" style="margin-top:4px">${U.unit}/${uh} 가 달마다 비슷하면 사용량이 작업시간을 따라가는 것이고, 어느 달만 높으면 그 달은 작업시간 말고 다른 이유(기온·설비 추가·누설 등)를 [특이사항]·[원인분석]에서 확인해 보세요.</div>`;
+      el.innerHTML = h;
+      const prodRows = rows.filter(r => r.prod || phIdle);
+      mkChart('ph-line', { data: { labels: rows.map(r => r.ds.slice(5).replace('-', '/')), datasets: [
+          { type: 'bar', label: U.name + ' ' + U.unit, data: rows.map(r => r.y), backgroundColor: rows.map(r => r.prod ? '#2a78d6aa' : '#c8ccd2'), yAxisID: 'y', order: 2 },
+          { type: 'line', label: BN + ' ' + uh, data: rows.map(r => r.prod ? (r.p[B] || 0) : 0), borderColor: '#eb6834', backgroundColor: '#eb6834', pointRadius: rows.length > 120 ? 0 : 2, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: U.unit } }, y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: uh } } } } });
+      const pts = prodRows.map(r => ({ x: H(r, B), y: r.y, ds: r.ds })), xs = pts.map(p => p.x), x0 = Math.min(0, ...xs), x1 = Math.max(...xs);
+      mkChart('ph-sc', { type: 'scatter', data: { datasets: [
+          { label: '하루', data: pts, backgroundColor: '#2a78d6aa', pointRadius: 3.5 },
+          ...(F.f ? [{ type: 'line', label: '추세선', data: [{ x: x0, y: F.f.a + F.f.b * x0 }, { x: x1, y: F.f.a + F.f.b * x1 }], borderColor: '#d93025', borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5 }] : [])] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.ds ? `${c.raw.ds} · ${nf1.format(c.raw.x)}${uh} · ${f0(c.raw.y)} ${U.unit}` : '' } } },
+          scales: { x: { title: { display: true, text: BN + ' ' + uh } }, y: { min: 0, title: { display: true, text: U.unit } } } } });
+    }
