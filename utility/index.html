@@ -2308,8 +2308,8 @@
       }
       const GA = '가나다라마바사아';
       if (uk !== 'gas' && uk !== 'water') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스·용수는 세부 항목 없이 1~4번만
-      L.push(`3. 생산량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
-      L.push(`4. 생산량당 사용량 = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
+      L.push(`3. 원육 사용량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
+      L.push(`4. 원육 사용량당 사용량 = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
       return { lines: L, s, c };
     }
     // 지출결의 입력사항 줄: [상세내용, 공급가액, 부가세, 합계]
