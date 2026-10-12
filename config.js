@@ -23,6 +23,7 @@ window.APP_CONFIG = {
   ],
   // 홈 화면 '바로가기' (다른 사이트 — 새 창으로 열림, 협력업체 계정에는 안 보임)
   LINKS: [
-    { icon: '🗂️', name: '그룹웨어 현장 작업내역', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1595/home' }
+    { icon: '🗂️', name: '그룹웨어 현장 작업내역', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1595/home' },
+    { icon: '📇', name: '그룹웨어 설비이력카드', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1584/home' }
   ]
 };
