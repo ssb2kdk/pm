@@ -2271,6 +2271,13 @@
       const ud = uk === 'water' || uk === 'ww' ? 3 : 1;
       const L = [];
       const k1 = v => v === null || v === undefined ? null : Math.round(v / 1000);
+      if (uk === 'water') { // 용수: 지로 안내 문구 (사용 기간 = 전월 12일 ~ 이번 달 11일 검침, 지로는 다음 달분)
+        const yy = x => x.slice(2, 4), mm = x => x.slice(5, 7), g = UT.nextYm(ym), a = UT.prevYm(ym);
+        L.push(`※ 지로는 ${yy(g)}년 ${mm(g)}월분 : 용수 사용 기간 = ${yy(a)}년 ${mm(a)}월 12일 ~ ${yy(ym)}년 ${mm(ym)}월 11일 (실적은 ${mm(ym)}월로 적용).`);
+        L.push('※ 구경 40A + 50A 합산하여 지출결의 작성. (수치 비교도 합산량으로 적용)');
+        L.push('※ 익산시 상수도 급수조례 제27조에 의거 2개 이상의 수도계량기 장치 시 사용량을 합산하여 계산. (7월 고지분부터 적용)');
+        L.push('    -. 40A + 50A 사용량 합산하여 40A 고지서 사용량에 적용, 50A 고지서에는 구경요금만 부과');
+      }
       L.push(`1. ${N} 비용 = ${exCmp(c.cost, c0.cost, v => exF(0)(v / 1000), '천원')}`);
       L.push(`2. ${N} 사용량 = ${exCmp(c.usage, c0.usage, exF(0), U.unit)}`);
       const sub = [];
@@ -2281,14 +2288,14 @@
         const ga = x => { let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(x); d++) { const v = UT.diffReading(DAILY, UT.dateStr(x, d), ['gas_boiler']); if (v !== null && v !== undefined && !isNaN(v) && v > 0) { t += Number(v); n++; } } return n ? { v: t / n, n } : { v: null, n: 0 }; };
         const a1 = ga(ym), a0 = ga(UT.prevYm(ym));
         sub.push(`일평균 보일러 가스사용량(가동일 ${a1.n}일) = ${exCmp(a1.v, a0.v, exF(1), '㎥')}`);
-      } else sub.push(`일평균 ${N}사용량 = ${exCmp(dayAvg(ym, c), dayAvg(UT.prevYm(ym), c0), exF(1), U.unit)}`);
+      } else sub.push(`일평균 ${N} 사용량 = ${exCmp(dayAvg(ym, c), dayAvg(UT.prevYm(ym), c0), exF(1), U.unit)}`);
       if (uk === 'elec') {
         const ww = meterKwh(ym, 'elec_ww_kwh'), ww0 = meterKwh(UT.prevYm(ym), 'elec_ww_kwh'), hv = meterKwh(ym, 'elec_hvac_kwh'), hv0 = meterKwh(UT.prevYm(ym), 'elec_hvac_kwh');
         if (ww !== null && hv !== null && c.usage !== null) {
           const pr = c.usage - ww - hv, pr0 = (c0.usage !== null && ww0 !== null && hv0 !== null) ? c0.usage - ww0 - hv0 : null;
           sub.push(`생산 전력 사용량 = ${exCmp(pr, pr0, exF(0), 'kWh')}`);
           sub.push(`폐수처리장 전력 사용량 = ${exCmp(ww, ww0, exF(0), 'kWh')}`);
-          sub.push(`공조냉동 전력사용량 = ${exCmp(hv, hv0, exF(0), 'kWh')}`);
+          sub.push(`공조냉동 전력 사용량 = ${exCmp(hv, hv0, exF(0), 'kWh')}`);
         }
       } else if (uk === 'gas') {
         sub.push(`가스 사용량(㎥) = ${exCmp(c.m3, c0.m3, exF(0), '㎥')}`);
@@ -2300,7 +2307,7 @@
         if (u5(c) !== null) sub.push(`50A 사용량 = ${exCmp(u5(c), u5(c0), exF(0), '㎥')}`);
       }
       const GA = '가나다라마바사아';
-      if (uk !== 'gas') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스는 세부 항목 없이 1~4번만
+      if (uk !== 'gas' && uk !== 'water') sub.forEach((t, i) => L.push(`  ${GA[i]}. ${t}`)); // 가스·용수는 세부 항목 없이 1~4번만
       L.push(`3. 생산량당 비용 = ${exCmp(ratio(c.cost, s.production), ratio(c0.cost, p.production), exF(1), '원/kg')}`);
       L.push(`4. 생산량당 사용량 = ${exCmp(ratio(c.usage, s.production), ratio(c0.usage, p.production), exF(ud), `${U.unit}/kg`)}`);
       return { lines: L, s, c };
