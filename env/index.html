@@ -605,6 +605,7 @@
         <h3>10. 수질오염물질 측정내용</h3>
         <table class="f"><tr><th>항목 구분</th><th>BOD<br>(mg/L)</th><th>TOC<br>(mg/L)</th><th>SS<br>(mg/L)</th><th>T-N<br>(mg/L)</th><th>T-P<br>(mg/L)</th><th>총대장균군</th><th>pH</th><th>분석일</th><th>비고</th></tr>
           ${[0, 1].map(i => `<tr>${['kind', 'bod', 'toc', 'ss', 'tn', 'tp', 'coli', 'ph', 'date', 'note'].map(k => `<td>${F1(`ww.quality.${i}.${k}`, k === 'tn' || k === 'tp' ? 1 : null)}</td>`).join('')}</tr>`).join('')}</table>
+        ${ED ? `<div class="set-wq no-print">채취일 <input type="date" id="set-wq-s" data-p="ww._wq_s" value="${esc((S.ww || {})._wq_s || '')}"> · 위 표의 <b>분석일</b>부터 그날 이후 폐수일지에 이 값이 들어가고, 그 전 일지는 이전 분석값이 그대로 나옵니다. (저장하면 [수질 측정] 탭 기록에도 같이 저장)</div>` : ''}
         <div class="note">※ 사업장에서 분석하는 경우 분석자명 :
 ※ 분석을 위탁하는 경우 측정대행업소명 : ${F('ww.lab', { w: '60mm' })}</div>
         <h3>11. 수질자동측정기기 등의 측정항목별 점검내용</h3>
@@ -726,13 +727,34 @@
       document.getElementById('set-save').classList.add('has');
     }
     function changeSetView() { renderSettings(true); } // 고친 내용은 유지한 채 양식·날짜만 바꿈
+    const wqDate = t => { const m = String(t || '').trim().match(/^(\d{2}|\d{4})[.\-\/ ]\s*(\d{1,2})[.\-\/ ]\s*(\d{1,2})/); if (!m) return null;
+      const y = m[1].length === 2 ? '20' + m[1] : m[1]; return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`; };
+    const WQ_SET_KEYS = ['bod', 'toc', 'ss', 'tn', 'tp', 'ph'];
     async function saveSettings() {
+      // 10번 수질 측정값이 바뀌었으면 → 분석일부터 적용되도록 수질 측정 기록으로 저장
+      const qN = (EDIT.ww && EDIT.ww.quality) || [], qO = (SET.ww && SET.ww.quality) || [];
+      const pick = q => Object.fromEntries(WQ_SET_KEYS.map(k => [k, String((q || {})[k] ?? '').trim()]).filter(([k, v]) => v !== '' && !(k === 'ph' && v === '-')));
+      const qChanged = [0, 1].some(i => JSON.stringify(pick(qN[i])) !== JSON.stringify(pick(qO[i])) || String((qN[i] || {}).date || '') !== String((qO[i] || {}).date || ''));
+      let wqRec = null;
+      if (qChanged && (Object.keys(pick(qN[0])).length || Object.keys(pick(qN[1])).length)) {
+        const d = wqDate((qN[0] || {}).date) || wqDate((qN[1] || {}).date);
+        if (!d) return alert('10번 수질 측정값이 바뀌었습니다. 분석일을 넣어 주세요 (예: 2026.10.12) — 그 날 일지부터 이 값이 적용됩니다.');
+        const sDay = EDIT.ww._wq_s || d;
+        if (sDay > d) return alert('채취일이 분석일보다 늦습니다. 날짜를 확인해 주세요.');
+        wqRec = { s: sDay, d, raw: pick(qN[0]), eff: pick(qN[1]) };
+      }
       const v = JSON.parse(JSON.stringify(EDIT));
       v.chems.forEach((c, i) => c.key = CHEM_KEYS[i]);
       const { error } = await sb.from('env_settings').upsert({ key: 'env', value: v }, { onConflict: 'key' });
       if (error) return alert('저장 실패: ' + errMsg(error));
       SET = v; calcBalances(); setDirty = false;
       document.getElementById('set-save').classList.remove('has');
+      if (wqRec) {
+        if (!WQ) { try { await loadWq(); } catch (e) { } }
+        const ok = WQ && await wqPut(L => L.filter(r => r.s !== wqRec.s).concat([wqRec]).sort((a, b) => a.s < b.s ? -1 : 1));
+        alert(ok ? `설정을 저장했습니다.\n10번 수질 측정값은 ${wqRec.d} 일지부터 적용되고, 그 전 일지는 이전 분석값이 그대로 나옵니다.` : '설정은 저장했지만 수질 측정 기록 저장에 실패했습니다.');
+        wqEdit = null; return;
+      }
       alert('설정을 저장했습니다.');
     }
 
@@ -1155,7 +1177,7 @@
     // 폐수일지 10번: 그날까지 분석이 끝난 가장 최근 성적서 (없으면 설정값)
     function wqForDay(ds) {
       if (!WQ || !WQ_SAVED) return null;
-      const r = WQ.records.filter(x => (x.d || x.s) <= ds).pop(); return r || null;
+      const r = WQ.records.filter(x => (x.d || x.s) <= ds).sort((a, b) => (a.d || a.s) < (b.d || b.s) ? -1 : (a.d || a.s) > (b.d || b.s) ? 1 : (a.s < b.s ? -1 : 1)).pop(); return r || null;
     }
     function wqApply(S, ds) {
       const r = wqForDay(ds); if (!r) return S;
