@@ -147,13 +147,11 @@
     table.t td.na { color: #bbb; }
     table.t td.prov { background: #fffaf0; }
     #pd-body tr.hl td { background: #fff5f4; }
-    .ph-fit .good { color: #138a5e; font-size: 11px; background: #e6f6ef; padding: 1px 6px; border-radius: 8px; }
-    .ph-fit tr.on td { background: #eef3fb; font-weight: 600; }
-    .ph-bar { display: inline-block; width: 60px; height: 8px; background: #eee; border-radius: 4px; vertical-align: middle; overflow: hidden; }
-    .ph-bar i { display: block; height: 100%; background: #2a78d6; }
-    .ph-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
-    .ph-grid .chart-box { height: 280px; }
-    @media (max-width: 900px) { .ph-grid { grid-template-columns: 1fr; } }
+    .dc-t td { text-align: center; white-space: nowrap; } .dc-t td.l { text-align: left; }
+    table.t.dc-t td:first-child { text-align: center; }
+    .dc-sun { color: #d93025; } .dc-sat { color: #1565c0; }
+    .dc-t tr.dc-off td { color: #999; background: #fafafa; }
+    .dc-t tr.dc-sum td { background: #f2f5fa; font-weight: 600; }
     .un-form { display: grid; grid-template-columns: 160px 160px 1fr; gap: 8px 12px; align-items: end; }
     .un-form label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 3px; }
     .un-form .wide { grid-column: 1 / -1; font-size: 12px; color: #555; }
@@ -434,7 +432,7 @@
         </div>
         <div class="card"><div class="tbl-wrap" id="anom-table"></div></div>
         <div class="card"><h3>생산 실적과 비교 — 많이 쓴 날 원인 추정 <span class="sub">생산 대시보드 일별 원육·자숙시간·포장 EA + 기온</span></h3><div id="pd-body"></div></div>
-        <div class="card"><h3>생산 가동시간과 맞춰보기 <span class="sub">일별 사용량 ↔ 생산 대시보드 공정별 작업시간 (전처리·자숙·파쇄·포장)</span></h3><div id="ph-body"></div></div>
+        <div class="card"><h3>생산 일별 요약과 비교 <span class="sub">원육 부위별 투입·포장 수량·공정별 작업시간 ↔ 전기·보일러 가스·용수·폐수</span></h3><div id="dc-body"></div></div>
       </div>
 
       <!-- ================= 특이사항 ================= -->
@@ -1879,7 +1877,7 @@
     // =====================================================================
     let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [];
     function renderAnomaly() {
-      setTimeout(renderProdCompare, 0); setTimeout(renderHours, 0);
+      setTimeout(renderProdCompare, 0); setTimeout(renderDayCmp, 0);
       const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
       anomList = UT.anomalies(DAILY, from, to, { ratio: anomRatio }).reverse();
       document.getElementById('anom-chips').innerHTML =
@@ -2574,6 +2572,8 @@
           out[d] = { d, rm: sum(P('전처리'), 'inputKg'), prepH: sum(P('전처리'), 'workHours'), steamH: sum(P('자숙'), 'workHours'), steamKg: sum(P('자숙'), 'inputKg'), crushH: sum(P('파쇄'), 'workHours'),
             packH: sum(P('포장'), 'workHours'), ea: Number(f.totalEa) || sum(P('포장'), 'ea'),
             manH: all.reduce((t, p) => t + (Number(p.workers) || 0) * (Number(p.workHours) || 0), 0) };
+          const o0 = out[d]; o0.rmParts = {}; P('전처리').forEach(p => { const k = String(p.part || '기타').trim() || '기타'; o0.rmParts[k] = (o0.rmParts[k] || 0) + (Number(p.inputKg) || 0); });
+          o0.packItems = P('포장').map(p => ({ name: String(p.part || '').trim(), ea: Number(p.ea) || 0 })).filter(x => x.ea > 0);
           const o = out[d]; o.sumH = o.prepH + o.steamH + o.crushH + o.packH; o.maxH = Math.max(o.prepH, o.steamH, o.crushH, o.packH);
         });
         tok = j.nextPageToken; if (!tok) break;
@@ -2718,100 +2718,52 @@
     }
     function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
 
+
     // =====================================================================
-    // 이상감지 · 생산 가동시간과 맞춰보기 — 일별 사용량 vs 공정별 작업시간(생산 대시보드)
+    // 이상감지 · 생산 일별 요약과 유틸리티 비교 (원육 부위별 투입·포장 수량·공정별 시간 ↔ 전기·보일러·용수·폐수)
     // =====================================================================
-    let phUtil = 'elec', phBasis = null, phDays = 120, phIdle = false, phTemp = true;
-    const PH_UTIL = {
-      elec: { name: '전기 전체', unit: 'kWh', val: ds => (UT.dailyUsage(DAILY, ds) || {}).elec, def: 'maxH' },
-      elecNoWw: { name: '전기 − 폐수동', unit: 'kWh', def: 'maxH', note: '전기 전체에서 폐수동 계량값을 뺀 값 (폐수동 일일 검침이 있는 날만)',
-        val: ds => { const e = (UT.dailyUsage(DAILY, ds) || {}).elec, w = UT.diffReading(DAILY, ds, ['ww_power']);
-          if (e === null || e === undefined || w === null) return null; const ct = Number((MONTHLY[ds.slice(0, 7)] || {}).elec_ww_ct) || 40; return e - w * ct; } },
-      gas: { name: '보일러 가스', unit: '㎥', val: ds => UT.diffReading(DAILY, ds, ['gas_boiler']), def: 'steamH', cold: true },
-      water: { name: '용수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).water, def: 'maxH' },
-      ww: { name: '폐수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).ww, def: 'maxH' }
-    };
-    const PH_BASIS = [['prepH', '전처리'], ['steamH', '자숙'], ['crushH', '파쇄'], ['packH', '포장'], ['maxH', '가장 긴 공정'], ['sumH', '공정 시간 합'], ['manH', '인시 (작업자×시간)']];
-    const phUnitH = b => b === 'manH' ? '인시' : 'h';
-    function linFit(pts) { // y = a + b·x, R²
-      const n = pts.length; if (n < 3) return null;
-      const mx = pts.reduce((s, p) => s + p.x, 0) / n, my = pts.reduce((s, p) => s + p.y, 0) / n;
-      let sxx = 0, sxy = 0, syy = 0; pts.forEach(p => { sxx += (p.x - mx) ** 2; sxy += (p.x - mx) * (p.y - my); syy += (p.y - my) ** 2; });
-      if (sxx < 1e-9) return null; const b = sxy / sxx, a = my - b * mx;
-      return { a, b, r2: syy > 0 ? sxy * sxy / (sxx * syy) : 0, n };
-    }
-    function phRows(uk, to, nDays) {
-      const U = PH_UTIL[uk], out = [];
-      for (let i = 0; i < nDays; i++) { const ds = UT.addDays(to, -i), y = U.val(ds); if (y === null || y === undefined || isNaN(y) || y < 0) continue;
-        const p = PRODD[ds], boiler = UT.diffReading(DAILY, ds, ['gas_boiler']);
-        if (!p && (boiler === null || boiler > 50)) continue; // 생산 기록이 없는데 보일러는 돈 날·판단 못 하는 날은 뺌
-        out.push({ ds, y, p, prod: !!(p && p.rm > 0) }); }
-      return out.reverse();
-    }
-    async function renderHours() {
-      const el = document.getElementById('ph-body'); if (!el || !window.Chart) return;
-      if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 작업시간 불러오는 중...</div>';
+    let dcYm = null, dcU = 'elec', dcP = 'rm';
+    const DC_U = [['elec', '전기', 'kWh', '#2a78d6', ds => (UT.dailyUsage(DAILY, ds) || {}).elec], ['gas', '보일러 가스', '㎥', '#eb6834', ds => UT.diffReading(DAILY, ds, ['gas_boiler'])],
+      ['water', '용수', '㎥', '#1baf7a', ds => (UT.dailyUsage(DAILY, ds) || {}).water], ['ww', '폐수', '㎥', '#eda100', ds => (UT.dailyUsage(DAILY, ds) || {}).ww]];
+    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h']];
+    async function renderDayCmp() {
+      const el = document.getElementById('dc-body'); if (!el) return;
+      if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 요약 불러오는 중...</div>';
         try { await loadProdDaily(); } catch (e) { el.innerHTML = `<div class="empty">생산 대시보드 자료를 읽지 못했습니다: ${esc(errMsg(e))}</div>`; return; } }
-      try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
-      const U = PH_UTIL[phUtil], to = UT.addDays(todayStr, -1), H = (r, b) => r.prod ? (r.p[b] || 0) : 0;
-      const tOf = ds => (TEMPS || {})[ds], wDeg = (t, tb) => U.cold ? Math.max(0, tb - t) : Math.max(0, t - tb);
-      const rows = phRows(phUtil, to, phDays).filter(r => !phTemp || (tOf(r.ds) !== undefined && tOf(r.ds) !== null));
-      const use = rows.filter(r => r.prod || phIdle);
-      const r2of = (ys, ps) => { const m = ys.reduce((a, b) => a + b, 0) / ys.length, st = ys.reduce((a, y) => a + (y - m) ** 2, 0), se = ys.reduce((a, y, i) => a + (y - ps[i]) ** 2, 0); return st > 0 ? 1 - se / st : 0; };
-      const fitOne = b => { // y = a + h·x (+ c·기온), 기온 기준점(tb)은 가장 잘 맞는 값으로
-        const ys = use.map(r => r.y); if (use.length < 10 || Math.max(...use.map(r => H(r, b))) - Math.min(...use.map(r => H(r, b))) < 1e-9) return null;
-        const f0_ = linFit(use.map(r => ({ x: H(r, b), y: r.y }))); if (!f0_) return null;
-        let best = { a: f0_.a, b: f0_.b, c: 0, tb: null, r2: f0_.r2, r2h: f0_.r2, n: use.length };
-        if (phTemp) for (let tb = U.cold ? 8 : 5; tb <= (U.cold ? 22 : 26); tb++) {
-          const X = use.map(r => [1, H(r, b), wDeg(tOf(r.ds), tb)]); if (Math.max(...X.map(x => x[2])) < 1e-9) continue;
-          const co = UT.ols(X, ys); if (!co || co[2] <= 0) continue;
-          const r2 = r2of(ys, X.map(x => co[0] + co[1] * x[1] + co[2] * x[2]));
-          if (r2 > best.r2 + 1e-9) { const adj = use.map(r => ({ x: H(r, b), y: r.y - co[2] * wDeg(tOf(r.ds), tb) })), lf = linFit(adj);
-            best = { a: co[0], b: co[1], c: co[2], tb, r2, r2h: lf ? lf.r2 : 0, n: use.length }; }
-        }
-        return best;
-      };
-      const fits = PH_BASIS.map(([b, n]) => { const f = fitOne(b); const sh = use.reduce((s, r) => s + H(r, b), 0), sy = use.filter(r => r.prod).reduce((s, r) => s + r.y, 0);
-        return { b, n, f: f ? { ...f, r2: f.r2h } : null, fAll: f, perH: sh > 0 ? sy / sh : null }; });
-      const best = fits.filter(x => x.f && x.f.b > 0).sort((a, b) => b.f.r2 - a.f.r2)[0];
-      if (!phBasis) phBasis = U.def;
-      const B = phBasis, BN = PH_BASIS.find(x => x[0] === B)[1], F = fits.find(x => x.b === B), uh = phUnitH(B);
-      const nf = v => v === null || v === undefined ? '-' : Math.abs(v) >= 100 ? f0(v) : nf1.format(v);
-      const FA = F.fAll, tAdj = !!(FA && FA.c > 0), adjY = r => tAdj ? Math.max(0, r.y - FA.c * wDeg(tOf(r.ds), FA.tb)) : r.y, yLbl = tAdj ? `${U.name} (기온 영향 뺀 값)` : U.name;
-      rows.forEach(r => { r.ya = adjY(r); });
-      let h = `<div class="toolbar"><span class="chips">${Object.entries(PH_UTIL).map(([k, u]) => `<button class="chip ${k === phUtil ? 'on' : ''}" onclick="phUtil='${k}';phBasis=null;renderHours()">${u.name}</button>`).join('')}</span>
-          <span class="chips">${[60, 120, 365].map(n => `<button class="chip ${phDays === n ? 'on' : ''}" onclick="phDays=${n};renderHours()">최근 ${n}일</button>`).join('')}</span>
-          <label class="hint"><input type="checkbox" ${phIdle ? 'checked' : ''} onchange="phIdle=this.checked;renderHours()"> 쉬는 날(0시간)도 넣기</label>
-          <label class="hint"><input type="checkbox" ${phTemp ? 'checked' : ''} onchange="phTemp=this.checked;renderHours()"> 기온 영향 빼고 보기 (${U.cold ? '추울수록 보일러 더 씀' : '더울수록 냉방·냉동 더 씀'})</label></div>
-        <div class="hint" style="margin-bottom:6px">${U.note ? U.note + ' · ' : ''}검침은 그날 아침 → 다음날 아침 차이를 그날 사용량으로 봅니다. 작업시간은 생산 대시보드에 적힌 공정별 작업시간입니다 (설비가 실제로 돈 시간과 다를 수 있음).</div>`;
-      if (use.length < 10) { el.innerHTML = h + `<div class="empty">비교할 날이 부족합니다 (${use.length}일). 기간을 늘리거나 다른 항목을 골라 보세요.</div>`; return; }
-      // 1) 어떤 작업시간이 잘 맞나
-      h += `<div class="tbl-wrap"><table class="t ph-fit"><tr><th class="l">작업시간 기준</th><th>맞는 정도 (R²)${phTemp ? '<br><span class="hint">기온 영향 뺀 뒤</span>' : ''}</th><th>시간당 늘어나는 ${U.unit}</th>${phTemp ? `<th>기온 1℃당 ${U.unit}<br><span class="hint">${U.cold ? '기준 아래' : '기준 위'} 1℃마다</span></th>` : ''}<th>${phIdle ? '0시간일 때' : '시간과 무관한 몫'} ${U.unit}</th><th>${U.unit} ÷ 작업시간 (생산일 합계)</th><th>날 수</th></tr>` +
-        fits.map(x => `<tr class="${x.b === B ? 'on' : ''}" onclick="phBasis='${x.b}';renderHours()" style="cursor:pointer"><td class="l">${x.b === B ? '▶ ' : ''}${x.n}${best && best.b === x.b ? ' <span class="good">가장 잘 맞음</span>' : ''}</td>
-          <td>${x.f ? `<span class="ph-bar"><i style="width:${Math.round(Math.max(0, x.f.r2) * 100)}%"></i></span> ${x.f.r2.toFixed(2)}` : '-'}</td><td>${x.f ? nf(x.f.b) + ' /' + phUnitH(x.b) : '-'}</td>${phTemp ? `<td>${x.fAll && x.fAll.c > 0 ? nf(x.fAll.c) + ` <span class="hint">(${x.fAll.tb}℃ ${U.cold ? '아래' : '넘는'} 만큼)</span>` : '<span class="hint">영향 없음</span>'}</td>` : ''}<td>${x.f ? nf(x.f.a) : '-'}</td><td>${x.perH === null ? '-' : nf(x.perH) + ' /' + phUnitH(x.b)}</td><td>${x.f ? x.f.n : '-'}</td></tr>`).join('') + '</table></div>' +
-        `<div class="hint" style="margin:4px 0 10px">R²는 0~1, 1에 가까울수록 그 작업시간이 늘면 ${U.name} 사용량도 같이 늘어난다는 뜻입니다. 0.3 아래면 그 작업시간으로는 사용량 차이가 거의 설명되지 않습니다 (설비가 시간과 상관없이 돌거나, 기온 등 다른 요인이 큼). 줄을 누르면 아래 그래프 기준이 바뀝니다.</div>`;
-      // 2) 그래프
-      h += `<div class="ph-grid"><div><div class="hint"><b>일별 ${yLbl}</b> (막대) · <b>${BN} ${uh}</b> (선)</div><div class="chart-box"><canvas id="ph-line"></canvas></div></div>
-        <div><div class="hint"><b>${BN} ${uh}</b> ↔ <b>${yLbl}</b> — 점 하나가 하루${F.f ? ` · 선: ${nf(F.f.a)} + ${nf(F.f.b)} × ${uh}` : ''}</div><div class="chart-box"><canvas id="ph-sc"></canvas></div></div></div>`;
-      // 3) 월별 작업시간당 사용량
-      const byM = {}; rows.forEach(r => { const m = r.ds.slice(0, 7); const o = byM[m] = byM[m] || { pd: 0, h: 0, y: 0, idle: 0, idleY: 0 };
-        if (r.prod) { o.pd++; o.h += r.p[B] || 0; o.y += r.ya; } else { o.idle++; o.idleY += r.ya; } });
-      h += `<h4 style="margin:14px 0 4px">월별 — ${BN} 작업시간당 ${yLbl}</h4><div class="tbl-wrap"><table class="t"><tr><th>월</th><th>생산일 (검침 있는 날)</th><th>${BN} 작업 ${uh} 합</th><th>생산일 ${U.unit} 합</th><th>${U.unit} / ${uh}</th><th>생산일 하루 평균 ${U.unit}</th><th>하루 평균 작업 ${uh}</th><th>쉬는 날 하루 평균 ${U.unit}</th></tr>` +
-        Object.keys(byM).sort().map(m => { const o = byM[m]; return `<tr><td>${ymLabel(m)}</td><td>${o.pd}</td><td>${nf(o.h)}</td><td>${f0(o.y)}</td><td><b>${o.h > 0 ? nf(o.y / o.h) : '-'}</b></td><td>${o.pd ? f0(o.y / o.pd) : '-'}</td><td>${o.pd ? nf1.format(o.h / o.pd) : '-'}</td><td>${o.idle ? f0(o.idleY / o.idle) + ` <span class="hint">(${o.idle}일)</span>` : '-'}</td></tr>`; }).join('') + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">${U.unit}/${uh} 가 달마다 비슷하면 사용량이 작업시간을 따라가는 것이고, 어느 달만 높으면 그 달은 작업시간 말고 다른 이유(기온·설비 추가·누설 등)를 [특이사항]·[원인분석]에서 확인해 보세요.</div>`;
-      if (tAdj) h = h.replace('<div class="ph-grid">', `<div class="hint" style="margin-bottom:6px">아래 그래프·월별 표는 <b>기온 영향 뺀 값</b>입니다: 그날 실제 사용량 − ${nf(FA.c)} × (그날 평균기온이 ${FA.tb}℃ ${U.cold ? '보다 낮은' : '를 넘는'} 만큼). 날씨가 같았다면 얼마 썼을지로 바꾼 값이라 작업시간 영향만 보기 쉽습니다.</div><div class="ph-grid">`);
+      if (!dcYm) dcYm = thisYm;
+      const W = ['일', '월', '화', '수', '목', '금', '토'], n = UT.daysIn(dcYm), nh = v => v ? nf1.format(v) : '';
+      const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p = PRODD[ds] || null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); }
+      const uv = v => v === null || v === undefined || isNaN(v) ? '<span class="hint">-</span>' : (Math.abs(v) >= 100 ? f0(v) : nf1.format(v));
+      const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
+      let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);renderDayCmp()">▶</button></div>
+        <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
+        <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
+        <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
+        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2">포장 EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th></tr>
+        <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>파쇄</th><th>포장</th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
+        rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
+          const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
+          return `<tr class="${!p ? 'dc-off' : ''}"><td>${Number(r.ds.slice(8))}일 (<span class="${w === 0 ? 'dc-sun' : w === 6 ? 'dc-sat' : ''}">${W[w]}</span>)</td>
+            <td class="l">${parts.length ? parts.map(([k]) => esc(k)).join('<br>') : (p ? '' : '<span class="hint">생산 없음</span>')}</td><td>${parts.length ? parts.map(([, v]) => f0(v)).join('<br>') : ''}</td>
+            <td ${items ? `title="${esc(items)}" style="cursor:help"` : ''}>${p && p.ea ? f0(p.ea) : ''}</td>
+            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}</tr>`; }).join('') +
+        (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
+          const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
+            <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
+            <td>${f0(sum(r => r.p && r.p.ea))}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}</tr>`;
+          const avg = (f, rs) => { const v = rs.map(f).filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+          const off = rows.filter(r => !r.p);
+          const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}</tr>`;
+          const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="7"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}</tr>`;
+          return tot + a1 + a2; })() + '</table></div>' +
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 EA에 마우스를 올리면 제품별 수량이 보입니다. 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
       el.innerHTML = h;
-      const prodRows = rows.filter(r => r.prod || phIdle);
-      mkChart('ph-line', { data: { labels: rows.map(r => r.ds.slice(5).replace('-', '/')), datasets: [
-          { type: 'bar', label: U.name + ' ' + U.unit, data: rows.map(r => r.ya), backgroundColor: rows.map(r => r.prod ? '#2a78d6aa' : '#c8ccd2'), yAxisID: 'y', order: 2 },
-          { type: 'line', label: BN + ' ' + uh, data: rows.map(r => r.prod ? (r.p[B] || 0) : 0), borderColor: '#eb6834', backgroundColor: '#eb6834', pointRadius: rows.length > 120 ? 0 : 2, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
-        options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: U.unit } }, y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: uh } } } } });
-      const pts = prodRows.map(r => ({ x: H(r, B), y: r.ya, ds: r.ds })), xs = pts.map(p => p.x), x0 = Math.min(0, ...xs), x1 = Math.max(...xs);
-      mkChart('ph-sc', { type: 'scatter', data: { datasets: [
-          { label: '하루', data: pts, backgroundColor: '#2a78d6aa', pointRadius: 3.5 },
-          ...(F.f ? [{ type: 'line', label: '추세선', data: [{ x: x0, y: F.f.a + F.f.b * x0 }, { x: x1, y: F.f.a + F.f.b * x1 }], borderColor: '#d93025', borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5 }] : [])] },
-        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.ds ? `${c.raw.ds} · ${nf1.format(c.raw.x)}${uh} · ${f0(c.raw.y)} ${U.unit}` : '' } } },
-          scales: { x: { title: { display: true, text: BN + ' ' + uh } }, y: { min: 0, title: { display: true, text: U.unit } } } } });
+      const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
+      mkChart('dc-chart', { data: { labels: rows.map(r => Number(r.ds.slice(8)) + '일'), datasets: [
+          { type: 'bar', label: `${U[1]} ${U[2]}`, data: rows.map(r => r.u[DC_U.indexOf(U)]), backgroundColor: U[3] + 'bb', yAxisID: 'y', order: 2 },
+          { type: 'line', label: PP[1], data: rows.map(r => r.p ? (r.p[dcP] || 0) : 0), borderColor: '#333', backgroundColor: '#333', pointRadius: 3, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom' } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: U[2] } }, y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: PP[1] } } } } });
     }
 
   </script>
