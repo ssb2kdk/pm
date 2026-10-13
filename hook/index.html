@@ -86,6 +86,26 @@
     .pe { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; } .pe label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
     .pe input, .pe select { font-size: 14px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; min-width: 160px; }
     .card.feed { border-left: 4px solid #7a4fbf; }
+    .mtabs { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin: 4px 0; }
+    .mtabs button { flex: 1; padding: 10px; border: none; background: #fff; font-size: 14px; color: var(--muted); cursor: pointer; }
+    .mtabs button.on { background: var(--primary); color: #fff; font-weight: 700; }
+    .sec { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-top: 6px; }
+    .sec-h { font-weight: 700; font-size: 13px; color: var(--blue); margin: 8px 2px 4px; }
+    .srow { border-bottom: 1px solid #f0f0f0; padding: 6px 2px; } .srow.dirty { background: #fffaf0; } .srow.feed { border-left: 3px solid #7a4fbf; padding-left: 4px; }
+    .s1 { display: flex; gap: 4px; align-items: center; } .s1 .sno { font-size: 11px; color: var(--muted); width: 26px; text-align: center; flex: none; }
+    .s1 .snm { flex: 1; min-width: 0; font-size: 15px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+    .s1 .seg button { padding: 6px 7px; } .s1 .mini { padding: 6px 7px; }
+    .s2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0 2px 30px; font-size: 11px; color: var(--muted); }
+    .s2 input, .s2 select { font-size: 12px; padding: 4px; border: 1px solid var(--border); border-radius: 4px; } .s2 .rk, .s2 .ra { width: 52px; text-align: right; } .s2 .nt { flex: 1; min-width: 120px; } .s2 .fd { width: 120px; }
+    .mini.del { color: var(--red); }
+    .qa { display: flex; gap: 6px; margin-top: 6px; } .qa input { flex: 1; font-size: 15px; padding: 9px; border: 1px dashed #999; border-radius: 8px; }
+    .mrow { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 7px 9px; margin-bottom: 5px; }
+    .mrow.run { border-color: var(--teal); } .mrow.off { opacity: .7; } .mrow.dirty { box-shadow: 0 0 0 2px var(--amber-bg); border-color: var(--amber); } .mrow.feed { border-left: 4px solid #7a4fbf; }
+    .m1 { display: flex; gap: 6px; align-items: center; } .m1 .mn { font-weight: 700; font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m1 .mv { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; flex: none; }
+    .m1 .mk { font-size: 12px; color: var(--muted); flex: none; } .m1 .mk b { color: var(--text); font-size: 15px; } .m1 .run-btn { padding: 5px 9px; }
+    .m2 { display: grid; grid-template-columns: 1fr 1fr 1fr 1.3fr; gap: 5px; margin-top: 5px; }
+    .m2 input { font-size: 16px; padding: 7px 6px; border: 1px solid var(--border); border-radius: 7px; text-align: right; width: 100%; min-width: 0; } .m2 .mnote { font-size: 12px; text-align: left; }
     .feedtag { font-size: 11px; color: #5b3a96; background: #f2ecfb; border-radius: 6px; padding: 4px 6px; margin-top: 6px; }
     .feedtag-s { font-size: 11px; color: #5b3a96; }
     .feedinfo { background: #f2ecfb; border-color: #d8c8f0; font-size: 13px; }
@@ -254,8 +274,7 @@
           <div class="hint">이름을 바꾸면 차단기·사진도 같이 옮겨집니다. 삭제는 차단기가 없을 때만 되고, 하위 분전반은 한 단계 위로 올라갑니다.</div></div>`;
       if (feeder) h += `<div class="card feedinfo">↳ <b>${esc(p)}</b>은(는) <a href="#" onclick="openPanel(${qj(feeder.panel)});return false">${esc(feeder.panel)}</a> 의 「${esc(feeder.name || '차단기')}」에서 분기된 하위 분전반입니다.</div>`;
       if (kids.length) h += `<div class="hint" style="margin-top:4px">하위 분전반</div><div class="plist">${kids.map(k => pRowHtml(k, 1)).join('')}</div>`;
-      h += photoStrip(p) + `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 재서 넣으세요. 안 돌고 있으면 「정지」로 두면 됩니다. kW는 역률 ${PF} 가정으로 계산합니다.</div>` +
-        bs.map(cardHtml).join('') + `<button class="addbtn" onclick="addBreaker()">＋ 차단기 추가 (${esc(p)})</button><button class="addbtn" onclick="addPanel(${qj(p)})">＋ 하위 분전반 추가 (${esc(p)} 아래)</button>`;
+      h += photoStrip(p) + breakersHtml(p) + `<button class="addbtn" style="margin-top:10px" onclick="addPanel(${qj(p)})">＋ 하위 분전반 추가 (${esc(p)} 아래)</button>`;
       el.innerHTML = h;
     }
     async function addPanel(parent) {
@@ -338,8 +357,8 @@
       if (['r', 's', 't'].includes(k) && String(v).trim() !== '' && d.running !== false) d.running = true;
       if (soft) { // 입력 중엔 다시 그리지 않고 kW만 갱신
         const b = bv(BRK.find(x => x.id === id) || NEWB.find(x => x.id === id)), c = cur(b), kw = kwOf(b, c), lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
-        const el = document.getElementById('kw-' + id); if (el) el.innerHTML = kw === null ? '-' : `<b>${nf(kw, 1)} kW</b>${lr === null ? '' : `정격의 ${nf(lr, 0)}%`}`;
-        const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`); if (card) { card.classList.add('dirty'); card.classList.add('run'); const rb = card.querySelector('.run-btn'); if (rb) { rb.classList.add('on'); rb.textContent = '가동중'; } }
+        const el = document.getElementById('kw-' + id); if (el) el.innerHTML = kw === null ? '' : `<b>${nf(kw, 1)}</b> kW${lr === null ? '' : ` · ${nf(lr, 0)}%`}`;
+        const card = document.querySelector(`[data-id="${CSS.escape(id)}"]`); if (card) { card.classList.add('dirty'); card.classList.add('run'); const rb = card.querySelector('.run-btn'); if (rb) { rb.classList.add('on'); rb.textContent = '가동'; } }
         renderSumBar(); return;
       }
       renderInput();
@@ -389,6 +408,78 @@
         toast(`저장했습니다${rows.length ? ` (측정 ${rows.length}건)` : ''}`); renderInput();
       } catch (e) { alert('저장 실패: ' + errMsg(e) + (/relation|does not exist|schema cache/i.test(errMsg(e)) ? '\n\nSupabase에 17번 SQL을 실행했는지 확인해 주세요.' : '')); }
       finally { btn.disabled = false; }
+    }
+
+    // ---------------- 차단기 배치: 메인 → 왼쪽 열 → 오른쪽 열 (sort 값으로 구분: 메인 -900~, 왼쪽 1000~, 오른쪽 2000~) ----------------
+    const SECS = [['main', '메인', -900], ['left', '왼쪽 열', 1000], ['right', '오른쪽 열', 2000]];
+    let pMode = {}; // 분전반별 'measure' | 'setup'
+    const sortOf = b => Number(bv(b).sort) || 0;
+    const secOf = b => { const s = sortOf(b); return s < 0 ? 'main' : s >= 2000 ? 'right' : 'left'; };
+    const secBase = k => SECS.find(x => x[0] === k)[2];
+    function orderedB(p) { const L = BRK.filter(b => b.panel === p).concat(NEWB.filter(b => b.panel === p)); const si = k => SECS.findIndex(x => x[0] === k); return L.sort((a, c) => si(secOf(a)) - si(secOf(c)) || sortOf(a) - sortOf(c)); }
+    function nextSort(p, sec) { const L = orderedB(p).filter(b => secOf(b) === sec); return L.length ? Math.max(...L.map(sortOf)) + 1 : secBase(sec); }
+    function setSort(b, v) { const nb = NEWB.find(x => x.id === b.id); if (nb) nb.sort = v; else { const d = BDRAFT[b.id] = BDRAFT[b.id] || {}; d.sort = v; } }
+    function moveB(id, dir) {
+      const b = allB().find(x => x.id === id); if (!b) return; const L = orderedB(b.panel).filter(x => secOf(x) === secOf(b)), i = L.findIndex(x => x.id === id), j = i + dir;
+      if (j < 0 || j >= L.length) return; const sa = sortOf(L[i]), sb2 = sortOf(L[j]); setSort(L[i], sb2 === sa ? sa + dir : sb2); setSort(L[j], sa); renderInput();
+    }
+    function moveSec(id, sec) { const b = allB().find(x => x.id === id); if (!b || secOf(b) === sec) return; setSort(b, nextSort(b.panel, sec)); renderInput(); }
+    async function removeB(id) {
+      const nb = NEWB.find(x => x.id === id); if (nb) { NEWB = NEWB.filter(x => x.id !== id); delete DRAFT[id]; renderInput(); return; }
+      if (!confirm('이 차단기를 목록에서 뺄까요? (측정 기록은 남습니다)')) return;
+      const { error } = await sb.from('hook_breakers').update({ active: false }).eq('id', id); if (error) { alert(errMsg(error)); return; }
+      BRK = BRK.filter(b => b.id !== id); delete BDRAFT[id]; delete DRAFT[id]; renderInput();
+    }
+    function quickAdd(p, sec, el, text) { // Enter로 계속 입력 (여러 줄 붙여넣기도 한 줄씩)
+      const lines = String(text ?? el.value ?? '').split(/\r?\n/).map(x => x.trim()).filter(Boolean); if (!lines.length) return;
+      pMode[p] = 'setup'; const last = orderedB(p).filter(b => secOf(b) === sec).pop();
+      lines.forEach(line => {
+        let name = line, volt = last ? bv(last).volt : 380; const m = line.match(/^(.*?)[\s,\t]+(220|380)\s*V?$/i); if (m) { name = m[1].trim(); volt = Number(m[2]); }
+        NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: p, name, volt, rated_kw: '', rated_a: '', note: '', feeds: '', sort: nextSort(p, sec) });
+      });
+      el.value = ''; renderInput(); setTimeout(() => { const q = document.getElementById('qa-' + sec); if (q) { q.focus(); q.scrollIntoView({ block: 'center' }); } }, 20);
+    }
+    function setupRow(b0, i) {
+      const b = bv(b0), id = esc(b.id), sec = secOf(b), open = SETUP_OPEN.has(b.id) || String(b.note || '').trim() || feedOf(b);
+      return `<div class="srow ${BDRAFT[b.id] || b._new ? 'dirty' : ''} ${feedOf(b) ? 'feed' : ''}" data-id="${id}">
+        <div class="s1"><span class="sno">${sec === 'main' ? 'M' : (sec === 'left' ? 'L' : 'R') + (i + 1)}</span>
+          <input class="snm" value="${esc(b.name)}" placeholder="차단기 명칭" onchange="bset('${id}','name',this.value)">
+          <span class="seg"><button class="${b.volt === 380 ? 'on' : ''}" onclick="bset('${id}','volt',380)">380</button><button class="${b.volt === 220 ? 'on' : ''}" onclick="bset('${id}','volt',220)">220</button></span>
+          <button class="mini" onclick="moveB('${id}',-1)">▲</button><button class="mini" onclick="moveB('${id}',1)">▼</button><button class="mini" onclick="SETUP_OPEN.has('${id}')?SETUP_OPEN.delete('${id}'):SETUP_OPEN.add('${id}');renderInput()">⋯</button></div>
+        ${open ? `<div class="s2"><label>정격<input class="rk" inputmode="decimal" value="${esc(b.rated_kw ?? '')}" onchange="bset('${id}','rated_kw',this.value)">kW</label>
+          <label>차단기<input class="ra" inputmode="decimal" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)">A</label>
+          <input class="nt" placeholder="비고" value="${esc(b.note ?? '')}" onchange="bset('${id}','note',this.value)">
+          <label>⤷ 하위 분전반 메인<input class="fd" list="pl" placeholder="해당 없으면 비움" value="${esc(b.feeds ?? '')}" onchange="bset('${id}','feeds',this.value.trim())"></label>
+          <label>위치<select onchange="moveSec('${id}',this.value)">${SECS.map(s => `<option value="${s[0]}" ${s[0] === sec ? 'selected' : ''}>${s[1]}</option>`).join('')}</select></label>
+          <button class="mini del" onclick="removeB('${id}')">목록에서 빼기</button></div>` : ''}</div>`;
+    }
+    const SETUP_OPEN = new Set();
+    function measureRow(b0) {
+      const b = bv(b0), c = cur(b), kw = kwOf(b, c), last = b.id && !b._new ? lastBefore(b.id, workDate) : null, id = esc(b.id);
+      const run = c.running === true || (c.running === null && kw !== null), off = c.running === false, lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
+      return `<div class="mrow ${run ? 'run' : ''} ${off ? 'off' : ''} ${DRAFT[b.id] ? 'dirty' : ''} ${feedOf(b) ? 'feed' : ''}" data-id="${id}">
+        <div class="m1"><span class="mn">${esc(b.name || '(이름 없음)')}</span><span class="mv">${b.volt}V</span>${feedOf(b) ? `<span class="feedtag-s">⤷ ${esc(feedOf(b))}</span>` : ''}
+          <span class="mk" id="kw-${id}">${kw === null ? '' : `<b>${nf(kw, 1)}</b> kW${lr === null ? '' : ` · ${nf(lr, 0)}%`}`}</span>
+          <button class="run-btn ${run ? 'on' : ''}" onclick="rset('${id}','running',${off ? 'true' : 'false'})">${off ? '정지' : run ? '가동' : '가동?'}</button></div>
+        <div class="m2">${['r', 's', 't'].map(k => `<input inputmode="decimal" placeholder="${k.toUpperCase()}" value="${esc(c[k])}" ${off ? 'disabled' : ''} oninput="rset('${id}','${k}',this.value,true)">`).join('')}
+          <input class="mnote" placeholder="메모" value="${esc(c.note)}" onchange="rset('${id}','note',this.value)"></div>
+        ${last ? `<div class="last">지난 ${last.d.slice(5).replace('-', '/')} · ${last.running ? `${[last.r, last.s, last.t].map(v => v ?? '-').join('/')} A → ${nf(kwOf(b, last), 1)} kW` : '정지'}</div>` : ''}</div>`;
+    }
+    function breakersHtml(p) {
+      const L = orderedB(p), mode = pMode[p] || (L.length ? 'measure' : 'setup');
+      let h = `<div class="mtabs"><button class="${mode === 'measure' ? 'on' : ''}" onclick="pMode[${qj(p)}]='measure';renderInput()">⚡ 부하 입력</button><button class="${mode === 'setup' ? 'on' : ''}" onclick="pMode[${qj(p)}]='setup';renderInput()">✏ 차단기 등록·순서</button></div>`;
+      if (mode === 'setup') {
+        h += `<div class="hint">분전반 문을 열고 보이는 순서대로: <b>메인</b> → <b>왼쪽 열</b> 위에서 아래로 → <b>오른쪽 열</b> 위에서 아래로. 이름을 치고 <b>Enter</b>를 누르면 다음 칸으로 바로 이어집니다. 220V는 이름 뒤에 「 220」을 붙이면 됩니다 (예: 조명 220). 다 쓰면 아래 [저장].</div>`;
+        SECS.forEach(([k, nm]) => { const S = L.filter(b => secOf(b) === k);
+          h += `<div class="sec"><div class="sec-h">${nm} <span class="hint">${S.length}개</span></div>${S.map(setupRow).join('')}
+            <div class="qa"><input id="qa-${k}" placeholder="${nm} 차단기 명칭 입력 후 Enter" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();quickAdd(${qj(p)},'${k}',this)}" onpaste="const t=(event.clipboardData||window.clipboardData).getData('text');if(/\\n/.test(t)){event.preventDefault();quickAdd(${qj(p)},'${k}',this,t)}"><button class="mini" onclick="quickAdd(${qj(p)},'${k}',document.getElementById('qa-${k}'))">추가</button></div></div>`; });
+        h += `<div class="hint">⋯ 를 누르면 정격 kW·차단기 A·비고·하위 분전반 메인·위치(메인/왼쪽/오른쪽) 설정과 목록에서 빼기가 나옵니다. 여러 줄을 한꺼번에 붙여넣어도 한 줄에 하나씩 들어갑니다.</div>`;
+      } else {
+        h += `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 넣으세요. 안 돌면 「가동」을 눌러 「정지」로. kW는 역률 ${PF} 가정.</div>`;
+        if (!L.length) h += `<div class="card">차단기가 없습니다. 「✏ 차단기 등록·순서」에서 먼저 등록하세요.</div>`;
+        SECS.forEach(([k, nm]) => { const S = L.filter(b => secOf(b) === k); if (S.length) h += `<div class="sec-h">${nm}</div>` + S.map(measureRow).join(''); });
+      }
+      return h;
     }
 
     // ---------------- 결과·이력 ----------------
