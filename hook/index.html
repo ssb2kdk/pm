@@ -364,10 +364,41 @@
       }
       renderInput();
     }
-    function bset(id, k, v) {
+    function bset(id, k, v, quiet) {
       const nb = NEWB.find(x => x.id === id);
-      if (nb) nb[k] = k === 'volt' ? v : v; else { const d = BDRAFT[id] = BDRAFT[id] || {}; d[k] = v; }
-      renderInput();
+      if (nb) nb[k] = v; else { const d = BDRAFT[id] = BDRAFT[id] || {}; d[k] = v; }
+      if (k === 'note' && !quiet) { const msg = autoSpec(id); if (msg) toast(msg); }
+      if (!quiet) renderInput();
+    }
+    // ---------------- 모델명(비고)으로 극수·AF·kA 자동 채우기 ----------------
+    // ① 이미 입력한 같은 모델의 값(가장 많이 쓴 값)  ② 없으면 LS 모델명 규칙(앞 숫자 = 프레임, 끝 숫자 = 극수)
+    const modelOf = note => { const m = String(note || '').match(/\b([A-Za-z]{2,4}\s?\d{2,3}[A-Za-z]{0,3}|\d{2}[A-Za-z]{2,3}[a-z]{0,3})\b/); return m ? m[1].replace(/\s+/g, '').toLowerCase() : ''; };
+    const empty = v => v === null || v === undefined || String(v).trim() === '';
+    function modelLearn(key, skipId) {
+      const acc = { poles: {}, af: {}, ka: {}, rated_a: {}, volt: {} }; let n = 0;
+      allB().forEach(b => { if (b.id === skipId || modelOf(b.note) !== key) return; n++; Object.keys(acc).forEach(f => { const v = b[f]; if (!empty(v)) acc[f][String(v)] = (acc[f][String(v)] || 0) + 1; }); });
+      const pick = f => { const e = Object.entries(acc[f]).sort((a, c) => c[1] - a[1]); return e.length ? { v: e[0][0], all: e.length === 1 } : null; };
+      return { n, poles: pick('poles'), af: pick('af'), ka: pick('ka'), rated_a: pick('rated_a'), volt: pick('volt') };
+    }
+    function modelRule(key) { // LS: ABN/ABS/EBN/EBS/ABE/SBS … + 프레임 코드 + 극수
+      const m = key.match(/^[a-z]{2,4}(\d{1,2})(\d)[a-z]*$/); if (!m) return {};
+      const FR = { 3: 30, 5: 50, 6: 60, 10: 100, 20: 250, 40: 400, 80: 800 }, af = FR[Number(m[1])], p = Number(m[2]);
+      return { af: af || null, poles: [2, 3, 4].includes(p) ? p : null };
+    }
+    function autoSpec(id) {
+      const b = allB().find(x => x.id === id); if (!b) return ''; const key = modelOf(b.note); if (!key) return '';
+      const L = modelLearn(key, id), R = modelRule(key), set = [];
+      const put = (f, v, label) => { if (v === null || v === undefined || v === '' || !empty(b[f])) return; bset(id, f, f === 'volt' || f === 'poles' ? Number(v) : String(v), true); set.push(label(v)); };
+      put('poles', L.poles ? L.poles.v : R.poles, v => v + 'P');
+      put('af', L.af ? L.af.v : R.af, v => v + 'AF');
+      put('ka', L.ka ? L.ka.v : null, v => v + 'kA');
+      if (L.rated_a && L.rated_a.all) put('rated_a', L.rated_a.v, v => v + 'AT');
+      if (L.volt && L.volt.all && b._new && Number(L.volt.v) !== Number(b.volt)) { bset(id, 'volt', Number(L.volt.v), true); set.push(L.volt.v + 'V'); }
+      return set.length ? `${b.note.trim()} → ${set.join(' · ')} 자동 입력${L.n ? ` (같은 모델 ${L.n}개 참고)` : ' (모델명 규칙)'}` : '';
+    }
+    function autoSpecPanel(p) {
+      let n = 0; orderedB(p).forEach(b => { if (autoSpec(b.id)) n++; });
+      toast(n ? `${n}개 차단기 빈칸을 모델명으로 채웠습니다 — 확인 후 [저장]` : '채울 빈칸이 없습니다'); renderInput();
     }
     function addBreaker() {
       NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), _new: true, panel: panelSel, name: '', volt: 380, rated_kw: '', rated_a: '', note: '', sort: BRK.filter(b => b.panel === panelSel).length + NEWB.length });
@@ -435,8 +466,11 @@
       const lines = String(text ?? el.value ?? '').split(/\r?\n/).map(x => x.trim()).filter(Boolean); if (!lines.length) return;
       pMode[p] = 'setup'; const last = orderedB(p).filter(b => secOf(b) === sec).pop();
       lines.forEach(line => {
-        let name = line, volt = last ? bv(last).volt : 380; const m = line.match(/^(.*?)[\s,\t]+(220|380)\s*V?$/i); if (m) { name = m[1].trim(); volt = Number(m[2]); }
-        NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: p, name, volt, rated_kw: '', rated_a: '', note: '', feeds: '', sort: nextSort(p, sec) });
+        let name = line, volt = last ? bv(last).volt : 380, note = '', at = ''; const sp = line.split(/\s+\/\s+|\s*\|\s*/); /* 「 / 」(앞뒤 띄어쓰기) 또는 | 로 구분 — A/C 같은 이름은 안 나뉨 */ if (sp.length > 1) { name = sp[0]; note = sp[1] || ''; at = String(sp[2] || '').replace(/[^0-9.]/g, ''); }
+        const m = name.match(/^(.*?)[\s,\t]+(220|380)\s*V?$/i); if (m) { name = m[1].trim(); volt = Number(m[2]); }
+        const nid = 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        NEWB.push({ id: nid, _new: true, panel: p, name, volt, rated_kw: '', rated_a: at, note, feeds: '', sort: nextSort(p, sec) });
+        if (note) { const msg = autoSpec(nid); if (msg) setTimeout(() => toast(msg), 30); }
       });
       el.value = ''; renderInput(); setTimeout(() => { const q = document.getElementById('qa-' + sec); if (q) { q.focus(); q.scrollIntoView({ block: 'center' }); } }, 20);
     }
@@ -473,7 +507,9 @@
       const L = orderedB(p), mode = pMode[p] || (L.length ? 'measure' : 'setup');
       let h = `<div class="mtabs"><button class="${mode === 'measure' ? 'on' : ''}" onclick="pMode[${qj(p)}]='measure';renderInput()">⚡ 부하 입력</button><button class="${mode === 'setup' ? 'on' : ''}" onclick="pMode[${qj(p)}]='setup';renderInput()">✏ 차단기 등록·순서</button></div>`;
       if (mode === 'setup') {
-        h += `<div class="hint">분전반 문을 열고 보이는 순서대로: <b>메인</b> → <b>왼쪽 열</b> 위에서 아래로 → <b>오른쪽 열</b> 위에서 아래로. 이름을 치고 <b>Enter</b>를 누르면 다음 칸으로 바로 이어집니다. 220V는 이름 뒤에 「 220」을 붙이면 됩니다 (예: 조명 220). 다 쓰면 아래 [저장].</div>`;
+        h += `<div class="hint">분전반 문을 열고 보이는 순서대로: <b>메인</b> → <b>왼쪽 열</b> 위에서 아래로 → <b>오른쪽 열</b> 위에서 아래로. 이름을 치고 <b>Enter</b>를 누르면 다음 칸으로 바로 이어집니다. 220V는 이름 뒤에 「 220」(예: 조명 220).<br>
+          <b>모델명까지 한 번에</b>: <code>이름 / 모델명 / AT</code> (예: <code>좌9(포장실) / 32GRhd / 20</code>) → 같은 모델을 전에 입력했으면 극수·AF·kA(·전압)가 자동으로 들어갑니다. 비고에 모델명을 적어도 빈칸이 채워집니다. 다 쓰면 아래 [저장].</div>
+          <div class="tool" style="margin:4px 0"><button class="btn sec" onclick="autoSpecPanel(${qj(p)})">🔎 모델명으로 빈칸 채우기 (이 분전반 전체)</button></div>`;
         SECS.forEach(([k, nm]) => { const S = L.filter(b => secOf(b) === k);
           h += `<div class="sec"><div class="sec-h">${nm} <span class="hint">${S.length}개</span></div>${S.map(setupRow).join('')}
             <div class="qa"><input id="qa-${k}" placeholder="${nm} 차단기 명칭 입력 후 Enter" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();quickAdd(${qj(p)},'${k}',this)}" onpaste="const t=(event.clipboardData||window.clipboardData).getData('text');if(/\\n/.test(t)){event.preventDefault();quickAdd(${qj(p)},'${k}',this,t)}"><button class="mini" onclick="quickAdd(${qj(p)},'${k}',document.getElementById('qa-${k}'))">추가</button></div></div>`; });
