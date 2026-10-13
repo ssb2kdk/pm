@@ -192,6 +192,7 @@
     function kwOf(b, x) {
       const a = [x.r, x.s, x.t].map(num).filter(v => v !== null);
       if (!a.length) return null;
+      if (Number(b.poles) === 2) { const avg = a.reduce((p, c) => p + c, 0) / a.length; return (b.volt === 220 ? 0.22 : 0.38) * avg * PF; } // 2P = 단상
       if (b.volt === 380) { const avg = a.reduce((p, c) => p + c, 0) / a.length; return Math.sqrt(3) * 0.38 * avg * PF; }
       return 0.22 * a.reduce((p, c) => p + c, 0) * PF;
     }
@@ -387,13 +388,13 @@
         // ① 새 차단기
         const idMap = {};
         for (const nb of NEWB.filter(b => b.name.trim())) {
-          const row = { id: (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))), panel: nb.panel, name: nb.name.trim(), volt: nb.volt, rated_kw: num(nb.rated_kw), rated_a: num(nb.rated_a), note: nb.note || '', sort: nb.sort, active: true, ...(feedOf(nb) ? { feeds: feedOf(nb) } : {}) };
+          const row = { id: (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))), panel: nb.panel, name: nb.name.trim(), volt: nb.volt, rated_kw: num(nb.rated_kw), rated_a: num(nb.rated_a), ...(num(nb.af) !== null ? { af: num(nb.af) } : {}), ...(num(nb.ka) !== null ? { ka: num(nb.ka) } : {}), ...(num(nb.poles) !== null ? { poles: num(nb.poles) } : {}), note: nb.note || '', sort: nb.sort, active: true, ...(feedOf(nb) ? { feeds: feedOf(nb) } : {}) };
           const { error } = await sb.from('hook_breakers').insert(row);
           if (error) throw error; idMap[nb.id] = row.id; BRK.push(row);
         }
         // ② 차단기 정보 수정
         for (const [id, d] of Object.entries(BDRAFT)) {
-          const patch = {}; Object.entries(d).forEach(([k, v]) => { patch[k] = ['rated_kw', 'rated_a'].includes(k) ? num(v) : k === 'name' || k === 'feeds' ? String(v).trim() : v; });
+          const patch = {}; Object.entries(d).forEach(([k, v]) => { patch[k] = ['rated_kw', 'rated_a', 'af', 'ka', 'poles'].includes(k) ? num(v) : k === 'name' || k === 'feeds' ? String(v).trim() : v; });
           const { error } = await sb.from('hook_breakers').update(patch).eq('id', id); if (error) throw error;
           Object.assign(BRK.find(b => b.id === id), patch);
         }
@@ -447,7 +448,10 @@
           <span class="seg"><button class="${b.volt === 380 ? 'on' : ''}" onclick="bset('${id}','volt',380)">380</button><button class="${b.volt === 220 ? 'on' : ''}" onclick="bset('${id}','volt',220)">220</button></span>
           <button class="mini" onclick="moveB('${id}',-1)">▲</button><button class="mini" onclick="moveB('${id}',1)">▼</button><button class="mini" onclick="SETUP_OPEN.has('${id}')?SETUP_OPEN.delete('${id}'):SETUP_OPEN.add('${id}');renderInput()">⋯</button></div>
         ${open ? `<div class="s2"><label>정격<input class="rk" inputmode="decimal" value="${esc(b.rated_kw ?? '')}" onchange="bset('${id}','rated_kw',this.value)">kW</label>
-          <label>차단기<input class="ra" inputmode="decimal" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)">A</label>
+          <span class="seg">${[2, 3, 4].map(n => `<button class="${Number(b.poles) === n ? 'on' : ''}" onclick="bset('${id}','poles',${Number(b.poles) === n ? 'null' : n})">${n}P</button>`).join('')}</span>
+          <label>AF<input class="ra" inputmode="decimal" value="${esc(b.af ?? '')}" onchange="bset('${id}','af',this.value)"></label>
+          <label>AT<input class="ra" inputmode="decimal" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)"></label>
+          <label>kA<input class="ra" inputmode="decimal" value="${esc(b.ka ?? '')}" onchange="bset('${id}','ka',this.value)"></label>
           <input class="nt" placeholder="비고" value="${esc(b.note ?? '')}" onchange="bset('${id}','note',this.value)">
           <label>⤷ 하위 분전반 메인<input class="fd" list="pl" placeholder="해당 없으면 비움" value="${esc(b.feeds ?? '')}" onchange="bset('${id}','feeds',this.value.trim())"></label>
           <label>위치<select onchange="moveSec('${id}',this.value)">${SECS.map(s => `<option value="${s[0]}" ${s[0] === sec ? 'selected' : ''}>${s[1]}</option>`).join('')}</select></label>
@@ -458,7 +462,7 @@
       const b = bv(b0), c = cur(b), kw = kwOf(b, c), last = b.id && !b._new ? lastBefore(b.id, workDate) : null, id = esc(b.id);
       const run = c.running === true || (c.running === null && kw !== null), off = c.running === false, lr = kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null;
       return `<div class="mrow ${run ? 'run' : ''} ${off ? 'off' : ''} ${DRAFT[b.id] ? 'dirty' : ''} ${feedOf(b) ? 'feed' : ''}" data-id="${id}">
-        <div class="m1"><span class="mn">${esc(b.name || '(이름 없음)')}</span><span class="mv">${b.volt}V</span>${feedOf(b) ? `<span class="feedtag-s">⤷ ${esc(feedOf(b))}</span>` : ''}
+        <div class="m1"><span class="mn">${esc(b.name || '(이름 없음)')}</span><span class="mv">${b.volt}V${b.poles ? ' ' + b.poles + 'P' : ''}${b.af || b.rated_a ? ` ${b.af ? esc(b.af) + 'AF' : ''}${b.af && b.rated_a ? '/' : ''}${b.rated_a ? esc(b.rated_a) + 'AT' : ''}` : ''}</span>${feedOf(b) ? `<span class="feedtag-s">⤷ ${esc(feedOf(b))}</span>` : ''}
           <span class="mk" id="kw-${id}">${kw === null ? '' : `<b>${nf(kw, 1)}</b> kW${lr === null ? '' : ` · ${nf(lr, 0)}%`}`}</span>
           <button class="run-btn ${run ? 'on' : ''}" onclick="rset('${id}','running',${off ? 'true' : 'false'})">${off ? '정지' : run ? '가동' : '가동?'}</button></div>
         <div class="m2">${['r', 's', 't'].map(k => `<input inputmode="decimal" placeholder="${k.toUpperCase()}" value="${esc(c[k])}" ${off ? 'disabled' : ''} oninput="rset('${id}','${k}',this.value,true)">`).join('')}
@@ -473,7 +477,7 @@
         SECS.forEach(([k, nm]) => { const S = L.filter(b => secOf(b) === k);
           h += `<div class="sec"><div class="sec-h">${nm} <span class="hint">${S.length}개</span></div>${S.map(setupRow).join('')}
             <div class="qa"><input id="qa-${k}" placeholder="${nm} 차단기 명칭 입력 후 Enter" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();quickAdd(${qj(p)},'${k}',this)}" onpaste="const t=(event.clipboardData||window.clipboardData).getData('text');if(/\\n/.test(t)){event.preventDefault();quickAdd(${qj(p)},'${k}',this,t)}"><button class="mini" onclick="quickAdd(${qj(p)},'${k}',document.getElementById('qa-${k}'))">추가</button></div></div>`; });
-        h += `<div class="hint">⋯ 를 누르면 정격 kW·차단기 A·비고·하위 분전반 메인·위치(메인/왼쪽/오른쪽) 설정과 목록에서 빼기가 나옵니다. 여러 줄을 한꺼번에 붙여넣어도 한 줄에 하나씩 들어갑니다.</div>`;
+        h += `<div class="hint">⋯ 를 누르면 정격 kW·극수(2P/3P/4P)·AF·AT·kA·비고·하위 분전반 메인·위치(메인/왼쪽/오른쪽) 설정과 목록에서 빼기가 나옵니다. 여러 줄을 한꺼번에 붙여넣어도 한 줄에 하나씩 들어갑니다.</div>`;
       } else {
         h += `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 넣으세요. 안 돌면 「가동」을 눌러 「정지」로. kW는 역률 ${PF} 가정.</div>`;
         if (!L.length) h += `<div class="card">차단기가 없습니다. 「✏ 차단기 등록·순서」에서 먼저 등록하세요.</div>`;
@@ -527,8 +531,8 @@
     async function retireBreaker(id) { if (!confirm('이 차단기를 목록에서 뺄까요? (측정 기록은 남습니다)')) return; const { error } = await sb.from('hook_breakers').update({ active: false }).eq('id', id); if (error) { alert(errMsg(error)); return; } BRK = BRK.filter(b => b.id !== id); renderSum(); }
     async function downloadSum() {
       if (!window.XLSX) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
-      const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', '차단기A', '비고', '메모', '하위 분전반(메인)']];
-      READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note, b.feeds || '']); });
+      const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', 'AT', '비고', '메모', '하위 분전반(메인)', '극수', 'AF', 'kA']];
+      READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note, b.feeds || '', b.poles ? b.poles + 'P' : '', b.af ?? '', b.ka ?? '']); });
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '부하측정'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
     }
     // ---------------- 사진 (분전반 전체·차단기 근접) ----------------
@@ -614,7 +618,7 @@
       });
       if (!PHOTOS.length && !photoErr) h += '<div class="hint">아직 올린 사진이 없습니다.</div>';
       h += `<div class="tool" style="margin-top:18px"><b>3. 작성표 붙여넣기 → 차단기 한꺼번에 등록</b></div>
-        <div class="hint">Claude 채팅에 사진을 보내 분류를 받으면, 받은 작성표를 그대로 붙여넣으세요. 엑셀에서 복사한 표도 됩니다.<br>칸 순서: <b>분전반 · 차단기 명칭 · 전압(380/220) · 정격 kW · 차단기 A · 비고 · 하위 분전반</b> (탭, |, 쉼표로 구분 · 제목 줄은 자동으로 건너뜀)<br>하위 분전반 칸: 그 차단기가 다른 분전반의 메인이면 그 분전반 이름 (합계에서 이중으로 안 더함), 아니면 비움</div>
+        <div class="hint">Claude 채팅에 사진을 보내 분류를 받으면, 받은 작성표를 그대로 붙여넣으세요. 엑셀에서 복사한 표도 됩니다.<br>칸 순서: <b>분전반 · 차단기 명칭 · 전압(380/220) · 정격 kW · AT · 비고 · 하위 분전반 · 극수(2P/3P/4P) · AF · kA</b> (뒤쪽 칸은 비워도 됨) (탭, |, 쉼표로 구분 · 제목 줄은 자동으로 건너뜀)<br>하위 분전반 칸: 그 차단기가 다른 분전반의 메인이면 그 분전반 이름 (합계에서 이중으로 안 더함), 아니면 비움</div>
         <textarea class="imp" id="imp-text" placeholder="P-레토르트\t레토르트 1호기 순환펌프\t380\t7.5\t30\t사진 3번&#10;P-레토르트\t조명\t220\t\t20\t"></textarea>
         <div class="tool" style="margin-top:6px"><button class="btn" onclick="impPreview()">미리보기</button><span class="hint" id="imp-st"></span></div><div id="imp-prev"></div>`;
       el.innerHTML = h;
@@ -628,7 +632,7 @@
         if (/분전반/.test(c[0]) && /차단기|명칭/.test(c[1] || '')) return; // 제목 줄
         if (!c[0] || !c[1]) return;
         const v = String(c[2] || '').replace(/[^0-9]/g, ''), n = x => { const s = String(x || '').replace(/[^0-9.]/g, ''); return s === '' ? '' : s; };
-        out.push({ panel: c[0], name: c[1], volt: v === '220' ? 220 : 380, voltRaw: c[2] || '', rated_kw: n(c[3]), rated_a: n(c[4]), note: c[5] || '', feeds: (c[6] || '').replace(/^[-–]$/, '').trim() });
+        out.push({ panel: c[0], name: c[1], volt: v === '220' ? 220 : 380, voltRaw: c[2] || '', rated_kw: n(c[3]), rated_a: n(c[4]), note: c[5] || '', feeds: (c[6] || '').replace(/^[-–]$/, '').trim(), poles: (String(c[7] || '').match(/[234]/) || [''])[0], af: n(c[8]), ka: n(c[9]) });
       });
       return out;
     }
@@ -639,12 +643,12 @@
       IMP.forEach(r => { r.dup = dup(r); });
       const n = IMP.filter(r => !r.dup).length;
       document.getElementById('imp-st').textContent = IMP.length ? `${IMP.length}줄 읽음 · 새로 추가 ${n}개${IMP.length - n ? ` · 이미 있는 차단기 ${IMP.length - n}개는 건너뜀` : ''}` : '읽은 줄이 없습니다. 칸 순서를 확인해 주세요.';
-      document.getElementById('imp-prev').innerHTML = IMP.length ? `<div class="tbl" style="max-height:360px"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>정격 kW</th><th>차단기 A</th><th class="l">비고</th><th class="l">하위 분전반</th><th></th></tr>${IMP.map(r => `<tr class="${r.dup ? 'off' : ''}"><td class="l">${esc(r.panel)}</td><td class="l">${esc(r.name)}</td><td>${r.volt}V${r.voltRaw && !/220|380/.test(r.voltRaw) ? ' <span class="lr-lo">?</span>' : ''}</td><td>${esc(r.rated_kw)}</td><td>${esc(r.rated_a)}</td><td class="l hist">${esc(r.note)}</td><td class="l">${r.feeds ? '⤷ ' + esc(r.feeds) : ''}</td><td>${r.dup ? '이미 있음' : '추가'}</td></tr>`).join('')}</table></div>
+      document.getElementById('imp-prev').innerHTML = IMP.length ? `<div class="tbl" style="max-height:360px"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>정격 kW</th><th>AT</th><th class="l">비고</th><th class="l">하위 분전반</th><th>극수·AF·kA</th><th></th></tr>${IMP.map(r => `<tr class="${r.dup ? 'off' : ''}"><td class="l">${esc(r.panel)}</td><td class="l">${esc(r.name)}</td><td>${r.volt}V${r.voltRaw && !/220|380/.test(r.voltRaw) ? ' <span class="lr-lo">?</span>' : ''}</td><td>${esc(r.rated_kw)}</td><td>${esc(r.rated_a)}</td><td class="l hist">${esc(r.note)}</td><td class="l">${r.feeds ? '⤷ ' + esc(r.feeds) : ''}</td><td>${[r.poles ? r.poles + 'P' : '', r.af ? r.af + 'AF' : '', r.ka ? r.ka + 'kA' : ''].filter(Boolean).join(' ')}</td><td>${r.dup ? '이미 있음' : '추가'}</td></tr>`).join('')}</table></div>
         ${n ? `<div class="tool" style="margin-top:8px"><button class="btn" onclick="impApply()">✓ ${n}개를 측정 화면에 추가 (저장 전 확인)</button><span class="hint">추가 후 측정 화면에서 확인·수정하고 [저장]을 눌러야 등록됩니다.</span></div>` : ''}` : '';
     }
     function impApply() {
       const add = IMP.filter(r => !r.dup); if (!add.length) return;
-      add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note, feeds: r.feeds || '',
+      add.forEach(r => { NEWB.push({ id: 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), _new: true, panel: r.panel, name: r.name, volt: r.volt, rated_kw: r.rated_kw, rated_a: r.rated_a, note: r.note, feeds: r.feeds || '', poles: r.poles ? Number(r.poles) : null, af: r.af, ka: r.ka,
         sort: BRK.filter(b => b.panel === r.panel).length + NEWB.filter(b => b.panel === r.panel).length }); });
       [...new Set(add.map(r => r.panel).concat(add.map(r => r.feeds).filter(Boolean)))].forEach(p => { if (!pRow(p)) ensurePanelRow(p).catch(() => {}); });
       panelSel = add[0].panel; IMP = []; setView('input'); toast(`차단기 ${add.length}개 추가 — 확인 후 [저장]`);
