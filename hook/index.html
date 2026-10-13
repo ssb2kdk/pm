@@ -372,7 +372,7 @@
     }
     // ---------------- 모델명(비고)으로 극수·AF·kA 자동 채우기 ----------------
     // ① 이미 입력한 같은 모델의 값(가장 많이 쓴 값)  ② 없으면 LS 모델명 규칙(앞 숫자 = 프레임, 끝 숫자 = 극수)
-    const modelOf = note => { const m = String(note || '').match(/\b([A-Za-z]{2,4}\s?\d{2,3}[A-Za-z]{0,3}|\d{2}[A-Za-z]{2,3}[a-z]{0,3})\b/); return m ? m[1].replace(/\s+/g, '').toLowerCase() : ''; };
+    const modelOf = note => { const m = String(note || '').match(/\b([A-Za-z]{2,4}\s?\d{2,3}[A-Za-z]{0,4}|\d{2,3}[A-Za-z]{2,6})\b/); return m ? m[1].replace(/\s+/g, '').toLowerCase() : ''; };
     const empty = v => v === null || v === undefined || String(v).trim() === '';
     function modelLearn(key, skipId) {
       const acc = { poles: {}, af: {}, ka: {}, rated_a: {}, volt: {} }; let n = 0;
