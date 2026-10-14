@@ -1098,6 +1098,7 @@
     const PER_SRC_TXT = { elec: ['고지서 사용량', '파워플래너 일일값 합산'], gas: ['고지서 사용량', '가스 일일 검침 합산'], water: ['고지서 사용량', '용수 일일 검침 합산'], ww: ['고지서 발생량', '폐수 일일 검침 합산'] };
     function renderPeriod() {
       if (!window.Chart) return;
+      setTimeout(renderPerElec, 0);
       if ((perGran === 'day' || perGran === 'week') && !PRODD && !perProdTried) { perProdTried = true; loadProdDaily().then(() => { if (document.getElementById('tab-period').classList.contains('active')) renderPeriod(); }).catch(() => {}); }
       if ((perGran === 'day' || perGran === 'week') && perMetric !== 'usage') perMetric = 'usage';
       const U = UT.UTILS.find(u => u.k === perUtil), DU = UT.DAILY_UTILS.find(u => u.k === perUtil);
@@ -1717,4 +1718,60 @@
         • <b>기울기</b>: 그 항목만 놓고 봤을 때 1단위 늘면 사용량이 평균 얼마 늘었는지 (다른 항목 영향이 섞여 있음). r²(= r×r)는 사용량 차이 중 그 항목으로 설명되는 비율입니다 (예: r 0.8 → 64%).<br>
         • 생산한 날만 계산합니다 (쉬는 날을 넣으면 '생산했냐 안 했냐' 차이 때문에 모든 항목이 높게 나옴). 상관이 높아도 원인이라는 증거는 아니고, 원육·시간·EA는 서로 같이 움직이므로 위 '생산 항목끼리' 표도 같이 보세요.</div>`;
       return h;
+    }
+
+    // =====================================================================
+    // 기간비교 · 전력 구성별 비교 (월별): 생산동·폐수동·공조냉동 전력 ↔ 원육·포장 EA·기온·생산일수 등
+    //   생산동 = 고지서(없으면 파워플래너 합산) 전체 − 폐수동 계량 − 공조냉동 계량 12곳
+    // =====================================================================
+    let peComp = 'hall', peFac = 'prod', pePerDay = false, peStack = false, peN = 12;
+    const PE_COMP = [['hall', '생산동', '#2a78d6'], ['ww', '폐수동', '#eda100'], ['hv', '공조냉동', '#1baf7a'], ['all', '전기 전체', '#555']];
+    const PE_FAC = [
+      ['prod', '원육 투입량', 'kg', 0], ['ea', '포장 생산량', 'EA', 0], ['tmean', '평균기온', '℃', 1], ['warm', '더운 정도 (5℃ 넘는 기온 합)', '℃·일', 0],
+      ['op', '생산일수', '일', 0], ['days', '달력 날수', '일', 0], ['idle', '쉬는 날 수', '일', 0],
+      ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0]];
+    const PE_PERDAY_FAC = { prod: 1, ea: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
+    function peMonths() { const last = lastCompleteYm(), out = []; let ym = last; for (let i = 0; i < peN; i++) { out.unshift(ym); ym = UT.prevYm(ym); } return out; }
+    function peRow(ym) {
+      const s = S(ym), all = s.elec.usage, ww = wwKwh(ym), hv = meterKwh(ym, 'elec_hvac_kwh'), days = UT.daysIn(ym), op = UT.opDays(DAILY, ym, MONTHLY);
+      const hall = all !== null && ww !== null && hv !== null && ym >= HVAC_FULL_FROM ? all - ww - hv : null;
+      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0;
+      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; }
+        const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g !== null && g >= 0) { gas += g; gn++; } }
+      const w = wwRow(ym), tm = UT.monthWeather(ym, TEMPS || {}).tmean;
+      return { ym, c: { hall, ww: ym >= HVAC_FULL_FROM ? ww : null, hv: ym >= HVAC_FULL_FROM ? hv : null, all },
+        f: { prod: s.production, ea: pn ? ea : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null } };
+    }
+    async function renderPerElec() {
+      const el = document.getElementById('per-elec'); if (!el || !window.Chart) return;
+      const need = []; if (!PRODD) need.push(loadProdDaily().catch(() => {})); if (!WWD) need.push(loadWWD()); if (!TEMPS) need.push(loadTemps().catch(() => {}));
+      if (need.length) { el.innerHTML = '<div class="loading">생산 실적·기온·폐수 장부 불러오는 중...</div>'; await Promise.all(need); }
+      const ms = peMonths(), rows = ms.map(peRow), C = PE_COMP.find(x => x[0] === peComp), F = PE_FAC.find(x => x[0] === peFac);
+      const cv = (r, k) => { const v = r.c[k]; return v === null || v === undefined ? null : (pePerDay ? v / r.f.days : v); };
+      const fv = (r, k) => { const v = r.f[k]; return v === null || v === undefined ? null : (pePerDay && PE_PERDAY_FAC[k] ? v / r.f.days : v); };
+      const cu = pePerDay ? 'kWh/일' : 'kWh', fu = pePerDay && PE_PERDAY_FAC[F[0]] ? F[2] + '/일' : F[2];
+      const fmtF = (v, k) => { if (v === null || v === undefined) return '-'; const f = PE_FAC.find(x => x[0] === k); const d = pePerDay && PE_PERDAY_FAC[k] ? (k === 'steamH' || k === 'packH' ? 1 : 0) : f[3]; return v.toLocaleString('ko-KR', { maximumFractionDigits: d, minimumFractionDigits: d }); };
+      let h = `<div class="toolbar"><span class="hint">전력</span><span class="chips">${PE_COMP.map(([k, n]) => `<button class="chip ${peComp === k && !peStack ? 'on' : ''}" onclick="peComp='${k}';peStack=false;renderPerElec()">${n}</button>`).join('')}<button class="chip ${peStack ? 'on' : ''}" onclick="peStack=true;renderPerElec()">구성 쌓아 보기</button></span>
+          <label class="hint"><input type="checkbox" ${pePerDay ? 'checked' : ''} onchange="pePerDay=this.checked;renderPerElec()"> 하루당으로 보기 (날수 차이 없앰)</label>
+          <span class="chips">${[12, 24].map(n => `<button class="chip ${peN === n ? 'on' : ''}" onclick="peN=${n};renderPerElec()">최근 ${n}개월</button>`).join('')}</span></div>
+        <div class="toolbar"><span class="hint">비교할 것 (선)</span><span class="chips">${PE_FAC.map(([k, n]) => `<button class="chip ${peFac === k ? 'on' : ''}" onclick="peFac='${k}';renderPerElec()">${n}</button>`).join('')}</span></div>
+        <div class="chart-box" style="height:300px"><canvas id="chart-pe"></canvas></div>`;
+      // 연관성 (상관계수 r) — 마감된 달끼리
+      const r2 = (xs, ys) => { const p = xs.map((x, i) => [x, ys[i]]).filter(([a, b]) => a !== null && b !== null && a !== undefined && b !== undefined); if (p.length < 4) return null; const pr = pearson(p.map(x => x[0]), p.map(x => x[1])); return pr ? { r: pr.r, n: p.length } : null; };
+      const bg = r => { const a = Math.min(1, Math.abs(r)); return r >= 0 ? `rgba(42,120,214,${(a * 0.7).toFixed(2)})` : `rgba(217,48,37,${(a * 0.55).toFixed(2)})`; };
+      h += `<h4 style="margin:12px 0 4px">어떤 게 같이 움직이나 (월별 상관계수 r) <span class="hint">1에 가까울수록 같이 늘고 줄어듦 · 칸을 누르면 그래프가 그 조합으로 바뀜${pePerDay ? ' · 하루당 기준' : ''}</span></h4>
+        <div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${PE_FAC.map(f => `<th>${f[1].replace(/ \(.*\)/, '')}</th>`).join('')}</tr>` +
+        PE_COMP.map(([k, n]) => `<tr><th>${n}</th>${PE_FAC.map(([fk]) => { const c = r2(rows.map(r => cv(r, k)), rows.map(r => fv(r, fk)));
+          return c ? `<td style="background:${bg(c.r)};cursor:pointer" title="${n} ↔ ${PE_FAC.find(x => x[0] === fk)[1]} · ${c.n}개월" onclick="peComp='${k}';peFac='${fk}';peStack=false;renderPerElec()"><b>${c.r.toFixed(2)}</b></td>` : '<td class="hint">-</td>'; }).join('')}</tr>`).join('') + '</table></div>';
+      h += `<div class="hint" style="margin-top:4px">· 공조냉동·폐수동 계량이 나뉜 26년 3월부터 구성별 값이 나옵니다 · 생산동 = 전체 − 폐수동 − 공조냉동 · 포장 생산량·작업시간은 생산 대시보드 일별 실적 합, 생산일수는 월간입력(생산팀 값)·없으면 보일러 가스로 추정 · 달이 적을 때(4~6개월) r은 참고만 하세요.</div>`;
+      // 표
+      h += `<div class="tbl-wrap" style="margin-top:8px"><table class="t"><tr><th>월</th>${PE_COMP.map(c => `<th>${c[1]}<br><span class="hint">${cu}</span></th>`).join('')}<th>${F[1]}<br><span class="hint">${fu}</span></th>${F[0] === 'prod' || F[0] === 'ea' ? `<th>생산동 / ${F[0] === 'prod' ? '원육 kg' : '1,000EA'}</th>` : ''}</tr>` +
+        rows.slice().reverse().map(r => `<tr><td>${r.ym.slice(2).replace('-', '.')}</td>${PE_COMP.map(([k]) => `<td>${cv(r, k) === null ? '<span class="hint">-</span>' : f0(cv(r, k))}</td>`).join('')}<td><b>${fmtF(fv(r, F[0]), F[0])}</b></td>${F[0] === 'prod' || F[0] === 'ea' ? `<td>${r.c.hall !== null && r.f[F[0]] ? nf2.format(r.c.hall / r.f[F[0]] * (F[0] === 'ea' ? 1000 : 1)) : '-'}</td>` : ''}</tr>`).join('') + '</table></div>';
+      el.innerHTML = h;
+      const labels = rows.map(r => r.ym.slice(2).replace('-', '.'));
+      const bars = peStack ? PE_COMP.filter(c => c[0] !== 'all').map(([k, n, col]) => ({ type: 'bar', label: n, data: rows.map(r => cv(r, k)), backgroundColor: col + 'cc', stack: 's', yAxisID: 'y', order: 2 }))
+        : [{ type: 'bar', label: C[1] + ' ' + cu, data: rows.map(r => cv(r, peComp)), backgroundColor: C[2] + 'bb', yAxisID: 'y', order: 2 }];
+      mkChart('chart-pe', { data: { labels, datasets: [...bars, { type: 'line', label: F[1] + ' ' + fu, data: rows.map(r => fv(r, F[0])), borderColor: '#e0482b', backgroundColor: '#e0482b', borderWidth: 2, pointRadius: 3, yAxisID: 'y2', order: 1, spanGaps: true }] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom' } },
+          scales: { x: { stacked: peStack }, y: { stacked: peStack, beginAtZero: true, title: { display: true, text: cu } }, y2: { position: 'right', beginAtZero: F[0] !== 'tmean', grid: { drawOnChartArea: false }, title: { display: true, text: fu } } } } });
     }
