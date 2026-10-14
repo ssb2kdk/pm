@@ -953,6 +953,7 @@
     //  WQ.billc['YYYY-MM'] = { sew: {water, flow, bod, toc, ss}, ww: {flow, bod, toc, ss, tn, tp}, src: 'bill'|'manual' }
     //  유틸리티 월간입력에 폐수 산출기준 PDF를 넣고 [확정]하면 자동 저장, 지난 달은 여기서 직접 입력
     const BC_K = [['bod', 'BOD'], ['toc', 'TOC'], ['ss', 'SS'], ['tn', 'T-N'], ['tp', 'T-P']];
+    const BC_MIN = { bod: 100, toc: 80, ss: 100 }; // 익산시 부과 최소 농도 — 측정값이 낮아도 이 값으로 부과
     let bcEdit = null;
     const bcRecOf = ym => WQ.records.filter(r => r.s.slice(0, 7) === ym).pop() || null; // 그 달 채취 성적서
     function wqBillCard() {
@@ -964,10 +965,13 @@
           <tr>${BC_K.map(() => '<th class="g2">고지</th><th class="g1">실측</th>').join('')}</tr>` +
           yms.map(ym => { const b = B[ym], w = b.ww || {}, s = b.sew || {}, rec = bcRecOf(ym);
             return `<tr><td>${ym.slice(2, 4)}.${ym.slice(5)}${b.src === 'bill' ? ' <span class="hint" title="고지서 PDF에서 읽음">📄</span>' : ''}</td><td>${f(s.water, 0)}</td><td>${f(s.flow, 1)}</td><td>${f(w.flow, 1)}</td>` +
-              BC_K.map(([k]) => { const g = w[k], m = rec ? wqNum(rec.eff[k]) : null, hi = m !== null && g !== null && g !== undefined && m > Number(g);
-                return `<td>${f(g)}</td><td class="${hi ? 'wq-hi' : ''}" ${rec ? `title="${rec.s} 채취 방류수"` : ''}>${m === null ? '<span class="hint">-</span>' : nf(m, 3)}</td>`; }).join('') +
+              BC_K.map(([k]) => { const g = w[k], m = rec ? wqNum(rec.eff[k]) : null, hi = m !== null && g !== null && g !== undefined && m > Number(g), isMin = BC_MIN[k] !== undefined && g !== null && g !== undefined && Number(g) <= BC_MIN[k];
+                return `<td>${f(g)}${isMin ? '<br><span class="hint">최소</span>' : ''}</td><td class="${hi ? 'wq-hi' : ''}" ${rec ? `title="${rec.s} 채취 방류수 (우리 위탁 측정 1회)"` : ''}>${m === null ? '<span class="hint">-</span>' : nf(m, 3)}</td>`; }).join('') +
               (canEdit ? `<td><button class="btn secondary small" onclick="bcOpen('${ym}')">고치기</button></td>` : '') + '</tr>'; }).join('') + '</table></div>';
-        h += `<div class="hint">· 고지 = 익산시 산출내역에 적힌 폐수 배출농도 (사용료·개선충당금 계산에 쓰인 값) · 실측 = 같은 달 채취한 방류수 성적서 값 · <span class="wq-hi">빨강</span> = 실측이 고지 농도보다 높음<br>· 오수 농도(BOD·TOC·SS)는 매달 정해진 값이라 표에서 뺐고, 고치기를 누르면 보입니다.</div>`;
+        h += `<div class="hint">· 고지 = 익산시 산출내역의 폐수 배출농도 — 익산시가 따로 와서 <b>한 달에 3번 정도 채수한 평균</b>으로 부과 (사용료·개선충당금 계산에 쓰임)<br>
+          · <b>BOD 100 · TOC 80 · SS 100은 부과 최소값</b> — 측정이 더 낮아도 이 값으로 올라가므로 실측과 비교 의미 없음 (「최소」 표시). <b>T-N · T-P만 실제 측정 평균</b>이라 실측과 비교할 만합니다.<br>
+          · 실측 = 같은 달 우리 위탁 측정(수질측정기록부) 방류수 1회 값 · <span class="wq-hi">빨강</span> = 실측이 고지보다 높음 (채수 날짜·횟수가 달라 차이 날 수 있음)<br>
+          · 오수 농도(BOD·TOC·SS)는 매달 정해진 값이라 표에서 뺐고, 고치기를 누르면 보입니다.</div>`;
       } else h += '<div class="hint">아직 입력된 달이 없습니다. 유틸리티 → 월간입력에 폐수 산출기준 PDF를 넣고 [확정]하면 자동으로 들어오고, 지난 달은 아래에서 직접 넣을 수 있습니다.</div>';
       if (canEdit) {
         if (!bcEdit) h += `<div class="toolbar" style="margin-top:8px"><button class="btn small" onclick="bcOpen('')">+ 달 추가 (직접 입력)</button></div>`;
