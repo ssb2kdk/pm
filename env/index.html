@@ -125,6 +125,8 @@
     table.wq th, table.wq td { border: 1px solid #e3e6ea; padding: 5px 9px; text-align: right; white-space: nowrap; }
     table.wq th { background: #eef3f1; text-align: center; font-weight: 600; }
     table.wq th.g1 { background: #e6f2ec; } table.wq th.g2 { background: #e7eef8; }
+    .bc-edit { margin-top: 10px; padding: 10px; border: 1px dashed #b9c9d9; border-radius: 8px; background: #fafcff; }
+    .bc-edit input.bci { width: 80px; text-align: right; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
     table.wq td.l { text-align: left; } table.wq td.v { font-weight: bold; }
     table.wq.sm { font-size: 12px; } table.wq.sm th, table.wq.sm td { padding: 3px 7px; }
     table.wq.in input { width: 120px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: right; background: #fffbe6; }
@@ -831,7 +833,7 @@
       let h = `<div class="card"><div class="toolbar"><b>설계 대비 농도 비교</b>
         <select onchange="wqSel=this.value;renderWq()">${opts}<option value="avg" ${wqSel === 'avg' ? 'selected' : ''}>전체 평균</option><option value="max" ${wqSel === 'max' ? 'selected' : ''}>전체 최대</option></select>
         <span class="hint">${P ? esc(P.label) : ''}</span></div>`;
-      if (!P) { document.getElementById('wq-body').innerHTML = h + '<div class="hint">입력된 성적서가 없습니다.</div></div>' + wqInputCard(); return; }
+      if (!P) { document.getElementById('wq-body').innerHTML = h + '<div class="hint">입력된 성적서가 없습니다.</div></div>' + wqBillCard() + wqInputCard(); return; }
       h += `<div class="tbl-x"><table class="wq"><tr><th rowspan="2">항목</th><th colspan="3" class="g1">처리 전 (원수)</th><th colspan="5" class="g2">처리 후 (방류수)</th><th colspan="2">처리효율</th></tr>
         <tr><th class="g1">설계</th><th class="g1">실측</th><th class="g1">설계 대비</th><th class="g2">설계</th><th class="g2">실측</th><th class="g2">설계 대비</th><th class="g2">배출허용기준</th><th class="g2">기준 대비</th><th>설계</th><th>실측</th></tr>`;
       WQ_ITEMS.forEach(i => {
@@ -851,7 +853,7 @@
         h += `<div class="wwn-box"><b>폐수장 특이사항</b> <span class="hint">${i > 0 ? `지난 측정(${R[i - 1].s}) 다음날 ~ 이번 채취일(${P.rec.s})` : `채취일(${P.rec.s}) 전 한 달`}</span>
           ${nl.length ? `<ul>${nl.map(n => `<li>${wwnLine(n)}${wwnNearSample(n.d)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 특이사항이 없습니다. <a href="#" onclick="showTab('wwn');return false">특이사항 적기</a></div>`}</div>`; }
       h += '</div>';
-      h += wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
+      h += wqBillCard() + wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
       el.innerHTML = h;
     }
     function wqSummary() {
@@ -947,6 +949,62 @@
     }
     function wqKeep() { if (!wqEdit) return; const s = document.getElementById('wq-s'), d = document.getElementById('wq-d'); if (s) wqEdit.s = s.value; if (d) wqEdit.d = d.value; document.querySelectorAll('.wqi').forEach(x => { wqEdit[x.dataset.side][x.dataset.k] = x.value.trim(); }); }
     function wqLoadEdit(s) { const r = WQ.records.find(x => x.s === s); wqEdit = r ? Object.assign(JSON.parse(JSON.stringify(r)), { _orig: r.s }) : { s: todayStr, d: '', raw: {}, eff: {}, _orig: null }; renderWq(); }
+    // ---------------- 폐수 고지서 산출내역의 배출농도 (월별) · 실측 방류수와 비교 ----------------
+    //  WQ.billc['YYYY-MM'] = { sew: {water, flow, bod, toc, ss}, ww: {flow, bod, toc, ss, tn, tp}, src: 'bill'|'manual' }
+    //  유틸리티 월간입력에 폐수 산출기준 PDF를 넣고 [확정]하면 자동 저장, 지난 달은 여기서 직접 입력
+    const BC_K = [['bod', 'BOD'], ['toc', 'TOC'], ['ss', 'SS'], ['tn', 'T-N'], ['tp', 'T-P']];
+    let bcEdit = null;
+    const bcRecOf = ym => WQ.records.filter(r => r.s.slice(0, 7) === ym).pop() || null; // 그 달 채취 성적서
+    function wqBillCard() {
+      const B = WQ.billc || {}, yms = Object.keys(B).sort().reverse(), canEdit = isAdmin() || isPartner();
+      const f = (v, d = 3) => v === null || v === undefined || v === '' ? '<span class="hint">-</span>' : nf(Number(v), d);
+      let h = `<div class="card"><div class="toolbar"><b>폐수 고지서 배출농도 (폐수발생량 산출내역)</b><span class="hint">고지서에 적용된 농도 ↔ 같은 달 수질측정기록부 방류수 실측</span></div>`;
+      if (yms.length) {
+        h += `<div class="tbl-x"><table class="wq"><tr><th rowspan="2">배출월</th><th rowspan="2">상수<br>사용량</th><th rowspan="2">오수<br>발생량</th><th rowspan="2">폐수<br>발생량</th>${BC_K.map(([, n]) => `<th colspan="2">${n} (mg/L)</th>`).join('')}${canEdit ? '<th rowspan="2"></th>' : ''}</tr>
+          <tr>${BC_K.map(() => '<th class="g2">고지</th><th class="g1">실측</th>').join('')}</tr>` +
+          yms.map(ym => { const b = B[ym], w = b.ww || {}, s = b.sew || {}, rec = bcRecOf(ym);
+            return `<tr><td>${ym.slice(2, 4)}.${ym.slice(5)}${b.src === 'bill' ? ' <span class="hint" title="고지서 PDF에서 읽음">📄</span>' : ''}</td><td>${f(s.water, 0)}</td><td>${f(s.flow, 1)}</td><td>${f(w.flow, 1)}</td>` +
+              BC_K.map(([k]) => { const g = w[k], m = rec ? wqNum(rec.eff[k]) : null, hi = m !== null && g !== null && g !== undefined && m > Number(g);
+                return `<td>${f(g)}</td><td class="${hi ? 'wq-hi' : ''}" ${rec ? `title="${rec.s} 채취 방류수"` : ''}>${m === null ? '<span class="hint">-</span>' : nf(m, 3)}</td>`; }).join('') +
+              (canEdit ? `<td><button class="btn secondary small" onclick="bcOpen('${ym}')">고치기</button></td>` : '') + '</tr>'; }).join('') + '</table></div>';
+        h += `<div class="hint">· 고지 = 익산시 산출내역에 적힌 폐수 배출농도 (사용료·개선충당금 계산에 쓰인 값) · 실측 = 같은 달 채취한 방류수 성적서 값 · <span class="wq-hi">빨강</span> = 실측이 고지 농도보다 높음<br>· 오수 농도(BOD·TOC·SS)는 매달 정해진 값이라 표에서 뺐고, 고치기를 누르면 보입니다.</div>`;
+      } else h += '<div class="hint">아직 입력된 달이 없습니다. 유틸리티 → 월간입력에 폐수 산출기준 PDF를 넣고 [확정]하면 자동으로 들어오고, 지난 달은 아래에서 직접 넣을 수 있습니다.</div>';
+      if (canEdit) {
+        if (!bcEdit) h += `<div class="toolbar" style="margin-top:8px"><button class="btn small" onclick="bcOpen('')">+ 달 추가 (직접 입력)</button></div>`;
+        else { const E = bcEdit, inp = (side, k, ph) => `<input class="bci" data-side="${side}" data-k="${k}" inputmode="decimal" value="${esc(E[side][k] ?? '')}" placeholder="${ph || ''}">`;
+          h += `<div class="bc-edit"><div class="toolbar">배출월 <input type="month" id="bc-ym" value="${esc(E.ym)}"> <span class="hint">고지서 「○○○○년 ○○월 배출분」의 월</span></div>
+            <table class="wq in"><tr><th>구분</th><th>상(공)수 사용량</th><th>오(폐)수 발생량</th>${BC_K.map(([, n]) => `<th>${n}</th>`).join('')}</tr>
+            <tr><td class="l">상수/오수</td><td>${inp('sew', 'water')}</td><td>${inp('sew', 'flow')}</td>${BC_K.map(([k]) => `<td>${k === 'tn' || k === 'tp' ? '-' : inp('sew', k)}</td>`).join('')}</tr>
+            <tr><td class="l">공수/폐수</td><td>-</td><td>${inp('ww', 'flow')}</td>${BC_K.map(([k]) => `<td>${inp('ww', k)}</td>`).join('')}</tr></table>
+            <div class="toolbar" style="margin-top:6px"><button class="btn" onclick="bcSave()">✓ 저장</button><button class="btn secondary small" onclick="bcEdit=null;renderWq()">취소</button>${E._orig && isAdmin() ? `<button class="btn danger small" onclick="bcDel('${E._orig}')">이 달 삭제</button>` : ''}</div></div>`; }
+      }
+      return h + '</div>';
+    }
+    function bcOpen(ym) {
+      const B = WQ.billc || {}, last = Object.keys(B).sort().pop(), src = ym ? B[ym] : null;
+      const sewDef = last && B[last].sew ? { bod: B[last].sew.bod, toc: B[last].sew.toc, ss: B[last].sew.ss } : { bod: 100, toc: 80, ss: 100 }; // 오수 농도는 보통 매달 같음
+      bcEdit = { ym: ym || '', _orig: ym || null, sew: Object.assign({}, src ? src.sew : sewDef), ww: Object.assign({}, src ? src.ww : {}) };
+      renderWq(); setTimeout(() => { const e = document.querySelector('.bc-edit'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 30);
+    }
+    async function bcSave() {
+      const ym = document.getElementById('bc-ym').value; if (!/^\d{4}-\d{2}$/.test(ym)) { alert('배출월을 골라 주세요.'); return; }
+      const rec = { sew: {}, ww: {}, src: 'manual', at: new Date().toISOString() };
+      document.querySelectorAll('.bci').forEach(x => { const v = String(x.value).replace(/,/g, '').trim(); rec[x.dataset.side][x.dataset.k] = v === '' ? null : (isNaN(Number(v)) ? v : Number(v)); });
+      const orig = bcEdit._orig;
+      if (ym !== orig && (WQ.billc || {})[ym] && !confirm(`${ym} 자료가 이미 있습니다. 덮어쓸까요?`)) return;
+      const wasSaved = WQ_SAVED, keep = WQ; await loadWq(); if (!WQ_SAVED && wasSaved === false) WQ = keep;
+      const billc = Object.assign({}, WQ.billc || {}); if (orig && orig !== ym) delete billc[orig]; billc[ym] = rec;
+      const v = Object.assign({}, WQ, { billc });
+      const { error } = await sb.from('env_settings').upsert({ key: 'wq', value: v }, { onConflict: 'key' });
+      if (error) { alert('저장 실패: ' + errMsg(error)); return; }
+      WQ = v; WQ_SAVED = true; bcEdit = null; renderWq();
+    }
+    async function bcDel(ym) {
+      if (!confirm(`${ym} 배출농도 자료를 지울까요?`)) return;
+      await loadWq(); const billc = Object.assign({}, WQ.billc || {}); delete billc[ym];
+      const v = Object.assign({}, WQ, { billc }); const { error } = await sb.from('env_settings').upsert({ key: 'wq', value: v }, { onConflict: 'key' });
+      if (error) { alert('삭제 실패: ' + errMsg(error)); return; } WQ = v; bcEdit = null; renderWq();
+    }
     async function wqPut(fn) { // 저장 직전에 최신 자료를 다시 받아서 고침 (여럿이 동시에 저장해도 덮어쓰지 않게)
       const wasSaved = WQ_SAVED, keep = WQ; await loadWq(); if (!WQ_SAVED && wasSaved === false) WQ = keep;
       const records = fn(WQ.records.slice());

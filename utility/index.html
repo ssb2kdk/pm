@@ -3191,7 +3191,18 @@
       const near = (lst, x) => lst.find(n => n.x0 < x + 40 && n.x1 > x - 10) || null;
       F(out, 'ww_improve_fee', '개선부담금', near(tn, 290), 0);
       F(out, 'ww_facility_fee', '시설사용료 (기타사용료)', near(tn, 430), 0);
-      return { ym, out, warn };
+      // 위 표: 상(공)수 사용량 · 오(폐)수 발생량 · 배출농도 (BOD·TOC·SS·T-N·T-P) → 환경일지 수질 측정 비교용
+      const top = r => findRow(pg, r, { xr: [20, 160], above: below });
+      const v = n => { if (!n) return null; const x = parseFloat(String(n.raw).replace(/,/g, '')); return isNaN(x) ? null : x; }; // 소수점 그대로 (8.814)
+      const rs = rowNums(pg, top(/^상수.?오수/), [120, 700]).map(v), rw2 = rowNums(pg, top(/^공수.?폐수/), [120, 700]).map(v);
+      let conc = null;
+      if (rs.length >= 5 || rw2.length >= 5) {
+        // 오수 줄: [상수량, 오수량, BOD, TOC, SS] (T-N·T-P는 '-'), 폐수 줄: [폐수량, BOD, TOC, SS, T-N, T-P]
+        const s5 = rs.length >= 5 ? { water: rs[0], flow: rs[1], bod: rs[2], toc: rs[3], ss: rs[4], tn: rs[5] ?? null, tp: rs[6] ?? null } : null;
+        const w6 = rw2.length >= 6 ? { flow: rw2[rw2.length - 6], bod: rw2[rw2.length - 5], toc: rw2[rw2.length - 4], ss: rw2[rw2.length - 3], tn: rw2[rw2.length - 2], tp: rw2[rw2.length - 1] } : null;
+        conc = { sew: s5, ww: w6 };
+      }
+      return { ym, out, warn, meta: conc ? { wwConc: conc } : undefined };
     }
   };
 
@@ -3482,6 +3493,8 @@
           <button class="bx" onclick="billRemove(${pi})">✕ 빼기</button></div>`;
         if (p.warn && p.warn.length) h += `<div class="bwarn">${p.warn.map(w => '⚠ ' + esc(w)).join('<br>')}</div>`;
         if (p.check) h += `<div class="${p.check.ok ? 'bok' : 'bwarn'}">${p.check.ok ? '✓' : '⚠'} ${esc(p.check.t)}</div>`;
+        if (p.meta && p.meta.wwConc) { const c = p.meta.wwConc, f = x => x == null ? '-' : x.toLocaleString('ko-KR', { maximumFractionDigits: 3 });
+          h += `<div class="bok">✓ 배출농도도 읽었습니다 → [확정]하면 환경일지 「수질 측정」에도 저장<br>${c.ww ? `폐수 ${f(c.ww.flow)}㎥ · BOD ${f(c.ww.bod)} · TOC ${f(c.ww.toc)} · SS ${f(c.ww.ss)} · T-N ${f(c.ww.tn)} · T-P ${f(c.ww.tp)}` : ''}${c.sew ? `<br>오수 ${f(c.sew.flow)}㎥ (상수 ${f(c.sew.water)}㎥) · BOD ${f(c.sew.bod)} · TOC ${f(c.sew.toc)} · SS ${f(c.sew.ss)}` : ''}</div>`; }
         h += `<div class="bbody"><table class="btbl"><thead><tr><th></th><th>항목</th><th>읽어 온 값</th><th>지금 값</th><th>원본</th></tr></thead><tbody>`;
         (p.out || []).forEach((o, oi) => {
           const f = UT.FIELD[o.k] || { label: o.k, unit: '' };
@@ -3545,12 +3558,22 @@
       Object.assign(monthlyDraft, vals);
       monthlyDirty = true;
       await saveMonthly();
+      if (!monthlyDirty) { const wc = billPages.find(p => p.meta && p.meta.wwConc); if (wc) { try { await saveWwConc(target, wc.meta.wwConc); } catch (e) { alert('배출농도를 환경일지에 저장하지 못했습니다: ' + errMsg(e)); } } }
       if (!monthlyDirty) {      // 저장 성공
         billPages = []; document.getElementById('bill').hidden = true;
         renderMonthly();
         const note = document.getElementById('monthly-note');
         note.textContent = `고지서 값 ${keys.length}개를 저장했습니다.`;
       }
+    }
+
+    // 폐수 산출기준 배출농도 → 환경일지 수질 측정(env_settings 'wq'.billc[월]) — 저장 직전 최신 값을 다시 읽어 합침
+    async function saveWwConc(ym, c) {
+      const { data, error } = await sb.from('env_settings').select('value').eq('key', 'wq').maybeSingle(); if (error) throw error;
+      const v = (data && data.value) || null;
+      if (!v) throw new Error('환경일지 수질 측정 자료가 아직 저장되지 않았습니다. 환경일지 → 수질 측정에서 먼저 [저장]을 한 번 눌러 주세요.');
+      const billc = Object.assign({}, v.billc || {}); billc[ym] = Object.assign({}, billc[ym] || {}, { sew: c.sew, ww: c.ww, src: 'bill', at: new Date().toISOString() });
+      const r = await sb.from('env_settings').upsert({ key: 'wq', value: Object.assign({}, v, { billc }) }, { onConflict: 'key' }); if (r.error) throw r.error;
     }
 
     // 끌어다 놓기
