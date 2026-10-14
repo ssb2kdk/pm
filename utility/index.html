@@ -147,6 +147,8 @@
     table.t td.na { color: #bbb; }
     table.t td.prov { background: #fffaf0; }
     #pd-body tr.hl td { background: #fff5f4; }
+    .noprod { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; background: #fdecea; color: #b3261e; font-weight: 600; white-space: nowrap; }
+    .srcd { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; background: #fff4e0; color: #8a5a00; white-space: nowrap; }
     .dc-t td { text-align: center; white-space: nowrap; } .dc-t td.l { text-align: left; }
     table.t.dc-t td:first-child { text-align: center; }
     .dc-t td.dc-note { white-space: normal; min-width: 180px; max-width: 320px; font-size: 12px; } .dc-note div { margin-bottom: 2px; }
@@ -2155,16 +2157,16 @@
       if (perGran === 'day') {
         const end = to > last ? last : to, multiYear = from.slice(0, 4) !== end.slice(0, 4);
         for (let ds = from, i = 0; ds <= end && i < PER_MAX.day; ds = UT.addDays(ds, 1), i++) { const ly = UT.addDays(ds, -364); // 364일 전 = 같은 요일
-          out.push({ label: `${multiYear ? ds.slice(2, 4) + '/' : ''}${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prior: dayVal(UT.addDays(ds, -28), uk), prevLabel: ly }); }
+          out.push({ label: `${multiYear ? ds.slice(2, 4) + '/' : ''}${ds.slice(5).replace('-', '/')}(${'일월화수목금토'[new Date(ds + 'T00:00:00').getDay()]})`, cur: dayVal(ds, uk), prev: dayVal(ly, uk), prior: dayVal(UT.addDays(ds, -28), uk), prevLabel: ly, d: [ds, ly, UT.addDays(ds, -28)] }); }
       } else if (perGran === 'week') {
         const multiYear = from.slice(0, 4) !== to.slice(0, 4);
         for (let ws = isoWeekStart(from), i = 0; ws <= isoWeekStart(to) && ws <= last && i < PER_MAX.week; ws = UT.addDays(ws, 7), i++) { const lws = UT.addDays(ws, -364);
           const days = Math.min(7, (new Date(last + 'T00:00:00') - new Date(ws + 'T00:00:00')) / 864e5 + 1);
           const c = sumDays(ws, days, uk), p = sumDays(lws, days, uk), pw = sumDays(UT.addDays(ws, -7), days, uk); // 전주도 같은 날수만큼
-          out.push({ label: `${multiYear ? ws.slice(2, 4) + '/' : ''}${ws.slice(5).replace('-', '/')}~`, cur: c && c.v, prev: p && p.v, prior: pw && pw.v, partial: days < 7, prevLabel: lws }); }
+          out.push({ label: `${multiYear ? ws.slice(2, 4) + '/' : ''}${ws.slice(5).replace('-', '/')}~`, cur: c && c.v, prev: p && p.v, prior: pw && pw.v, partial: days < 7, prevLabel: lws, w: [ws, lws, UT.addDays(ws, -7)], days }); }
       } else if (perGran === 'month') {
         for (let ym = from, i = 0; ym <= to && ym <= thisYm && i < PER_MAX.month; ym = UT.nextYm(ym), i++) { const ly = UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)));
-          out.push({ label: ym.slice(2).replace('-', '.'), cur: monthVal(ym, uk, metric), prev: monthVal(ly, uk, metric), prior: monthVal(UT.prevYm(ym), uk, metric), partial: ym === thisYm && !UT.monthComplete(DAILY, ym) }); }
+          out.push({ label: ym.slice(2).replace('-', '.'), cur: monthVal(ym, uk, metric), prev: monthVal(ly, uk, metric), prior: monthVal(UT.prevYm(ym), uk, metric), partial: ym === thisYm && !UT.monthComplete(DAILY, ym), m: [ym, ly, UT.prevYm(ym)] }); }
       } else {
         const qv = (y, q) => { const ms = [1, 2, 3].map(k => UT.ym(y, (q - 1) * 3 + k)).filter(ym => ym <= thisYm); if (!ms.length) return null;
           if (metric === 'unit') { const u = ms.reduce((a, ym) => a + (S(ym)[perUtil].usage || 0), 0), p = ms.reduce((a, ym) => a + (S(ym).production || 0), 0); return p ? u / p : null; }
@@ -2209,8 +2211,18 @@
       perSel[g] = { from: g === 'week' ? isoWeekStart(from) : from, to: g === 'week' ? isoWeekStart(to) : to };
       renderPeriod();
     }
+    // 생산 안 한 날 (생산 대시보드 일별 실적 — 전처리 원육 투입이 없는 날). 실적 자료가 시작되기 전 날짜는 판단 안 함
+    let perProdTried = false;
+    let prodRange = null; // [처음, 마지막] 실적 날짜 — 이 범위 밖(아직 안 올라온 최근 날짜 등)은 판단 안 함
+    function prodState(ds) { if (!PRODD) return null; if (!prodRange) { const k = Object.keys(PRODD).filter(d => PRODD[d].rm > 0).sort(); prodRange = k.length ? [k[0], k[k.length - 1]] : ['9', '0']; }
+      if (ds < prodRange[0] || ds > prodRange[1]) return null; const p = PRODD[ds]; return p && p.rm > 0 ? 'on' : 'off'; }
+    function prodDays(ws, n) { let k = 0, known = 0; for (let i = 0; i < n; i++) { const st = prodState(UT.addDays(ws, i)); if (st) { known++; if (st === 'on') k++; } } return known ? k : null; }
+    // 사용량 출처: 월·분기 = 고지서 확정이면 고지서, 아니면 검침(일일값) 합산
+    function perSrc(ym, uk) { const st = S(ym)[uk].status; return st === '확정' ? 'bill' : st ? 'daily' : null; }
+    const PER_SRC_TXT = { elec: ['고지서 사용량', '파워플래너 일일값 합산'], gas: ['고지서 사용량', '가스 일일 검침 합산'], water: ['고지서 사용량', '용수 일일 검침 합산'], ww: ['고지서 발생량', '폐수 일일 검침 합산'] };
     function renderPeriod() {
       if (!window.Chart) return;
+      if ((perGran === 'day' || perGran === 'week') && !PRODD && !perProdTried) { perProdTried = true; loadProdDaily().then(() => { if (document.getElementById('tab-period').classList.contains('active')) renderPeriod(); }).catch(() => {}); }
       if ((perGran === 'day' || perGran === 'week') && perMetric !== 'usage') perMetric = 'usage';
       const U = UT.UTILS.find(u => u.k === perUtil), DU = UT.DAILY_UTILS.find(u => u.k === perUtil);
       document.getElementById('per-chips').innerHTML =
@@ -2227,6 +2239,8 @@
       document.getElementById('per-title').textContent = `${U.name} ${gName} ${perMetric === 'usage' ? '사용량' : perMetric === 'cost' ? '비용' : '원단위'} — ${nLy}·${nPr} 비교${rg}`;
       document.getElementById('per-note').innerHTML = (perGran === 'day' ? '전년 같은 요일 = 364일 전 (52주 전), 전월 같은 요일 = 28일 전 (4주 전) — 둘 다 요일을 맞춤. ' : perGran === 'week' ? '주 = 월요일 시작. 전년 같은 주 = 52주 전 (요일 맞춤), 전주 = 바로 앞 주. 이번 주는 어제까지만, 비교도 같은 날수만큼. ' : perGran === 'month' ? '전년 동월 = 작년 같은 달, 전월 = 바로 앞 달 (달력 기준이라 요일은 맞추지 않음). ' : '전년 동분기 = 작년 같은 분기, 전분기 = 바로 앞 분기. ') +
         (daily && perUtil === 'gas' ? '가스 일·주 단위는 ㎥(월·분기는 MJ). ' : '') + '옅은 막대 = 아직 진행 중인 기간.' +
+        `<br><b>사용량 기준</b>: ${daily ? `${perUtil === 'elec' ? '한전 파워플래너 일일값' : '설비검침 일일 지침 차 (그날 아침 → 다음날 아침)'}${perGran === 'week' ? ' 7일 합' : ''}` : `${PER_SRC_TXT[perUtil][0]} (고지서를 아직 안 넣은 달은 ${PER_SRC_TXT[perUtil][1]} — 표에 「일일합산」 표시)`}` +
+        (daily ? ` · <span class="noprod">생산 없음</span> = 생산 대시보드 일별 실적에 원육 투입이 없는 날${PRODD ? '' : ' (실적 불러오는 중…)'}` : '') +
         ` &nbsp; 그래프 비교선: ` + [['both', '둘 다'], ['ly', nLy], ['prior', nPr]].map(([k, n]) => `<button class="chip ${perLine === k ? 'on' : ''}" onclick="perLine='${k}';renderPeriod()">${n}</button>`).join('');
       const pr = perGran === 'day' ? 0 : 3;
       const lines = [];
@@ -2237,13 +2251,19 @@
       ] }, options: (() => { const o = baseOpts(unit); o.plugins.legend.display = true; o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.autoSkip = true;
         o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${perMetric === 'unit' ? fU(c.raw, perUtil) : f0(c.raw)} ${unit}`;
         o.plugins.tooltip.callbacks.footer = items => { const i = items[0].dataIndex, s = ser[i], pc = (a, b) => a !== null && b ? `${((a / b - 1) * 100).toFixed(1)}%` : '-';
-          return s.cur === null ? '' : `${nLy} 대비 ${pc(s.cur, s.prev)} · ${nPr} 대비 ${pc(s.cur, s.prior)}`; }; return o; })() });
+          const np = s.d ? [0, 1, 2].filter(k => prodState(s.d[k]) === 'off').map(k => ['이번', nLy, nPr][k]) : [];
+          return s.cur === null ? '' : `${nLy} 대비 ${pc(s.cur, s.prev)} · ${nPr} 대비 ${pc(s.cur, s.prior)}${np.length ? `\n생산 없음: ${np.join(', ')}` : ''}`; }; return o; })() });
       // 표 (최근 것부터)
       const fmt = v => v === null || v === undefined ? '-' : (perMetric === 'unit' ? fU(v, perUtil) : f0(v));
       const okLy = ser.filter(s => s.cur !== null && s.prev !== null && !s.partial), okPr = ser.filter(s => s.cur !== null && s.prior !== null && s.prior !== undefined && !s.partial);
       const sm = (l, k) => l.reduce((a, s) => a + s[k], 0);
       document.getElementById('per-table').innerHTML = `<table class="t"><tr><th class="l">기간</th><th>이번</th><th>${nLy}</th><th>${nLy} 대비</th><th>${nPr}</th><th>${nPr} 대비</th></tr>` +
-        ser.slice().reverse().map(s => `<tr${s.partial ? ' class="hint"' : ''}><td class="l">${esc(s.label)}${s.partial ? ' (진행 중)' : ''}</td><td><b>${fmt(s.cur)}</b></td><td>${fmt(s.prev)}</td><td>${pctTxt(s.cur, s.prev)}</td><td>${fmt(s.prior)}</td><td>${pctTxt(s.cur, s.prior)}</td></tr>`).join('') +
+        ser.slice().reverse().map(s => { const tag = i => { // i: 0 이번, 1 전년, 2 전월/전주
+            if (s.d) return prodState(s.d[i]) === 'off' ? ' <span class="noprod">생산 없음</span>' : '';
+            if (s.w) { const k = prodDays(s.w[i], s.days); return k === null ? '' : ` <span class="hint">생산 ${k}일</span>`; }
+            if (s.m && perMetric !== 'unit') { const sr = perSrc(s.m[i], perUtil); return sr === 'daily' ? ' <span class="srcd">일일합산</span>' : ''; }
+            return ''; };
+          return `<tr${s.partial ? ' class="hint"' : ''}><td class="l">${esc(s.label)}${s.partial ? ' (진행 중)' : ''}</td><td><b>${fmt(s.cur)}</b>${tag(0)}</td><td>${fmt(s.prev)}${tag(1)}</td><td>${pctTxt(s.cur, s.prev)}</td><td>${fmt(s.prior)}${tag(2)}</td><td>${pctTxt(s.cur, s.prior)}</td></tr>`; }).join('') +
         (perMetric !== 'unit' && (okLy.length || okPr.length) ? `<tr class="sum"><td class="l">합계 <span class="hint">(진행 중 제외, 비교값 있는 기간만)</span></td><td></td><td>${okLy.length ? `${fmt(sm(okLy, 'cur'))} vs ${fmt(sm(okLy, 'prev'))}` : '-'}</td><td>${okLy.length ? pctTxt(sm(okLy, 'cur'), sm(okLy, 'prev')) : ''}</td><td>${okPr.length ? `${fmt(sm(okPr, 'cur'))} vs ${fmt(sm(okPr, 'prior'))}` : '-'}</td><td>${okPr.length ? pctTxt(sm(okPr, 'cur'), sm(okPr, 'prior')) : ''}</td></tr>` : '') + '</table>' +
         `<div class="hint" style="margin-top:6px">단위: ${unit}. 증감 ▲ = 더 씀(빨강), ▼ = 덜 씀(초록).</div>`;
     }
