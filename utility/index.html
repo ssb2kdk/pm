@@ -236,6 +236,8 @@
     #tg-model table.tg td.l { white-space: normal; line-height: 1.8; min-width: 120px; } /* 예상 사용량 식이 화면 밖으로 안 넘치게 줄바꿈 */
     #tg-model table.tg td.l .hint { white-space: normal; }
     #tg-model .plus { color: #888; font-weight: 700; margin-right: 2px; }
+    .tg-excl { margin-top: 4px; font-size: 11px; color: #777; } .tg-excl .chip.mini { font-size: 10px; padding: 1px 6px; margin: 1px; }
+    .tg-excl .chip.mini.off { background: #fdecea; color: #b3261e; border-color: #f2b8b5; text-decoration: line-through; }
     #tg-model .tbl-x, #tg-model { overflow-x: auto; }
     table.t tr.qrow td { background: #f3f6fb; font-weight: bold; }
     #tab-target table.t th { position: static; }
@@ -1288,12 +1290,33 @@
     }
     const baseMonths = (t, y) => Array.isArray(t.base) && t.base.length ? t.base : defaultBase(y);
     const rateOf = (t, k) => { const v = (t.rate || {})[k]; return v === undefined || v === null || v === '' ? null : Number(v); };
+    // 항목별로 기준에서 뺄 달 (평소와 다르게 운전한 달). 저장값이 없으면 기본값
+    //  용수·폐수: 26년 4월 말~7월 폐수처리장 악취 희석용으로 물을 더 흘려보냄 (용수는 검침이 전월 12일~당월 11일이라 한 달 늦게 잡음)
+    const EXCL_DEFAULT = { water: ['2026-05', '2026-06', '2026-07', '2026-08'], ww: ['2026-04', '2026-05', '2026-06', '2026-07'] };
+    const EXCL_WHY = { water: '악취 희석용 물 추가 (26.4월 말~7월 · 용수 검침 기간 기준)', ww: '악취 희석용 물 추가 (26.4월 말~7월)' };
+    const exclOf = (t, uk) => { const e = (t.excl || {})[uk]; return Array.isArray(e) ? e : (EXCL_DEFAULT[uk] || []); };
+    const baseFor = (t, y, uk) => baseMonths(t, y).filter(ym => !exclOf(t, uk).includes(ym));
+    // 용수·폐수: 날수·원육 (+ 난방도일 — 넣어서 오차가 0.5%p 넘게 줄고 계수가 0 이상일 때만)
+    function fitSimple(months, uk) {
+      const rows = months.map(monthRow).map(r => ({ ...r, y: r[uk] }));
+      const a = UT.fitBaseline(rows, ['days', 'prod']), b = UT.fitBaseline(rows, ['days', 'prod', 'hdd']);
+      const okA = a && a.coef.every(c => c >= 0), okB = b && b.feats.length === 3 && b.coef.every(c => c >= 0);
+      if (okB && (!okA || b.mape < a.mape - 0.5)) return b;
+      if (okA) return Object.assign(a, { hddDropped: !!b });
+      return a || b;
+    }
     function fitModels(t, y) {
-      const rows = baseMonths(t, y).map(monthRow), out = {};
-      UT.UTILS.forEach(u => { out[u.k] = UT.fitBaseline(rows.map(r => ({ ...r, y: r[u.k] })), UT.MODEL_FEATS[u.k]); });
-      const em = fitElecHall(baseMonths(t, y)) || fitElecIdle(baseMonths(t, y)); if (em) out.elec = em;
-      const gm = fitGasBoiler(baseMonths(t, y)); if (gm) out.gas = gm;
+      const out = {};
+      UT.UTILS.forEach(u => { out[u.k] = UT.fitBaseline(baseFor(t, y, u.k).map(monthRow).map(r => ({ ...r, y: r[u.k] })), UT.MODEL_FEATS[u.k]); });
+      ['water', 'ww'].forEach(k => { const m = fitSimple(baseFor(t, y, k), k); if (m) out[k] = m; });
+      const em = fitElecHall(baseFor(t, y, 'elec')) || fitElecIdle(baseFor(t, y, 'elec')); if (em) out.elec = em;
+      const gm = fitGasBoiler(baseFor(t, y, 'gas')); if (gm) out.gas = gm;
       return out;
+    }
+    function toggleExcl(uk, ym) {
+      const cur = exclOf(targetDraft, uk); targetDraft.excl = Object.assign({}, targetDraft.excl || {});
+      targetDraft.excl[uk] = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort();
+      targetDirty = true; renderTargets(targetDraft);
     }
     // ---- 전기: 휴무일 실측 기준선 + 생산일·원육 ----
     //  한 달 전기 = 휴무일 기본(하루 a × 날수) + 기온 영향(휴무일 식으로 날마다 계산해 합) + 생산일 × B + 원육 kg × C
@@ -1545,7 +1568,9 @@
             : m.gasBoiler ? `<b>보일러</b>(스팀 → 자숙탱크·레토르트) = ${m.feats.filter(f => f !== 'grest').map(f => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[m.feats.indexOf(f)])}</b>`).join(' &nbsp;+&nbsp; ')} &nbsp;+&nbsp; 식당 가스 실측 <span class="hint">(기숙사 — 통제 밖이라 그대로 더함 · 보일러만 따로 맞춘 오차 ±${nf1.format(m.boilerMape)}%${m.hdd ? '' : ' · 난방도일은 넣어도 오차가 줄지 않아 뺌 (난방용 가스 없음)'})</span>`
             : m.idle ? `휴무일 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 생산일 1일당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[2])}</b> &nbsp;+&nbsp; ${m.idle.b || m.idle.c ? `기온 영향 <span class="hint">(평균기온 ${m.idle.Tb}℃ 넘는 1℃마다 하루 <b>${fc(m.idle.b)}</b>${m.idle.c ? `, ${m.idle.Tc}℃ 아래 1℃마다 하루 <b>${fc(m.idle.c)}</b>` : ''})</span> &nbsp;+&nbsp;` : ''} 폐수동·공조냉동 (계량기 실측) &nbsp;+&nbsp; 부하 변동 (생산동·기타)`
             : m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
-          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts.split(' &nbsp;+&nbsp; ').map((x, i) => (i ? '<span class="plus">+</span> ' : '') + x).join('<br>')}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
+          const ex = exclOf(t, u.k), exHtml = `<div class="tg-excl">이 항목 기준 달 <span class="hint">(빨간 줄 = 뺌 · 눌러서 바꾸기)</span>: ${base.map(ym => { const auto = u.k === 'elec' && m.hall && ym < HVAC_FULL_FROM;
+            return `<button class="chip mini ${ex.includes(ym) || auto ? 'off' : ''}" ${ro || auto ? 'disabled' : `onclick="toggleExcl('${u.k}','${ym}')"`} title="${auto ? '공조냉동·폐수동 검침이 나뉘기 전이라 자동으로 뺌' : ex.includes(ym) ? '빠짐 — 눌러서 다시 넣기' : '들어감 — 눌러서 빼기'}">${ym.slice(2).replace('-', '.')}</button>`; }).join('')}${u.k === 'elec' && m.hall && base.some(ym => ym < HVAC_FULL_FROM) ? ' <span class="hint">← 26.1~2월: 공조·폐수 검침 분리 전이라 자동 제외</span>' : ''}${ex.length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? ` <span class="hint">← 기본: ${EXCL_WHY[u.k]}</span>` : ''}${m.hddDropped ? ' <span class="hint">· 난방도일은 오차가 줄지 않아 뺌</span>' : ''}</div>`;
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts.split(' &nbsp;+&nbsp; ').map((x, i) => (i ? '<span class="plus">+</span> ' : '') + x).join('<br>')}${exHtml}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; }).join('') + '</table>';
       h += `<div class="hint" style="margin-top:6px">생산일 = 보일러 가스를 하루 50㎥ 넘게 쓴 날 수 (스팀보일러는 생산하는 날만 돌기 때문 · 월간입력 '생산일수'로 직접 고칠 수 있음). 가스는 보일러 스팀(자숙탱크·레토르트)만 생산일·원육으로 계산하고 식당 가스는 실측 그대로 (난방용 가스 없음). 전기는 생산동 기본(달력 날수)·원육·더운 몫(칠러·실외기)·추운 몫(현장 온수 전기보일러, 겨울 자료가 쌓이면)으로 계산. 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 한 달 합, 냉방도일 = 24℃보다 높은 만큼의 합 (설비검침 최저·최고온도의 평균으로 계산). 맞는 정도는 100%에 가까울수록, 월 평균 오차는 작을수록 믿을 만합니다.</div>`;
       // 계산 근거: 기준 달마다 (요인 × 계수) 더한 값 vs 실제
       const brows = base.map(monthRow);
