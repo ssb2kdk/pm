@@ -187,7 +187,7 @@
           <div class="seg"><button id="m-grid" class="on" onclick="setMode('grid')">월 표</button><button id="m-day" onclick="setMode('day')">하루 입력</button></div>
           <div class="month-nav" id="nav-month"><button onclick="shiftMonth(-1)">◀</button><span id="book-month"></span><button onclick="shiftMonth(1)">▶</button></div>
           <div class="month-nav" id="nav-day" hidden><button onclick="shiftDay(-1)">◀</button><input type="date" id="book-day" onchange="dayDate=this.value;renderDay()" style="border:none;font-weight:bold"><button onclick="shiftDay(1)">▶</button></div>
-          <span class="hint" id="book-hint">칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다.</span>
+          <span class="hint" id="book-hint">칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다. 엑셀에서 여러 칸을 복사해 시작할 칸을 누르고 Ctrl+V 하면 한 번에 들어갑니다.</span>
         </div>
         <div id="book-grid" class="grid-wrap"><div class="loading">불러오는 중...</div></div>
         <div id="book-day-form" class="dayform" hidden></div>
@@ -354,7 +354,7 @@
       document.getElementById('m-grid').classList.toggle('on', m === 'grid'); document.getElementById('m-day').classList.toggle('on', m === 'day');
       document.getElementById('book-grid').hidden = m !== 'grid'; document.getElementById('book-day-form').hidden = m !== 'day';
       document.getElementById('nav-month').hidden = m !== 'grid'; document.getElementById('nav-day').hidden = m !== 'day';
-      document.getElementById('book-hint').textContent = m === 'grid' ? '칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다.' : '값을 넣고 아래 [저장]을 누르세요.';
+      document.getElementById('book-hint').textContent = m === 'grid' ? '칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다. 엑셀에서 여러 칸을 복사해 시작할 칸을 누르고 Ctrl+V 하면 한 번에 들어갑니다.' : '값을 넣고 아래 [저장]을 누르세요.';
       if (m === 'day') renderDay(); else renderBook();
     }
     async function renderBook() {
@@ -397,10 +397,34 @@
       wrap.innerHTML = h;
       wrap.querySelectorAll('input').forEach(inp => {
         inp.addEventListener('change', () => saveCell(inp));
+        if (inp.type !== 'checkbox') inp.addEventListener('paste', e => { const t = (e.clipboardData || window.clipboardData).getData('text'); if (/[\t\n]/.test(t.replace(/\s+$/, ''))) { e.preventDefault(); pasteBlock(inp, t); } });
         if (inp.type !== 'checkbox') inp.addEventListener('keydown', e => {
           if (e.key === 'Enter') { e.preventDefault(); const nx = wrap.querySelector(`input[data-d="${addDays(inp.dataset.d, 1)}"][data-k="${inp.dataset.k}"]`); if (nx) nx.focus(); else inp.blur(); }
         });
       });
+    }
+    // 엑셀에서 복사한 칸 묶음 붙여넣기: 누른 칸부터 오른쪽·아래로 표에 보이는 칸 순서대로 채움
+    //  잔고·보관량(자동 계산)과 설비검침(자동) 칸 자리에 온 값은 무시, 빈 칸은 그대로 둠
+    async function pasteBlock(inp, text) {
+      const lines = text.replace(/\r/g, '').replace(/\n+$/, '').split('\n').map(l => l.split('\t'));
+      const td = inp.closest('td'), tr = td.parentElement, ci = [...tr.children].indexOf(td), rows = [...tr.parentElement.children].filter(r => !r.classList.contains('sum'));
+      const ri = rows.indexOf(tr), up = {}, skip = { calc: 0, bad: 0 }; let cnt = 0;
+      lines.forEach((cells, i) => { const row = rows[ri + i]; if (!row) return;
+        cells.forEach((raw, j) => { const cell = row.children[ci + j]; if (!cell) return; const v0 = String(raw).trim(); if (v0 === '') return;
+          const x = cell.querySelector('input'); if (!x || x.type === 'checkbox') { skip.calc++; return; }
+          let v; if (x.type === 'text') v = v0; else { const t = v0.replace(/,/g, ''); if (t === '-') return; v = Number(t); if (isNaN(v)) { skip.bad++; return; } }
+          (up[x.dataset.d] = up[x.dataset.d] || {})[x.dataset.k] = v; cnt++; }); });
+      const ds = Object.keys(up).sort(); if (!ds.length) { alert('붙여넣을 숫자가 없습니다.'); return; }
+      const keys = [...new Set(ds.flatMap(d => Object.keys(up[d])))], lab = bookCols().filter(c => keys.includes(c.k)).map(c => `${c.g} ${c.label}`);
+      if (!confirm(`엑셀 값 ${cnt}칸을 넣습니다.\n날짜: ${ds[0]} ~ ${ds[ds.length - 1]} (${ds.length}일)\n항목: ${lab.join(', ')}` +
+        (skip.calc ? `\n· 자동 계산 칸(잔고·보관량·설비검침) 자리 값 ${skip.calc}개는 무시` : '') + (skip.bad ? `\n· 숫자가 아닌 값 ${skip.bad}개는 무시` : '') + '\n\n이미 값이 있는 칸은 덮어씁니다. 진행할까요?')) return;
+      document.getElementById('book-hint').textContent = `붙여넣기 저장 중... (0/${ds.length}일)`;
+      let done = 0;
+      for (const d of ds) { const { error } = await sb.from('ww_daily').upsert({ d, ...up[d] }, { onConflict: 'd' });
+        if (error) { alert(`${d} 저장 실패: ${errMsg(error)}\n그 전 날짜까지는 저장됐습니다.`); break; }
+        WW[d] = { ...(WW[d] || { d }), ...up[d] }; done++; document.getElementById('book-hint').textContent = `붙여넣기 저장 중... (${done}/${ds.length}일)`; }
+      calcBalances(); await renderBook();
+      document.getElementById('book-hint').textContent = `엑셀 붙여넣기 ${done}일 저장했습니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다.`;
     }
     async function saveCell(inp) {
       const d = inp.dataset.d, k = inp.dataset.k;
