@@ -257,6 +257,7 @@
     const isPartner = () => me && me.role === 'partner';
     const isAdmin = () => me && me.role === 'admin';
 
+    let HAS_SUPPLY = true; // ww_daily 소모품 칸 (23번 SQL) 있는지
     let SET = null;      // env_settings.env
     let WW = {};         // d -> ww_daily row
     let BAL = {};        // d -> { sludge, anion, ... } (그날 끝 잔고)
@@ -278,6 +279,7 @@
       if (s.error) throw s.error;
       SET = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SET)), (s.data && s.data.value) || {});
       WW = Object.fromEntries(w.map(r => [r.d, r]));
+      HAS_SUPPLY = !w.length || 'supply_item' in w[0];
       calcBalances();
       try { await loadWq(); } catch (e) { WQ = null; } // 수질 측정 (폐수일지 10번에 씀)
     }
@@ -332,10 +334,12 @@
         { g: '폭기조', k: 'aer_hours', label: '폭기시간' },
       ];
       SET.chems.forEach(ch => {
+        if (ch.key === 'etc') return; // 기타 자리는 소모품으로 바뀜
         const g = `${ch.name}${ch.unit ? ' (' + ch.unit + ')' : ''}`;
         c.push({ g, k: ch.key + '_in', label: '구입' }, { g, k: ch.key + '_use', label: '사용' }, { g, calc: d => BAL[d] && BAL[d][ch.key], label: '잔고' });
       });
-      c.push({ g: '기타', k: 'micro', label: '미생물상태', text: true, ph: '양호' }, { g: '기타', k: 'remark', label: '고장 유무·특기사항', text: true });
+      if (HAS_SUPPLY) c.push({ g: '소모품', k: 'supply_item', label: '구매물품', text: true, ph: '예: 여과포 2EA' }, { g: '소모품', k: 'supply_amt', label: '금액 (원)' });
+      c.push({ g: '미생물상태', solo: true, k: 'micro', label: '미생물상태', text: true, ph: '양호' }, { g: '고장 유무·특기사항', solo: true, k: 'remark', label: '고장 유무·특기사항', text: true });
       return c;
     }
 
@@ -366,12 +370,12 @@
       if (showAuto) { try { await loadMeter(first, last); } catch (e) { } }
       const cols = bookCols();
       const groups = [];
-      cols.forEach(c => { const gl = groups[groups.length - 1]; if (gl && gl.g === c.g) gl.n++; else groups.push({ g: c.g, n: 1 }); });
+      cols.forEach(c => { const gl = groups[groups.length - 1]; if (gl && gl.g === c.g && !c.solo) gl.n++; else groups.push({ g: c.g, n: 1, solo: c.solo }); });
       let h = '<table class="grid"><thead><tr><th class="sticky" rowspan="2">날짜</th><th rowspan="2">조업</th>';
       if (showAuto) h += '<th class="grp" colspan="3">설비검침 (자동)</th>';
-      h += groups.map(x => `<th class="grp" colspan="${x.n}">${esc(x.g)}</th>`).join('') + '</tr><tr>';
+      h += groups.map(x => x.solo ? `<th rowspan="2">${esc(x.g)}</th>` : `<th class="grp" colspan="${x.n}">${esc(x.g)}</th>`).join('') + '</tr><tr>';
       if (showAuto) h += '<th>상수도 ㎥</th><th>방류량 ㎥</th><th>폐수전력 kWh</th>';
-      h += cols.map(c => `<th>${esc(c.label)}</th>`).join('') + '</tr></thead><tbody>';
+      h += cols.filter(c => !c.solo).map(c => `<th>${esc(c.label)}</th>`).join('') + '</tr></thead><tbody>';
       const sums = {};
       for (let d = 1; d <= n; d++) {
         const ds = `${bookYm}-${pad2(d)}`, wd = new Date(ds + 'T00:00:00').getDay(), r = WW[ds] || {};
@@ -392,9 +396,9 @@
         h += '</tr>';
       }
       h += `<tr class="sum"><td class="sticky">월 합계</td><td></td>${showAuto ? '<td></td><td></td><td></td>' : ''}` +
-        cols.map(c => `<td>${/_in$|_use$|sludge_gen|sludge_out/.test(c.k || '') ? nf(sums[c.k]) : ''}</td>`).join('') + '</tr></tbody></table>';
+        cols.map(c => `<td>${/_in$|_use$|sludge_gen|sludge_out|supply_amt/.test(c.k || '') ? nf(sums[c.k], c.k === 'supply_amt' ? 0 : 2) : ''}</td>`).join('') + '</tr></tbody></table>';
       const wrap = document.getElementById('book-grid');
-      wrap.innerHTML = h;
+      wrap.innerHTML = (HAS_SUPPLY ? '' : '<div class="hint" style="padding:6px 8px;color:#d93025">소모품(구매물품·금액) 칸을 쓰려면 Supabase에 23번 SQL(23_ww_supply.sql)을 실행해 주세요.</div>') + h;
       wrap.querySelectorAll('input').forEach(inp => {
         inp.addEventListener('change', () => saveCell(inp));
         if (inp.type !== 'checkbox') inp.addEventListener('paste', e => { const t = (e.clipboardData || window.clipboardData).getData('text'); if (/[\t\n]/.test(t.replace(/\s+$/, ''))) { e.preventDefault(); pasteBlock(inp, t); } });
@@ -438,7 +442,7 @@
       if (error) { inp.classList.add('err'); alert('저장 실패: ' + errMsg(error)); return; }
       inp.classList.add('saved');
       WW[d] = { ...(WW[d] || { d }), [k]: v };
-      if (/_in$|_use$|sludge_/.test(k)) { calcBalances(); refreshCalc(); }
+      if (/_in$|_use$|sludge_|supply_amt/.test(k)) { calcBalances(); refreshCalc(); }
     }
     function refreshCalc() { // 잔고 칸만 다시 그리기 (입력 위치 유지)
       const sc = document.getElementById('book-grid').scrollLeft, st = document.getElementById('book-grid').scrollTop;
@@ -458,7 +462,7 @@
       let lastG = null;
       bookCols().forEach(c => {
         if (c.calc) return;
-        if (c.g !== lastG) { h += `<div class="grp">${esc(c.g)}</div>`; lastG = c.g; }
+        const gk = c.solo ? '기타' : c.g; if (gk !== lastG) { h += `<div class="grp">${esc(gk)}</div>`; lastG = gk; }
         const bal = c.k.endsWith('_use') ? `<span class="bal">잔고 ${nf(b[c.k.replace('_use', '')])}</span>` : (c.k === 'sludge_out' ? `<span class="bal">보관 ${nf(b.sludge)}</span>` : '');
         h += c.text ? `<div class="fr"><label>${esc(c.label)}</label><input type="text" data-k="${c.k}" value="${esc(r[c.k] || '')}" placeholder="${esc(c.ph || '')}"></div>`
           : `<div class="fr"><label>${esc(c.label)} ${bal}</label><input type="number" step="any" inputmode="decimal" data-k="${c.k}" value="${r[c.k] ?? ''}"></div>`;
@@ -1286,10 +1290,11 @@
       else { const d = new Date(cur + '-01T00:00:00'); d.setMonth(d.getMonth() - (k - 1)); chemSetRange(ymd(d).slice(0, 7), cur); } }
     const won = v => v === null || v === undefined || isNaN(v) ? '' : Math.round(v).toLocaleString('ko-KR');
     function chemData(from, to) {
-      const CH = (SET.chems || []).filter(c => String(c.name || '').trim() && (chemPrice(c) !== null || Object.values(WW).some(r => num(r[c.key + '_in']) || num(r[c.key + '_use'])))), out = [];
+      const CH = (SET.chems || []).filter(c => c.key !== 'etc' && String(c.name || '').trim() && (chemPrice(c) !== null || Object.values(WW).some(r => num(r[c.key + '_in']) || num(r[c.key + '_use'])))), out = [];
       for (let ym = from, g = 0; ym <= to && g < 120; ym = ymNext(ym), g++) {
         const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), last = `${ym}-${pad2(n)}`;
-        const row = { ym, m, lab: ymLab(ym), c: {}, any: false, future: `${ym}-01` > todayStr };
+        const row = { ym, m, lab: ymLab(ym), c: {}, any: false, future: `${ym}-01` > todayStr, sup: [], supA: 0 };
+        for (let d = 1; d <= n; d++) { const w = WW[`${ym}-${pad2(d)}`]; if (w && (String(w.supply_item || '').trim() || num(w.supply_amt))) { const a = num(w.supply_amt) || 0; row.sup.push({ d, t: String(w.supply_item || '').trim(), a }); row.supA += a; row.any = true; } }
         CH.forEach(c => { let i = 0, u = 0, has = false;
           for (let d = 1; d <= n; d++) { const r = WW[`${ym}-${pad2(d)}`]; if (!r) continue; const a = num(r[c.key + '_in']), b = num(r[c.key + '_use']); if (a !== null) { i += a; has = true; } if (b !== null) { u += b; has = true; } }
           const endD = last > todayStr ? todayStr : last, bal = BAL[endD] ? BAL[endD][c.key] : null, p = chemPrice(c);
@@ -1312,13 +1317,14 @@
         `<tr class="sum"><td><b>합계</b></td>${CH.map(c => `<td><b>${nf(sum(r => r.c[c.key].i), 1)}</b></td><td><b>${nf(sum(r => r.c[c.key].u), 1)}</b></td><td></td>`).join('')}</tr>
         <tr class="sum"><td>월평균</td>${CH.map(c => { const n = R.filter(r => r.any).length || 1; return `<td>${nf(sum(r => r.c[c.key].i) / n, 1)}</td><td>${nf(sum(r => r.c[c.key].u) / n, 1)}</td><td></td>`; }).join('')}</tr></table></div>`;
       if (showCost) {
-        const tI = r => CH.reduce((s, c) => s + (r.c[c.key].ic || 0), 0), tU = r => CH.reduce((s, c) => s + (r.c[c.key].uc || 0), 0);
-        h += `<h3 style="margin:14px 0 4px">약품 비용 (원) <span class="hint">구매비용 = 구입량 × 단가 · 사용비용 = 사용량 × 단가 (부가세 별도 여부는 단가 기준을 따름)</span></h3>
-          <div class="tbl-x"><table class="wq"><tr><th rowspan="2">월</th>${CH.map(c => `<th colspan="2">${esc(c.name)} <span class="hint">${chemPrice(c) !== null ? won(chemPrice(c)) + '원/' + esc(unitOf(c)) : '단가 없음'}</span></th>`).join('')}<th colspan="2">합계</th></tr>
-          <tr>${CH.map(() => '<th class="g2">구매</th><th class="g1">사용</th>').join('')}<th class="g2">구매비용</th><th class="g1">사용비용</th></tr>` +
-          R.map(r => `<tr${r.any ? '' : ' class="hint"'}><td>${r.lab}</td>${CH.map(c => { const x = r.c[c.key]; return `<td>${x.ic ? won(x.ic) : ''}</td><td>${x.uc ? won(x.uc) : ''}</td>`; }).join('')}<td><b>${r.any ? won(tI(r)) : ''}</b></td><td><b>${r.any ? won(tU(r)) : ''}</b></td></tr>`).join('') +
-          `<tr class="sum"><td><b>합계</b></td>${CH.map(c => `<td><b>${won(sum(r => r.c[c.key].ic))}</b></td><td><b>${won(sum(r => r.c[c.key].uc))}</b></td>`).join('')}<td><b>${won(sum(tI))}</b></td><td><b>${won(sum(tU))}</b></td></tr>
-          <tr class="sum"><td>월평균</td>${CH.map(c => { const n = R.filter(r => r.any).length || 1; return `<td>${won(sum(r => r.c[c.key].ic) / n)}</td><td>${won(sum(r => r.c[c.key].uc) / n)}</td>`; }).join('')}<td>${won(sum(tI) / (R.filter(r => r.any).length || 1))}</td><td>${won(sum(tU) / (R.filter(r => r.any).length || 1))}</td></tr></table></div>`;
+        const tI = r => CH.reduce((s, c) => s + (r.c[c.key].ic || 0), 0) + r.supA, tU = r => CH.reduce((s, c) => s + (r.c[c.key].uc || 0), 0) + r.supA, SUP = HAS_SUPPLY, nA = R.filter(r => r.any).length || 1;
+        const supCell = r => `<td class="l" style="white-space:normal;min-width:120px">${r.sup.map(i => `<div>${i.d}일 ${esc(i.t || '(물품명 없음)')}${i.a ? ' <b>' + won(i.a) + '</b>' : ''}</div>`).join('')}</td>`;
+        h += `<h3 style="margin:14px 0 4px">약품·소모품 비용 (원) <span class="hint">약품 구매비용 = 구입량 × 단가 · 사용비용 = 사용량 × 단가${SUP ? ' · 소모품은 장부에 적은 금액 그대로 (산 달에 구매·사용 둘 다 넣음)' : ''}</span></h3>
+          <div class="tbl-x"><table class="wq"><tr><th rowspan="2">월</th>${CH.map(c => `<th colspan="2">${esc(c.name)} <span class="hint">${chemPrice(c) !== null ? won(chemPrice(c)) + '원/' + esc(unitOf(c)) : '단가 없음'}</span></th>`).join('')}${SUP ? '<th colspan="2">소모품</th>' : ''}<th colspan="2">합계</th></tr>
+          <tr>${CH.map(() => '<th class="g2">구매</th><th class="g1">사용</th>').join('')}${SUP ? '<th>구매물품</th><th>금액</th>' : ''}<th class="g2">구매비용</th><th class="g1">사용비용</th></tr>` +
+          R.map(r => `<tr${r.any ? '' : ' class="hint"'}><td>${r.lab}</td>${CH.map(c => { const x = r.c[c.key]; return `<td>${x.ic ? won(x.ic) : ''}</td><td>${x.uc ? won(x.uc) : ''}</td>`; }).join('')}${SUP ? supCell(r) + `<td>${r.supA ? won(r.supA) : ''}</td>` : ''}<td><b>${r.any ? won(tI(r)) : ''}</b></td><td><b>${r.any ? won(tU(r)) : ''}</b></td></tr>`).join('') +
+          `<tr class="sum"><td><b>합계</b></td>${CH.map(c => `<td><b>${won(sum(r => r.c[c.key].ic))}</b></td><td><b>${won(sum(r => r.c[c.key].uc))}</b></td>`).join('')}${SUP ? `<td></td><td><b>${won(sum(r => r.supA))}</b></td>` : ''}<td><b>${won(sum(tI))}</b></td><td><b>${won(sum(tU))}</b></td></tr>
+          <tr class="sum"><td>월평균</td>${CH.map(c => { const n = R.filter(r => r.any).length || 1; return `<td>${won(sum(r => r.c[c.key].ic) / n)}</td><td>${won(sum(r => r.c[c.key].uc) / n)}</td>`; }).join('')}${SUP ? `<td></td><td>${won(sum(r => r.supA) / nA)}</td>` : ''}<td>${won(sum(tI) / nA)}</td><td>${won(sum(tU) / nA)}</td></tr></table></div>`;
         h += chemCostChart(R, tI, tU);
         // 단가
         const ed = isAdmin();
@@ -1331,7 +1337,7 @@
     function chemCostChart(R, tI, tU) {
       const W = 760, H = 220, L = 64, B = 26, T = 14, Rt = 10, mx = Math.max(1, ...R.map(r => Math.max(tI(r), tU(r)))) * 1.1, n = Math.max(1, R.length), bw = (W - L - Rt) / n;
       const ys = v => T + (H - T - B) * (1 - v / mx);
-      let s = `<div class="hint" style="margin-top:10px"><span style="color:#8fb3de">■</span> 구매비용 <span style="color:#1D7A5C">■</span> 사용비용 (원)</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">`;
+      let s = `<div class="hint" style="margin-top:10px"><span style="color:#8fb3de">■</span> 구매비용 <span style="color:#1D7A5C">■</span> 사용비용 (원, 소모품 포함)</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">`;
       for (let k = 0; k <= 4; k++) { const v = mx * k / 4; s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${L - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${v >= 10000 ? nf(v / 10000, 0) + '만' : won(v)}</text>`; }
       R.forEach((r, ri) => { const x = L + ri * bw, a = tI(r), b = tU(r);
         if (a) s += `<rect x="${x + bw * 0.12}" y="${ys(a)}" width="${bw * 0.36}" height="${H - B - ys(a)}" fill="#8fb3de"><title>${r.lab} 구매 ${won(a)}원</title></rect>`;
