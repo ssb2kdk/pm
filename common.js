@@ -108,7 +108,7 @@
     me: null,
     isAdmin: () => !!(Portal.me && Portal.me.role === 'admin'),
     isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
-    visibleApps: () => (CFG.APPS || []).filter(a => !(Portal.me && Portal.me.role === 'partner') || a.partner),
+    visibleApps: () => (CFG.APPS || []).filter(a => (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만
     appUrl: app => ROOT + app.path,
     start,
     callAdmin,

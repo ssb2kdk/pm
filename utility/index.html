@@ -4506,6 +4506,7 @@
       title: '유틸리티 사용량·비용 분석',
       onReady: async P => {
         sb = P.sb; me = P.me;
+        if (!isAdmin()) { const mb = document.querySelector('.tab-btn[data-tab="monthly"]'); if (mb) mb.hidden = true; } // 월간입력(수치 입력)은 관리자만
         document.getElementById('kpis').innerHTML = '<div class="loading">불러오는 중...</div>';
         try {
           await loadAll();
