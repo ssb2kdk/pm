@@ -2842,7 +2842,50 @@
       if (sxx < 1e-9 || syy < 1e-9) return null; return { r: sxy / Math.sqrt(sxx * syy), b: sxy / sxx, a: my - sxy / sxx * mx, n }; }
     const DC_U = [['elec', '전기', 'kWh', '#2a78d6', ds => (UT.dailyUsage(DAILY, ds) || {}).elec], ['gas', '보일러 가스', '㎥', '#eb6834', ds => UT.diffReading(DAILY, ds, ['gas_boiler'])],
       ['water', '용수', '㎥', '#1baf7a', ds => (UT.dailyUsage(DAILY, ds) || {}).water], ['ww', '폐수', '㎥', '#eda100', ds => (UT.dailyUsage(DAILY, ds) || {}).ww]];
-    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h']];
+    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['pkg', '완제품 kg'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h']];
+    // ---------------- 완제품 중량 = 포장 EA × 제품 1개 중량 ----------------
+    //  1개 중량: ① 특이사항 탭에서 직접 넣은 g (ut_monthly '9999-00' data.prodG) ② 제품명에 적힌 중량 (130g, 1kg, 70g×3 …)
+    const prodGMap = () => ((YEARDATA[9999] || {}).prodG) || {};
+    function prodGramAuto(name) {
+      const s = dcProdName(name).replace(/,/g, ''); const re = /(\d+(?:\.\d+)?)\s*(kg|g)(?![a-z])/gi; let m, last = null;
+      while ((m = re.exec(s))) last = m; if (!last) return null;
+      let g = Number(last[1]) * (/kg/i.test(last[2]) ? 1000 : 1);
+      const rest = s.slice(last.index + last[0].length), mx = rest.match(/^\s*[x×*X]\s*(\d+)/);
+      if (mx && Number(mx[1]) > 1 && Number(mx[1]) <= 50) g *= Number(mx[1]);
+      return g > 0 ? g : null;
+    }
+    function prodGram(name) { const k = dcProdName(name), o = prodGMap()[k]; return o !== undefined && o !== null && o !== '' && Number(o) > 0 ? { g: Number(o), src: 'manual' } : (prodGramAuto(name) ? { g: prodGramAuto(name), src: 'auto' } : null); }
+    function pkgOf(p) { // { kg, known(EA), all(EA) }
+      if (!p) return { kg: 0, known: 0, all: 0 }; let kg = 0, known = 0, all = 0;
+      (p.packItems || []).forEach(x => { all += x.ea; const g = prodGram(x.name); if (g) { kg += x.ea * g.g / 1000; known += x.ea; } });
+      if (!all && p.ea) all = p.ea;
+      return { kg, known, all };
+    }
+    const pkgDay = p => { const k = pkgOf(p); return k.all && k.known / k.all >= 0.9 ? k.kg : (k.all ? null : 0); };
+    const pval = (p, k) => k === 'pkg' ? pkgDay(p) : (p[k] || 0);
+    let pgOpen = false;
+    function prodGHtml() {
+      const all = {}; Object.values(PRODD || {}).forEach(p => (p.packItems || []).forEach(x => { const k = dcProdName(x.name); const a = all[k] = all[k] || { ea: 0, last: '', raw: x.name }; a.ea += x.ea; if (p.d > a.last) a.last = p.d; }));
+      const ks = Object.keys(all).sort((a, b) => (prodGram(all[a].raw) ? 1 : 0) - (prodGram(all[b].raw) ? 1 : 0) || (all[a].last < all[b].last ? 1 : -1));
+      const unk = ks.filter(k => !prodGram(all[k].raw)), ad = isAdmin();
+      let h = `<details ${pgOpen || unk.length ? 'open' : ''} ontoggle="pgOpen=this.open" style="margin-top:12px"><summary style="cursor:pointer"><b>제품 1개 중량 (완제품 kg 계산용)</b> <span class="hint">제품 ${ks.length}개${unk.length ? ` · <span style="color:var(--red)">중량 모름 ${unk.length}개</span>` : ' · 모두 확인됨'}</span></summary>
+        <div class="hint" style="margin:4px 0">완제품 kg = 포장 EA × 1개 중량. 제품명에 「130g」「1kg」「70g×3」처럼 적혀 있으면 자동으로 읽고, 없거나 틀리면 g을 직접 넣으세요 (직접 넣은 값이 우선). 그날 포장 EA의 90% 이상 중량을 알아야 그날 완제품 kg이 나옵니다.</div>
+        <div class="tbl-wrap"><table class="t"><tr><th class="l">제품명 (포장 공정)</th><th>누적 EA</th><th>최근 생산</th><th>자동 읽음</th><th>1개 중량 g</th></tr>` +
+        ks.map(k => { const a = all[k], au = prodGramAuto(a.raw), mv = prodGMap()[k];
+          return `<tr><td class="l">${esc(k)}</td><td>${f0(a.ea)}</td><td>${a.last.slice(2)}</td><td>${au ? f0(au) + ' g' : '<span class="hint">-</span>'}</td>
+            <td>${ad ? `<input class="pg-in" data-k="${esc(k)}" inputmode="decimal" style="width:80px" value="${mv ?? ''}" placeholder="${au ? f0(au) : 'g 입력'}">` : (prodGram(a.raw) ? f0(prodGram(a.raw).g) : '<span class="hint">모름</span>')}</td></tr>`; }).join('') + '</table></div>' +
+        (ad && ks.length ? `<div class="toolbar" style="margin-top:6px"><button class="btn small" onclick="saveProdG()">✓ 중량 저장</button><span class="hint">비워 두면 자동 읽은 값을 씁니다</span></div>` : '') + '</details>';
+      return h;
+    }
+    async function saveProdG() {
+      const m = {}; document.querySelectorAll('.pg-in').forEach(x => { const v = String(x.value).replace(/,/g, '').trim(); if (v !== '' && Number(v) > 0) m[x.dataset.k] = Number(v); });
+      try {
+        const { data, error } = await sb.from('ut_monthly').select('data').eq('ym', '9999-00').maybeSingle(); if (error) throw error;
+        const cur = (data && data.data) || {}, nd = { ...cur, prodG: m };
+        const r = await sb.from('ut_monthly').upsert({ ym: '9999-00', data: nd }, { onConflict: 'ym' }); if (r.error) throw r.error;
+        YEARDATA[9999] = nd; renderDayCmp(); if (document.getElementById('per-elec')) renderPerElec();
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); }
+    }
     async function renderDayCmp() {
       const el = document.getElementById('dc-body'); if (!el) return;
       if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 요약 불러오는 중...</div>';
@@ -2857,7 +2900,7 @@
         <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
         <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
-        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2" class="l">포장 제품 · EA</th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
+        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2" class="l">포장 제품 · EA</th><th rowspan="2">완제품<br><span class="hint">kg</span></th><th colspan="4">공정별 작업시간 (h)</th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
         <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>파쇄</th><th>포장</th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
         rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
           const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
@@ -2865,23 +2908,24 @@
             <td class="l">${parts.length ? parts.map(([k]) => esc(k)).join('<br>') : (p ? '' : '<span class="hint">생산 없음</span>')}</td><td>${parts.length ? parts.map(([, v]) => f0(v)).join('<br>') : ''}</td>
             <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
               return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
+            <td>${p && (p.ea || (p.packItems || []).length) ? (() => { const k = pkgOf(p); return k.known ? `${f0(k.kg)}${k.known < k.all ? `<div class="hint" title="중량 모르는 제품 EA가 있음">${Math.round(k.known / k.all * 100)}%만</div>` : ''}` : '<span class="hint">?</span>'; })() : ''}</td>
             <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
-            <td class="l dc-pack">${(() => { const m = {}; pd.forEach(r => (r.p.packItems || []).forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; })); return Object.entries(m).map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join(''); })()}<div>계 ${f0(sum(r => r.p && r.p.ea))}</div></td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}<td></td></tr>`;
+            <td class="l dc-pack">${(() => { const m = {}; pd.forEach(r => (r.p.packItems || []).forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; })); return Object.entries(m).map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join(''); })()}<div>계 ${f0(sum(r => r.p && r.p.ea))}</div></td><td>${f0(sum(r => r.p ? pkgOf(r.p).kg : 0))}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${nf1.format(sum(r => r.p && r.p[k]))}</td>`).join('')}${DC_U.map((u, i) => `<td>${f0(sum(r => r.u[i]))}</td>`).join('')}<td></td></tr>`;
           const avg = (f, rs) => { const v = rs.map(f).filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
           const off = rows.filter(r => !r.p);
-          const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
-          const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="7"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
+          const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td><td>${np ? f0(sum(r => r.p ? pkgOf(r.p).kg : 0) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
+          const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="8"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
-      h += dcCorrHtml();
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값).</div>`;
+      h += prodGHtml() + dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
       mkChart('dc-chart', { data: { labels: rows.map(r => Number(r.ds.slice(8)) + '일'), datasets: [
           { type: 'bar', label: `${U[1]} ${U[2]}`, data: rows.map(r => r.u[DC_U.indexOf(U)]), backgroundColor: U[3] + 'bb', yAxisID: 'y', order: 2 },
-          { type: 'line', label: PP[1], data: rows.map(r => r.p ? (r.p[dcP] || 0) : 0), borderColor: '#333', backgroundColor: '#333', pointRadius: 3, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
+          { type: 'line', label: PP[1], data: rows.map(r => r.p ? pval(r.p, dcP) : 0), borderColor: '#333', backgroundColor: '#333', pointRadius: 3, borderWidth: 1.5, yAxisID: 'y2', order: 1 }] },
         options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom' } },
           scales: { y: { beginAtZero: true, title: { display: true, text: U[2] } }, y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: PP[1] } } } } });
     }
@@ -2891,11 +2935,11 @@
       const end = UT.dateStr(dcYm, UT.daysIn(dcYm)) > todayStr ? UT.addDays(todayStr, -1) : UT.dateStr(dcYm, UT.daysIn(dcYm));
       let st = dcYm; for (let i = 1; i < dcRange; i++) st = UT.prevYm(st); const from = UT.dateStr(st, 1);
       const days = []; for (let ds = from; ds <= end; ds = UT.addDays(ds, 1)) { const p = PRODD[ds]; if (p && p.rm > 0) days.push({ ds, p, t: (TEMPS || {})[ds], u: DC_U.map(u => u[4](ds)) }); }
-      const cols = [...DC_P, ['temp', '평균기온 ℃']], xv = (d, k) => k === 'temp' ? (d.t === undefined || d.t === null ? null : d.t) : (d.p[k] || 0);
+      const cols = [...DC_P, ['temp', '평균기온 ℃']], xv = (d, k) => k === 'temp' ? (d.t === undefined || d.t === null ? null : d.t) : pval(d.p, k);
       const M = DC_U.map((u, ui) => cols.map(([k]) => { const v = days.filter(d => d.u[ui] !== null && d.u[ui] !== undefined && !isNaN(d.u[ui]) && xv(d, k) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => d.u[ui])); }));
       const lvl = r => { const a = Math.abs(r); return a >= 0.7 ? '강함' : a >= 0.4 ? '보통' : a >= 0.2 ? '약함' : '거의 없음'; };
       const bg = r => { const a = Math.min(1, Math.abs(r)); return r >= 0 ? `rgba(42,120,214,${(a * 0.75).toFixed(2)})` : `rgba(217,48,37,${(a * 0.6).toFixed(2)})`; };
-      const unitX = { rm: 'kg', ea: 'EA', prepH: 'h', steamH: 'h', crushH: 'h', packH: 'h', temp: '℃' }, per = { rm: 1000, ea: 10000, temp: 1 };
+      const unitX = { rm: 'kg', pkg: 'kg', ea: 'EA', prepH: 'h', steamH: 'h', crushH: 'h', packH: 'h', temp: '℃' }, per = { rm: 1000, pkg: 1000, ea: 10000, temp: 1 };
       const slope = (c, k, u) => { const m = per[k] || 1, v = c.b * m; return `${unitX[k] === 'h' ? '1h' : k === 'temp' ? '1℃' : (m === 1000 ? '1,000' : '10,000') + unitX[k]}당 ${v >= 0 ? '+' : ''}${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${u[2]}`; };
       // 생산 항목끼리의 연관 (서로 같이 움직이면 어느 게 진짜 원인인지 구분 어려움)
       const PX = cols.map(([k]) => cols.map(([k2]) => { const v = days.filter(d => xv(d, k) !== null && xv(d, k2) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => xv(d, k2))); }));
@@ -2926,23 +2970,23 @@
     // 유틸리티별 구성 (막대) · 단위 · 비교 인자 (선)
     const PE_U = {
       elec: { name: '전기', unit: 'kWh', comps: [['hall', '생산동', '#2a78d6'], ['ww', '폐수동', '#eda100'], ['hv', '공조냉동', '#1baf7a'], ['all', '전기 전체', '#555']], stack: ['hall', 'ww', 'hv'],
-        facs: ['prod', 'ea', 'tmean', 'warm', 'op', 'days', 'idle', 'steamH', 'packH', 'flow', 'sludge', 'gas'],
+        facs: ['prod', 'ea', 'pkg', 'tmean', 'warm', 'op', 'days', 'idle', 'steamH', 'packH', 'flow', 'sludge', 'gas'],
         note: '공조냉동·폐수동 계량이 나뉜 26년 3월부터 구성별 값이 나옵니다 · 생산동 = 전체 − 폐수동 − 공조냉동' },
       gas: { name: '가스', unit: 'MJ', comps: [['gb', '보일러 (스팀)', '#eb6834'], ['gr', '식당 (기숙사)', '#c9a227'], ['gall', '가스 전체', '#555']], stack: ['gb', 'gr'],
-        facs: ['prod', 'ea', 'steamH', 'packH', 'op', 'idle', 'tmean', 'hdd', 'days'],
+        facs: ['prod', 'ea', 'pkg', 'steamH', 'packH', 'op', 'idle', 'tmean', 'hdd', 'days'],
         note: '보일러 스팀 = 자숙탱크·레토르트 · 보일러·식당은 고지서(없으면 검침) 계량 지침으로 나눈 열량(MJ) · 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합 (난방용 가스는 없지만 급수 온도·배관 열손실 영향 확인용)' },
       water: { name: '용수', unit: '㎥', comps: [['wall', '용수 (40A+50A)', '#1baf7a']], stack: null,
-        facs: ['prod', 'ea', 'op', 'idle', 'tmean', 'steamH', 'flow', 'days'],
+        facs: ['prod', 'ea', 'pkg', 'op', 'idle', 'tmean', 'steamH', 'flow', 'days'],
         note: '용수 월 사용량은 고지서 검침 기간(전월 12일~당월 11일) 기준이라 생산·기온과 반 달쯤 어긋납니다' },
       ww: { name: '폐수', unit: '㎥', comps: [['wwall', '폐수 발생량', '#eda100']], stack: null,
-        facs: ['prod', 'ea', 'op', 'idle', 'tmean', 'steamH', 'sludge', 'days'],
+        facs: ['prod', 'ea', 'pkg', 'op', 'idle', 'tmean', 'steamH', 'sludge', 'days'],
         note: '폐수 발생량 = 방류 유량계 (고지서 값이 있으면 그 값)' } };
     const PE_COMP_ALL = Object.values(PE_U).flatMap(u => u.comps);
     const PE_FAC = [
-      ['prod', '원육 투입량', 'kg', 0], ['ea', '포장 생산량', 'EA', 0], ['tmean', '평균기온', '℃', 1], ['warm', '더운 정도 (5℃ 넘는 기온 합)', '℃·일', 0],
+      ['prod', '원육 투입량', 'kg', 0], ['ea', '포장 생산량', 'EA', 0], ['pkg', '완제품 중량', 'kg', 0], ['tmean', '평균기온', '℃', 1], ['warm', '더운 정도 (5℃ 넘는 기온 합)', '℃·일', 0],
       ['op', '생산일수', '일', 0], ['days', '달력 날수', '일', 0], ['idle', '쉬는 날 수', '일', 0],
       ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0]];
-    const PE_PERDAY_FAC = { prod: 1, ea: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
+    const PE_PERDAY_FAC = { prod: 1, ea: 1, pkg: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
     // 맨 위 기간비교에서 고른 기간을 월 단위로 바꿔서 씀 (일·주는 그 날짜가 속한 달, 분기는 그 분기의 달) — 아직 안 끝난 달은 뺌
     function peMonths() {
       const { from, to } = perRange(), last = lastCompleteYm();
@@ -2953,14 +2997,14 @@
     function peRow(ym) {
       const s = S(ym), all = s.elec.usage, ww = wwKwh(ym), hv = meterKwh(ym, 'elec_hvac_kwh'), days = UT.daysIn(ym), op = UT.opDays(DAILY, ym, MONTHLY);
       const hall = all !== null && ww !== null && hv !== null && ym >= HVAC_FULL_FROM ? all - ww - hv : null;
-      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0;
-      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; }
+      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0, pk = 0, pkKn = 0, pkAll = 0;
+      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; const k = pkgOf(p); pk += k.kg; pkKn += k.known; pkAll += k.all; }
         const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g !== null && g >= 0) { gas += g; gn++; } }
       const w = wwRow(ym), tm = UT.monthWeather(ym, TEMPS || {}).tmean;
       const gc = s.gas.calc, wt = UT.monthWeather(ym, TEMPS || {});
       return { ym, c: { hall, ww: ym >= HVAC_FULL_FROM ? ww : null, hv: ym >= HVAC_FULL_FROM ? hv : null, all,
           gb: gc && gc.boiler ? gc.boiler.mj : null, gr: gc ? (gc.rest ? gc.rest.mj : 0) : null, gall: s.gas.usage, wall: s.water.usage, wwall: s.ww.usage },
-        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null } };
+        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, pkg: pn && pkAll && pkKn / pkAll >= 0.9 ? pk : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null } };
     }
     async function renderPerElec() {
       const el = document.getElementById('per-elec'); if (!el || !window.Chart) return;
@@ -2986,10 +3030,10 @@
         <div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${FACS.map(f => `<th>${f[1].replace(/ \(.*\)/, '')}</th>`).join('')}</tr>` +
         PE_COMP.map(([k, n]) => `<tr><th>${n}</th>${FACS.map(([fk]) => { const c = r2(rows.map(r => cv(r, k)), rows.map(r => fv(r, fk)));
           return c ? `<td style="background:${bg(c.r)};cursor:pointer" title="${n} ↔ ${PE_FAC.find(x => x[0] === fk)[1]} · ${c.n}개월" onclick="peComp='${k}';peFac='${fk}';peStack=false;renderPerElec()"><b>${c.r.toFixed(2)}</b></td>` : '<td class="hint">-</td>'; }).join('')}</tr>`).join('') + '</table></div>';
-      h += `<div class="hint" style="margin-top:4px">· ${PU.note} · 포장 생산량·작업시간은 생산 대시보드 일별 실적 합, 생산일수는 월간입력(생산팀 값)·없으면 보일러 가스로 추정 · 달이 적을 때(4~6개월) r은 참고만 하세요.</div>`;
+      h += `<div class="hint" style="margin-top:4px">· ${PU.note} · 포장 생산량·작업시간은 생산 대시보드 일별 실적 합, 완제품 중량 = 포장 EA × 제품 1개 중량 (특이사항 탭 「제품 1개 중량」 표 · 그 달 EA의 90% 이상 중량을 알아야 표시), 생산일수는 월간입력(생산팀 값)·없으면 보일러 가스로 추정 · 달이 적을 때(4~6개월) r은 참고만 하세요.</div>`;
       // 표
-      h += `<div class="tbl-wrap" style="margin-top:8px"><table class="t"><tr><th>월</th>${PE_COMP.map(c => `<th>${c[1]}<br><span class="hint">${cu}</span></th>`).join('')}<th>${F[1]}<br><span class="hint">${fu}</span></th>${F[0] === 'prod' || F[0] === 'ea' ? `<th>${PE_COMP[0][1]} / ${F[0] === 'prod' ? '원육 kg' : '1,000EA'}</th>` : ''}</tr>` +
-        rows.slice().reverse().map(r => `<tr><td>${r.ym.slice(2).replace('-', '.')}</td>${PE_COMP.map(([k]) => `<td>${cv(r, k) === null ? '<span class="hint">-</span>' : f0(cv(r, k))}</td>`).join('')}<td><b>${fmtF(fv(r, F[0]), F[0])}</b></td>${F[0] === 'prod' || F[0] === 'ea' ? `<td>${r.c[PE_COMP[0][0]] !== null && r.c[PE_COMP[0][0]] !== undefined && r.f[F[0]] ? nf2.format(r.c[PE_COMP[0][0]] / r.f[F[0]] * (F[0] === 'ea' ? 1000 : 1)) : '-'}</td>` : ''}</tr>`).join('') + '</table></div>';
+      h += `<div class="tbl-wrap" style="margin-top:8px"><table class="t"><tr><th>월</th>${PE_COMP.map(c => `<th>${c[1]}<br><span class="hint">${cu}</span></th>`).join('')}<th>${F[1]}<br><span class="hint">${fu}</span></th>${F[0] === 'prod' || F[0] === 'ea' || F[0] === 'pkg' ? `<th>${PE_COMP[0][1]} / ${F[0] === 'prod' ? '원육 kg' : F[0] === 'pkg' ? '완제품 kg' : '1,000EA'}</th>` : ''}${F[0] === 'pkg' ? '<th>완제품 ÷ 원육<br><span class="hint">수율</span></th>' : ''}</tr>` +
+        rows.slice().reverse().map(r => `<tr><td>${r.ym.slice(2).replace('-', '.')}</td>${PE_COMP.map(([k]) => `<td>${cv(r, k) === null ? '<span class="hint">-</span>' : f0(cv(r, k))}</td>`).join('')}<td><b>${fmtF(fv(r, F[0]), F[0])}</b></td>${F[0] === 'prod' || F[0] === 'ea' || F[0] === 'pkg' ? `<td>${r.c[PE_COMP[0][0]] !== null && r.c[PE_COMP[0][0]] !== undefined && r.f[F[0]] ? nf2.format(r.c[PE_COMP[0][0]] / r.f[F[0]] * (F[0] === 'ea' ? 1000 : 1)) : '-'}</td>` : ''}${F[0] === 'pkg' ? `<td>${r.f.pkg && r.f.prod ? nf1.format(r.f.pkg / r.f.prod * 100) + '%' : '-'}</td>` : ''}</tr>`).join('') + '</table></div>';
       el.innerHTML = h;
       const labels = rows.map(r => r.ym.slice(2).replace('-', '.'));
       const bars = peStack ? PE_COMP.filter(c => PU.stack.includes(c[0])).map(([k, n, col]) => ({ type: 'bar', label: n, data: rows.map(r => cv(r, k)), backgroundColor: col + 'cc', stack: 's', yAxisID: 'y', order: 2 }))
