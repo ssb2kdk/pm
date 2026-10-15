@@ -108,6 +108,7 @@
     me: null,
     isAdmin: () => !!(Portal.me && Portal.me.role === 'admin'),
     isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
+    isViewer: () => !!(Portal.me && Portal.me.role === 'viewer'),
     visibleApps: () => (CFG.APPS || []).filter(a => (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만
     appUrl: app => ROOT + app.path,
     start,
@@ -207,6 +208,7 @@
     if (error || !prof) { await sb.auth.signOut(); return showLogin('계정 정보를 불러오지 못했습니다. 관리자에게 문의하세요.'); }
     if (!prof.active) { await sb.auth.signOut(); return showLogin('사용 중지된 계정입니다. 관리자에게 문의하세요.'); }
     Portal.me = prof;
+    if (prof.role === 'viewer') viewerGuard(sb); // 보기 전용: 저장·수정·삭제 요청은 보내지 않고 바로 오류 (DB에서도 24번 SQL로 막힘)
     // 협력업체 계정은 허용된 앱만
     if (prof.role === 'partner' && opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId)) {
       const first = Portal.visibleApps().find(a => a.ready);
@@ -220,6 +222,16 @@
     if (!readyCalled && opts.onReady) { readyCalled = true; opts.onReady(Portal); }
   }
 
+  const VIEWER_MSG = '보기 전용 계정은 저장·수정·삭제를 할 수 없습니다.';
+  function viewerGuard(sb) {
+    if (sb.__viewer) return; sb.__viewer = true;
+    const deny = () => { const p = Promise.resolve({ data: null, error: { message: VIEWER_MSG } });
+      const q = new Proxy(function () {}, { get(_, k) { if (k === 'then' || k === 'catch' || k === 'finally') return p[k].bind(p); return () => q; }, apply() { return q; } }); return q; };
+    const wrap = (obj, bad) => new Proxy(obj, { get(o, k) { if (bad.includes(k)) return deny; const v = o[k]; return typeof v === 'function' ? v.bind(o) : v; } });
+    const from = sb.from.bind(sb); sb.from = t => wrap(from(t), ['insert', 'update', 'upsert', 'delete']);
+    sb.rpc = () => deny();
+    if (sb.storage && sb.storage.from) { const sf = sb.storage.from.bind(sb.storage); sb.storage.from = b => wrap(sf(b), ['upload', 'remove', 'update', 'move', 'copy']); }
+  }
   function renderBar() {
     const me = Portal.me;
     const apps = Portal.visibleApps().filter(a => a.ready);
@@ -230,10 +242,11 @@
         ${apps.map(a => `<a href="${Portal.appUrl(a)}" class="${a.id === opts.appId ? 'current' : ''}">${a.icon} ${esc(a.name)}</a>`).join('')}
       </nav>
       <div class="pt-user">
-        <span id="pt-user-label">${esc(me.name)}${me.role === 'admin' ? ' (관리자)' : me.role === 'partner' ? ' (협력업체)' : ''}</span>
+        <span id="pt-user-label">${esc(me.name)}${me.role === 'admin' ? ' (관리자)' : me.role === 'partner' ? ' (협력업체)' : me.role === 'viewer' ? ' (보기 전용)' : ''}</span>
         <button type="button" id="pt-pw-btn">비밀번호 변경</button>
         <button type="button" id="pt-logout-btn">로그아웃</button>
       </div>`;
+    if (me.role === 'viewer' && !document.getElementById('pt-viewer')) document.getElementById('pt-bar').insertAdjacentHTML('afterend', '<div id="pt-viewer" style="background:#fff4d6;color:#7a5200;text-align:center;font-size:13px;padding:5px 8px;border-bottom:1px solid #f0d58a">👁 보기 전용 계정입니다 — 화면에서 값을 바꿔도 저장되지 않습니다.</div>');
     document.getElementById('pt-pw-btn').addEventListener('click', () => document.getElementById('pt-pw-modal').classList.add('active'));
     document.getElementById('pt-logout-btn').addEventListener('click', async () => {
       if (!confirm('로그아웃 하시겠습니까?')) return;
