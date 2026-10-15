@@ -79,12 +79,12 @@
     .sheet .sign td { border: 1px solid #000; width: 18mm; text-align: center; height: 5mm; }
     .sheet .sign td.box { height: 14mm; }
     .sheet table.f { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-    .sheet table.f th, .sheet table.f td { border: 1px solid #000; padding: 1.6mm 1.5mm; }
+    .sheet table.f th, .sheet table.f td { border: 1px solid #000; padding: 1.3mm 1.5mm; }
     .sheet table.f th { background: #e8e8e8; }
     .sheet table.f td.c { text-align: center; }
     .sheet table.f td.rs { text-align: center; font-size: 13pt; width: 13mm; }
     .sheet .legend { font-size: 9pt; }
-    .sheet .remark { height: 38mm; vertical-align: top; white-space: pre-wrap; }
+    .sheet .remark { height: 32mm; vertical-align: top; white-space: pre-wrap; }
     @media screen { .preview #print-area { display: block; background: #888; padding: 10mm 0; } .preview .sheet { padding: 10mm; box-shadow: 0 2px 8px rgba(0,0,0,.3); } }
     @media print {
       @page { size: A4 portrait; margin: 10mm; }
@@ -337,6 +337,15 @@
         </table>
       </div>`;
     }
+    // A4 한 장(위아래 여백 빼고 275mm)에 안 들어가면 그 장만 비율대로 줄임 — 특이사항이 다음 장으로 넘어가지 않게
+    function fitSheets() {
+      const MAXH = 266 * 96 / 25.4; // A4 277mm 중 여유 조금 남김
+      document.querySelectorAll('#print-area .sheet').forEach(s => {
+        s.style.zoom = ''; const cs = getComputedStyle(s), pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        const h = s.scrollHeight - pad; if (h > MAXH) s.style.zoom = (MAXH / h).toFixed(3);
+      });
+    }
+    window.addEventListener('beforeprint', () => { if (document.querySelector('#print-area .sheet')) fitSheets(); });
     async function buildPrint(previewOnly) {
       const from = document.getElementById('p-from').value, to = document.getElementById('p-to').value || from;
       if (!from) return alert('날짜를 고르세요.');
@@ -352,6 +361,7 @@
       const list = days.filter(d => !only || byD[d]);
       if (!list.length) return alert('이 기간에 저장된 점검 기록이 없습니다. "기록 있는 날만"을 끄면 빈 양식으로 인쇄합니다.');
       document.getElementById('print-area').innerHTML = list.map(d => sheetHtml(d, byD[d])).join('');
+      fitSheets();
       if (previewOnly) { document.body.classList.add('preview'); document.getElementById('print-area').scrollIntoView(); }
       else { document.body.classList.remove('preview'); setTimeout(() => window.print(), 100); }
     }

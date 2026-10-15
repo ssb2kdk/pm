@@ -188,6 +188,13 @@
     table.print-table td.eq-name { background: #fafafa; }
     table.print-table td.mark-o { color: #1e8e3e; font-weight: bold; }
     table.print-table td.mark-x { color: #d93025; font-weight: bold; }
+    /* 생산설비 점검표: 설비명·점검내용 칸을 넓혀 줄이 덜 늘어나게 (인쇄 장수 줄임) */
+    table.pm-month { font-size: 10px; }
+    table.pm-month col.c-eq { width: 92px; } table.pm-month col.c-task { width: 190px; } table.pm-month col.c-cyc { width: 50px; } table.pm-month col.c-note { width: 90px; }
+    table.pm-month td { padding: 2px 3px; line-height: 1.25; text-align: center; }
+    table.pm-month td.tk, table.pm-month td.eq-name { text-align: left; }
+    table.pm-month tr.grp td { background: #e9edf3; font-weight: bold; text-align: left; padding: 2px 6px; }
+    @media print { table.pm-month tr { page-break-inside: avoid; } table.pm-month { font-size: 9px; } }
 
     @media print {
       header, nav, .no-print, .tab-btn { display: none !important; }
@@ -1527,6 +1534,7 @@
           }
         }
         if (!include) return;
+        if (!/생산설비/.test(it.category || '')) return; // 생산설비 점검표 — 법정·시설물·필터 점검은 출력 안 함
         rows.push({ id: it.id, category: it.category || '미분류', equipment: it.equipment, task: it.task,
           cycleLabel: cycleLabel_(it.cycleType, it.cycleValue), assignee: it.assignee, note: it.note });
       });
@@ -1575,11 +1583,9 @@
       const plant = document.getElementById('print-plant').value || PLANT_NAME;
       const days = Array.from({ length: printLastData.daysInMonth }, (_, i) => i + 1);
 
-      // 공정(카테고리) · 설비명이 같은 연속된 행 병합
-      const catSpan = [], eqSpan = [];
+      // 설비명이 같은 연속된 행 병합 (공정명 칸은 없애고, 공정이 바뀌는 곳에 얇은 구분 줄)
+      const eqSpan = [];
       for (let i = 0; i < rows.length; i++) {
-        if (i > 0 && rows[i].category === rows[i - 1].category) catSpan.push(0);
-        else { let s = 1; for (let j = i + 1; j < rows.length && rows[j].category === rows[i].category; j++) s++; catSpan.push(s); }
         if (i > 0 && rows[i].category === rows[i - 1].category && rows[i].equipment === rows[i - 1].equipment) eqSpan.push(0);
         else { let s = 1; for (let j = i + 1; j < rows.length && rows[j].category === rows[i].category && rows[j].equipment === rows[i].equipment; j++) s++; eqSpan.push(s); }
       }
@@ -1593,14 +1599,16 @@
           </table>
         </div>
         <div class="print-legend">정상 : O, 불량 : X</div>
-        <table class="matrix print-table">
-          <tr><th>공정명</th><th>설비명</th><th>점검내용</th><th>점검주기</th><th colspan="${days.length}">유지 보수 계획</th><th>비고</th></tr>
-          <tr><th></th><th></th><th></th><th></th>${days.map(d => `<th>${d}</th>`).join('')}<th></th></tr>`;
+        <table class="matrix print-table pm-month">
+          <colgroup><col class="c-eq"><col class="c-task"><col class="c-cyc">${days.map(() => '<col>').join('')}<col class="c-note"></colgroup>
+          <tr><th rowspan="2">설비명</th><th rowspan="2">점검내용</th><th rowspan="2">점검주기</th><th colspan="${days.length}">유지 보수 계획</th><th rowspan="2">비고</th></tr>
+          <tr>${days.map(d => `<th>${d}</th>`).join('')}</tr>`;
+      const room = c => (String(c).match(/\(([^)]+)\)/) || [null, String(c).replace(/^\d+\.\s*/, '')])[1];
       rows.forEach((r, i) => {
+        if (i === 0 || r.category !== rows[i - 1].category) html += `<tr class="grp"><td colspan="${days.length + 4}">■ ${esc(room(r.category))}</td></tr>`;
         html += '<tr>';
-        if (catSpan[i] > 0) html += `<td rowspan="${catSpan[i]}" class="eq-name">${esc(r.category)}</td>`;
         if (eqSpan[i] > 0) html += `<td rowspan="${eqSpan[i]}" class="eq-name">${esc(r.equipment)}</td>`;
-        html += `<td>${esc(r.task)}</td><td>${esc(r.cycleLabel)}</td>`;
+        html += `<td class="tk">${esc(r.task)}</td><td>${esc(r.cycleLabel)}</td>`;
         days.forEach(d => {
           const mark = r.marks[d] || '';
           html += `<td class="${mark === 'X' ? 'mark-x' : (mark === 'O' ? 'mark-o' : '')}">${mark}</td>`;
