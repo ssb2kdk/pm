@@ -1745,7 +1745,13 @@
       ['op', '생산일수', '일', 0], ['days', '달력 날수', '일', 0], ['idle', '쉬는 날 수', '일', 0],
       ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0]];
     const PE_PERDAY_FAC = { prod: 1, ea: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
-    function peMonths() { const last = lastCompleteYm(), out = []; let ym = last; for (let i = 0; i < peN; i++) { out.unshift(ym); ym = UT.prevYm(ym); } return out; }
+    // 맨 위 기간비교에서 고른 기간을 월 단위로 바꿔서 씀 (일·주는 그 날짜가 속한 달, 분기는 그 분기의 달) — 아직 안 끝난 달은 뺌
+    function peMonths() {
+      const { from, to } = perRange(), last = lastCompleteYm();
+      let a, b; if (perGran === 'quarter') { const [y1, q1] = from.split('-').map(Number), [y2, q2] = to.split('-').map(Number); a = UT.ym(y1, (q1 - 1) * 3 + 1); b = UT.ym(y2, q2 * 3); } else { a = from.slice(0, 7); b = to.slice(0, 7); }
+      if (b > last) b = last; const out = []; for (let ym = a; ym <= b && out.length < 60; ym = UT.nextYm(ym)) out.push(ym);
+      return out.length >= 2 ? out : (() => { const o = []; let ym = last; for (let i = 0; i < 12; i++) { o.unshift(ym); ym = UT.prevYm(ym); } return o; })();
+    }
     function peRow(ym) {
       const s = S(ym), all = s.elec.usage, ww = wwKwh(ym), hv = meterKwh(ym, 'elec_hvac_kwh'), days = UT.daysIn(ym), op = UT.opDays(DAILY, ym, MONTHLY);
       const hall = all !== null && ww !== null && hv !== null && ym >= HVAC_FULL_FROM ? all - ww - hv : null;
@@ -1772,7 +1778,7 @@
       let h = `<div class="toolbar"><span class="chips">${Object.entries(PE_U).map(([k, u]) => `<button class="chip ${peUtil === k ? 'on' : ''}" onclick="peUtil='${k}';renderPerElec()"><b>${u.name}</b></button>`).join('')}</span></div>
         <div class="toolbar"><span class="hint">${PU.name} (막대)</span><span class="chips">${PE_COMP.map(([k, n]) => `<button class="chip ${peComp === k && !peStack ? 'on' : ''}" onclick="peComp='${k}';peStack=false;renderPerElec()">${n}</button>`).join('')}${PU.stack ? `<button class="chip ${peStack ? 'on' : ''}" onclick="peStack=true;renderPerElec()">구성 쌓아 보기</button>` : ''}</span>
           <label class="hint"><input type="checkbox" ${pePerDay ? 'checked' : ''} onchange="pePerDay=this.checked;renderPerElec()"> 하루당으로 보기 (날수 차이 없앰)</label>
-          <span class="chips">${[12, 24].map(n => `<button class="chip ${peN === n ? 'on' : ''}" onclick="peN=${n};renderPerElec()">최근 ${n}개월</button>`).join('')}</span></div>
+          <span class="hint">기간: <b>${ms[0].slice(2).replace('-', '.')} ~ ${ms[ms.length - 1].slice(2).replace('-', '.')}</b> (${ms.length}개월 · 맨 위 기간 설정을 따름, 진행 중인 달 제외)</span></div>
         <div class="toolbar"><span class="hint">비교할 것 (선)</span><span class="chips">${FACS.map(([k, n]) => `<button class="chip ${peFac === k ? 'on' : ''}" onclick="peFac='${k}';renderPerElec()">${n}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:300px"><canvas id="chart-pe"></canvas></div>`;
       // 연관성 (상관계수 r) — 마감된 달끼리
