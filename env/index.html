@@ -128,6 +128,7 @@
     .bc-edit { margin-top: 10px; padding: 10px; border: 1px dashed #b9c9d9; border-radius: 8px; background: #fafcff; }
     .bc-edit input.bci { width: 80px; text-align: right; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
     table.wq td.l { text-align: left; } table.wq td.v { font-weight: bold; }
+    table.wq tr.sum td { background: #f3f6f4; } table.wq tr.hint td { color: #aaa; }
     table.wq.sm { font-size: 12px; } table.wq.sm th, table.wq.sm td { padding: 3px 7px; }
     table.wq.in input { width: 120px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: right; background: #fffbe6; }
     .wq-hi { color: #c62828; font-weight: bold; } td.wq-hi { background: #fdecea; }
@@ -172,6 +173,7 @@
         <button class="tab-btn active" data-tab="book" onclick="showTab('book')">다온산업 장부</button>
         <button class="tab-btn staff" data-tab="ww" onclick="showTab('ww')">폐수일지 출력</button>
         <button class="tab-btn staff" data-tab="air" onclick="showTab('air')">대기일지 출력</button>
+        <button class="tab-btn" data-tab="chem" onclick="showTab('chem')">약품 월별</button>
         <button class="tab-btn" data-tab="wq" onclick="showTab('wq')">수질 측정</button>
         <button class="tab-btn" data-tab="wwn" onclick="showTab('wwn')">폐수장 특이사항</button>
         <button class="tab-btn setv" data-tab="set" onclick="showTab('set')">설정</button>
@@ -218,6 +220,7 @@
       </div>
 
       <!-- ============ 수질 측정 ============ -->
+      <div id="tab-chem" class="tab"><div id="chem-body"><div class="loading">불러오는 중...</div></div></div>
       <div id="tab-wq" class="tab"><div id="wq-body"><div class="loading">불러오는 중...</div></div></div>
       <div id="tab-wwn" class="tab"><div id="wwn-body"><div class="loading">불러오는 중...</div></div></div>
 
@@ -312,6 +315,7 @@
       if (t === 'book') renderBook();
       if (t === 'wq') renderWq();
       if (t === 'wwn') renderWwn();
+      if (t === 'chem') renderChem();
     }
 
     // ---------------- 장부 칼럼 ----------------
@@ -1243,6 +1247,74 @@
         q[i] = o;
       });
       return S2;
+    }
+
+    // ---------------- 약품 월별 (다온산업 장부 취합) · 구매비용·사용비용 ----------------
+    //  수량 = 장부의 날짜별 구입·사용 합 · 잔고 = 그 달 말일 잔고 · 단가는 설정(env.chems[i].price)에 저장, 없으면 기본 단가
+    const CHEM_PRICE_DEF = [[/아니온|음이온/, 4600], [/카치온|양이온/, 5200], [/알민/, 450], [/황산\s*반토|황산알루미늄/, 190], [/소포/, 2900]];
+    const chemPrice = c => { const p = num(c.price); if (p !== null && p > 0) return p; const d = CHEM_PRICE_DEF.find(([re]) => re.test(c.name || '')); return d ? d[1] : null; };
+    let chemY = Number(todayStr.slice(0, 4)), chemPE = false;
+    const won = v => v === null || v === undefined || isNaN(v) ? '' : Math.round(v).toLocaleString('ko-KR');
+    function chemData(y) {
+      const CH = (SET.chems || []).filter(c => String(c.name || '').trim() && (chemPrice(c) !== null || Object.values(WW).some(r => num(r[c.key + '_in']) || num(r[c.key + '_use'])))), out = [];
+      for (let m = 1; m <= 12; m++) {
+        const ym = `${y}-${pad2(m)}`, n = new Date(y, m, 0).getDate(), last = `${ym}-${pad2(n)}`;
+        const row = { ym, m, c: {}, any: false, future: `${ym}-01` > todayStr };
+        CH.forEach(c => { let i = 0, u = 0, has = false;
+          for (let d = 1; d <= n; d++) { const r = WW[`${ym}-${pad2(d)}`]; if (!r) continue; const a = num(r[c.key + '_in']), b = num(r[c.key + '_use']); if (a !== null) { i += a; has = true; } if (b !== null) { u += b; has = true; } }
+          const endD = last > todayStr ? todayStr : last, bal = BAL[endD] ? BAL[endD][c.key] : null, p = chemPrice(c);
+          row.c[c.key] = { i, u, bal: endD >= `${ym}-01` ? bal : null, ic: p !== null ? i * p : null, uc: p !== null ? u * p : null }; if (has) row.any = true; });
+        out.push(row);
+      }
+      return { CH, rows: out };
+    }
+    function renderChem() {
+      const el = document.getElementById('chem-body'); if (!el || !SET) return;
+      const { CH, rows } = chemData(chemY), showCost = !isPartner(), R = rows.filter(r => !r.future);
+      if (!CH.length) { el.innerHTML = '<div class="card">설정 → 폐수일지 7번 약품사용량에 약품 이름이 없습니다.</div>'; return; }
+      const sum = (f) => R.reduce((s, r) => s + (f(r) || 0), 0), unitOf = c => c.unit || 'kg';
+      let h = `<div class="card"><div class="toolbar"><div class="month-nav"><button onclick="chemY--;renderChem()">◀</button><span>${chemY}년</span><button onclick="chemY++;renderChem()">▶</button></div>
+        <span class="hint">다온산업 장부의 날짜별 구입·사용을 달마다 더한 값입니다. 잔고 = 그 달 말일(이번 달은 오늘) 장부 잔고.</span></div>
+        <h3 style="margin:8px 0 4px">약품 수량</h3><div class="tbl-x"><table class="wq"><tr><th rowspan="2">월</th>${CH.map(c => `<th colspan="3">${esc(c.name)} <span class="hint">(${esc(unitOf(c))})</span></th>`).join('')}</tr>
+        <tr>${CH.map(() => '<th class="g2">구입</th><th class="g1">사용</th><th>잔고</th>').join('')}</tr>` +
+        R.map(r => `<tr${r.any ? '' : ' class="hint"'}><td>${r.m}월</td>${CH.map(c => { const x = r.c[c.key]; return `<td>${x.i ? nf(x.i, 1) : ''}</td><td>${x.u ? nf(x.u, 1) : ''}</td><td class="hint">${x.bal === null || x.bal === undefined ? '' : nf(x.bal, 1)}</td>`; }).join('')}</tr>`).join('') +
+        `<tr class="sum"><td><b>합계</b></td>${CH.map(c => `<td><b>${nf(sum(r => r.c[c.key].i), 1)}</b></td><td><b>${nf(sum(r => r.c[c.key].u), 1)}</b></td><td></td>`).join('')}</tr>
+        <tr class="sum"><td>월평균</td>${CH.map(c => { const n = R.filter(r => r.any).length || 1; return `<td>${nf(sum(r => r.c[c.key].i) / n, 1)}</td><td>${nf(sum(r => r.c[c.key].u) / n, 1)}</td><td></td>`; }).join('')}</tr></table></div>`;
+      if (showCost) {
+        const tI = r => CH.reduce((s, c) => s + (r.c[c.key].ic || 0), 0), tU = r => CH.reduce((s, c) => s + (r.c[c.key].uc || 0), 0);
+        h += `<h3 style="margin:14px 0 4px">약품 비용 (원) <span class="hint">구매비용 = 구입량 × 단가 · 사용비용 = 사용량 × 단가 (부가세 별도 여부는 단가 기준을 따름)</span></h3>
+          <div class="tbl-x"><table class="wq"><tr><th rowspan="2">월</th>${CH.map(c => `<th colspan="2">${esc(c.name)} <span class="hint">${chemPrice(c) !== null ? won(chemPrice(c)) + '원/' + esc(unitOf(c)) : '단가 없음'}</span></th>`).join('')}<th colspan="2">합계</th></tr>
+          <tr>${CH.map(() => '<th class="g2">구매</th><th class="g1">사용</th>').join('')}<th class="g2">구매비용</th><th class="g1">사용비용</th></tr>` +
+          R.map(r => `<tr${r.any ? '' : ' class="hint"'}><td>${r.m}월</td>${CH.map(c => { const x = r.c[c.key]; return `<td>${x.ic ? won(x.ic) : ''}</td><td>${x.uc ? won(x.uc) : ''}</td>`; }).join('')}<td><b>${r.any ? won(tI(r)) : ''}</b></td><td><b>${r.any ? won(tU(r)) : ''}</b></td></tr>`).join('') +
+          `<tr class="sum"><td><b>합계</b></td>${CH.map(c => `<td><b>${won(sum(r => r.c[c.key].ic))}</b></td><td><b>${won(sum(r => r.c[c.key].uc))}</b></td>`).join('')}<td><b>${won(sum(tI))}</b></td><td><b>${won(sum(tU))}</b></td></tr>
+          <tr class="sum"><td>월평균</td>${CH.map(c => { const n = R.filter(r => r.any).length || 1; return `<td>${won(sum(r => r.c[c.key].ic) / n)}</td><td>${won(sum(r => r.c[c.key].uc) / n)}</td>`; }).join('')}<td>${won(sum(tI) / (R.filter(r => r.any).length || 1))}</td><td>${won(sum(tU) / (R.filter(r => r.any).length || 1))}</td></tr></table></div>`;
+        h += chemCostChart(R, tI, tU);
+        // 단가
+        const ed = isAdmin();
+        h += `<details ${chemPE ? 'open' : ''} ontoggle="chemPE=this.open" style="margin-top:12px"><summary style="cursor:pointer"><b>약품 단가</b> <span class="hint">${CH.map(c => `${esc(c.name)} ${chemPrice(c) !== null ? won(chemPrice(c)) + '원' : '없음'}`).join(' · ')}</span></summary>
+          <table class="wq" style="margin-top:6px;width:auto"><tr><th>약품</th><th>단위</th><th>단가 (원/단위)</th></tr>${CH.map(c => `<tr><td class="l">${esc(c.name)}</td><td>${esc(unitOf(c))}</td><td>${ed ? `<input class="chp" data-k="${c.key}" inputmode="decimal" style="width:90px" value="${num(c.price) ?? ''}" placeholder="${chemPrice(c) ?? ''}">` : won(chemPrice(c))}</td></tr>`).join('')}</table>
+          ${ed ? '<div class="toolbar" style="margin-top:6px"><button class="btn small" onclick="saveChemPrice()">✓ 단가 저장</button><span class="hint">비워 두면 기본 단가(아니온 4,600 · 카치온 5,200 · 알민산 450 · 황산반토 190 · 소포제 2,900)를 씁니다. 단가가 바뀌면 지난 달 비용도 새 단가로 다시 계산됩니다.</span></div>' : ''}</details>`;
+      }
+      el.innerHTML = h + '</div>';
+    }
+    function chemCostChart(R, tI, tU) {
+      const W = 760, H = 220, L = 64, B = 26, T = 14, Rt = 10, mx = Math.max(1, ...R.map(r => Math.max(tI(r), tU(r)))) * 1.1, n = 12, bw = (W - L - Rt) / n;
+      const ys = v => T + (H - T - B) * (1 - v / mx);
+      let s = `<div class="hint" style="margin-top:10px"><span style="color:#8fb3de">■</span> 구매비용 <span style="color:#1D7A5C">■</span> 사용비용 (원)</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">`;
+      for (let k = 0; k <= 4; k++) { const v = mx * k / 4; s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${L - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${v >= 10000 ? nf(v / 10000, 0) + '만' : won(v)}</text>`; }
+      R.forEach(r => { const x = L + (r.m - 1) * bw, a = tI(r), b = tU(r);
+        if (a) s += `<rect x="${x + bw * 0.12}" y="${ys(a)}" width="${bw * 0.36}" height="${H - B - ys(a)}" fill="#8fb3de"><title>${r.m}월 구매 ${won(a)}원</title></rect>`;
+        if (b) s += `<rect x="${x + bw * 0.5}" y="${ys(b)}" width="${bw * 0.36}" height="${H - B - ys(b)}" fill="#1D7A5C"><title>${r.m}월 사용 ${won(b)}원</title></rect>`;
+        s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${r.m}월</text>`; });
+      return s + '</svg>';
+    }
+    async function saveChemPrice() {
+      const pr = {}; document.querySelectorAll('.chp').forEach(x => { const v = String(x.value).replace(/,/g, '').trim(); pr[x.dataset.k] = v === '' ? null : Number(v); });
+      const { data, error } = await sb.from('env_settings').select('value').eq('key', 'env').maybeSingle(); if (error) return alert('저장 실패: ' + errMsg(error));
+      const v = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SET)), (data && data.value) || {});
+      (v.chems || []).forEach(c => { if (c.key in pr) { if (pr[c.key] === null || isNaN(pr[c.key])) delete c.price; else c.price = pr[c.key]; } });
+      const r = await sb.from('env_settings').upsert({ key: 'env', value: v }, { onConflict: 'key' }); if (r.error) return alert('저장 실패: ' + errMsg(r.error));
+      SET = v; calcBalances(); renderChem();
     }
 
     // ---------------- 시작 ----------------
