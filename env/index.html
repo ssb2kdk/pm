@@ -1310,6 +1310,7 @@
       const sum = (f) => R.reduce((s, r) => s + (f(r) || 0), 0), unitOf = c => c.unit || 'kg';
       let h = `<div class="card"><div class="toolbar"><span class="hint">기간</span> <input type="month" value="${chemFrom}" onchange="chemSetRange(this.value, chemTo)"> ~ <input type="month" value="${chemTo}" onchange="chemSetRange(chemFrom, this.value)">
         <span class="chips">${[['y', '올해'], ['py', '작년'], [6, '최근 6개월'], [12, '최근 12개월'], [24, '최근 24개월']].map(([k, l]) => `<button class="chip" onclick="chemQuick(${typeof k === 'number' ? k : `'${k}'`})">${l}</button>`).join('')}</span>
+        <button class="btn small" style="margin-left:auto" onclick="chemXlsx()">⬇ 엑셀로 받기</button>
         <span class="hint">다온산업 장부의 날짜별 구입·사용을 달마다 더한 값입니다. 잔고 = 그 달 말일(이번 달은 오늘) 장부 잔고.</span></div>
         <h3 style="margin:8px 0 4px">약품 수량</h3><div class="tbl-x"><table class="wq"><tr><th rowspan="2">월</th>${CH.map(c => `<th colspan="3">${esc(c.name)} <span class="hint">(${esc(unitOf(c))})</span></th>`).join('')}</tr>
         <tr>${CH.map(() => '<th class="g2">구입</th><th class="g1">사용</th><th>잔고</th>').join('')}</tr>` +
@@ -1344,6 +1345,41 @@
         if (b) s += `<rect x="${x + bw * 0.5}" y="${ys(b)}" width="${bw * 0.36}" height="${H - B - ys(b)}" fill="#1D7A5C"><title>${r.lab} 사용 ${won(b)}원</title></rect>`;
         s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="${n > 16 ? 8 : 10}" fill="#666">${r.lab}</text>`; });
       return s + '</svg>';
+    }
+    // 엑셀(.xlsx) 내려받기: 화면의 표를 시트로 (수량 · 비용) — SheetJS는 누를 때만 불러옴
+    function loadScript(src) { return new Promise((ok, no) => { const x = document.createElement('script'); x.src = src; x.onload = ok; x.onerror = () => no(new Error('불러오기 실패: ' + src)); document.head.appendChild(x); }); }
+    async function chemXlsx() {
+      try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
+      catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const { CH, rows } = chemData(chemFrom, chemTo), R = rows.filter(r => !r.future), wb = XLSX.utils.book_new(), unitOf = c => c.unit || 'kg';
+      const nA = R.filter(r => r.any).length || 1, z = v => (v === null || v === undefined || v === 0) ? null : v, sm = f => R.reduce((s, r) => s + (f(r) || 0), 0);
+      const mk = (aoa, merges, name, fmt) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!merges'] = merges;
+        Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n') ws[k].z = fmt(k); });
+        ws['!cols'] = aoa[1].map((_, j) => ({ wch: j === 0 ? 9 : 12 })); XLSX.utils.book_append_sheet(wb, ws, name); };
+      // 1) 수량
+      const h1 = ['월'], h2 = [''], mg = []; CH.forEach((c, i) => { h1.push(`${c.name} (${unitOf(c)})`, '', ''); h2.push('구입', '사용', '잔고'); mg.push({ s: { r: 0, c: 1 + i * 3 }, e: { r: 0, c: 3 + i * 3 } }); });
+      mg.push({ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } });
+      const q = [h1, h2, ...R.map(r => [r.ym, ...CH.flatMap(c => { const x = r.c[c.key]; return [z(x.i), z(x.u), x.bal ?? null]; })]),
+        ['합계', ...CH.flatMap(c => [sm(r => r.c[c.key].i), sm(r => r.c[c.key].u), null])], ['월평균', ...CH.flatMap(c => [round(sm(r => r.c[c.key].i) / nA, 2), round(sm(r => r.c[c.key].u) / nA, 2), null])]];
+      mk(q, mg, '약품 수량', () => '#,##0.0##');
+      // 2) 비용 (협력업체 계정은 빼고)
+      if (!isPartner()) {
+        const SUP = HAS_SUPPLY, tI = r => CH.reduce((s, c) => s + (r.c[c.key].ic || 0), 0) + r.supA, tU = r => CH.reduce((s, c) => s + (r.c[c.key].uc || 0), 0) + r.supA;
+        const c1 = ['월'], c2 = [''], m2 = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }]; let col = 1;
+        CH.forEach(c => { const p = chemPrice(c); c1.push(`${c.name} (${p !== null ? p.toLocaleString('ko-KR') + '원/' + unitOf(c) : '단가 없음'})`, ''); c2.push('구매', '사용'); m2.push({ s: { r: 0, c: col }, e: { r: 0, c: col + 1 } }); col += 2; });
+        if (SUP) { c1.push('소모품', ''); c2.push('구매물품', '금액'); m2.push({ s: { r: 0, c: col }, e: { r: 0, c: col + 1 } }); col += 2; }
+        c1.push('합계', ''); c2.push('구매비용', '사용비용'); m2.push({ s: { r: 0, c: col }, e: { r: 0, c: col + 1 } });
+        const cr = r => [r.ym, ...CH.flatMap(c => [z(r.c[c.key].ic), z(r.c[c.key].uc)]), ...(SUP ? [r.sup.map(i => `${i.d}일 ${i.t || '(물품명 없음)'}${i.a ? ' ' + i.a.toLocaleString('ko-KR') + '원' : ''}`).join(', ') || null, z(r.supA)] : []), r.any ? tI(r) : null, r.any ? tU(r) : null];
+        const t = [c1, c2, ...R.map(cr), ['합계', ...CH.flatMap(c => [sm(r => r.c[c.key].ic), sm(r => r.c[c.key].uc)]), ...(SUP ? [null, sm(r => r.supA)] : []), sm(tI), sm(tU)],
+          ['월평균', ...CH.flatMap(c => [Math.round(sm(r => r.c[c.key].ic) / nA), Math.round(sm(r => r.c[c.key].uc) / nA)]), ...(SUP ? [null, Math.round(sm(r => r.supA) / nA)] : []), Math.round(sm(tI) / nA), Math.round(sm(tU) / nA)]];
+        mk(t, m2, '약품·소모품 비용', () => '#,##0');
+        if (SUP) { const ws = wb.Sheets['약품·소모품 비용']; ws['!cols'][col - 2] = { wch: 30 }; }
+        // 3) 소모품 구매 내역 (한 줄에 하나)
+        if (SUP) { const L = [['날짜', '구매물품', '금액 (원)']]; R.forEach(r => r.sup.forEach(i => L.push([`${r.ym}-${pad2(i.d)}`, i.t || '', i.a || null])));
+          mk(L, [], '소모품 내역', () => '#,##0'); wb.Sheets['소모품 내역']['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 12 }]; }
+      }
+      const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `약품월별_${chemFrom}_${chemTo}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
     async function saveChemPrice() {
       const pr = {}; document.querySelectorAll('.chp').forEach(x => { const v = String(x.value).replace(/,/g, '').trim(); pr[x.dataset.k] = v === '' ? null : Number(v); });
