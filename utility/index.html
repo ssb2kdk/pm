@@ -3490,7 +3490,7 @@
     }
 
     function openBill() {
-      if (!isAdmin()) return;
+      if (!canBill()) return;
       billPages = [];
       document.getElementById('bill').hidden = false;
       document.getElementById('bill-file').value = '';
@@ -3793,7 +3793,7 @@
     }
     const ssbTime = t => { if (!t) return '-'; const d = new Date(t); return isNaN(d) ? String(t) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
     async function openProdImport() {
-      if (!isAdmin()) return;
+      if (!canBill()) return;
       const ym = monthlyYm;
       openBill();
       billStatus(`생산 대시보드에서 ${ymLabel(ym)} 월별현황 읽는 중…`);
@@ -3829,6 +3829,9 @@
     // =====================================================================
     let sb = null, me = null;
     const isAdmin = () => !!(me && me.role === 'admin');
+    // 고지서 관리 모드 (utility/?bill): 월간입력·회계보고·지출결의만 — 시설팀 일반 계정도 입력 가능 (협력업체 제외)
+    const BILL_MODE = /(^\?|&)bill\b/.test(location.search), BILL_TABS = ['monthly', 'report', 'expense'];
+    const canBill = () => isAdmin() || (BILL_MODE && !!(me && me.role === 'user'));
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pad2 = n => String(n).padStart(2, '0');
     const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
@@ -4262,7 +4265,7 @@
       document.getElementById('monthly-month').textContent = ymLabel(monthlyYm);
       monthlyDraft = { ...(MONTHLY[monthlyYm] || {}) };
       monthlyDirty = false;
-      const ro = !isAdmin();
+      const ro = !canBill();
       document.getElementById('monthly-save').hidden = ro;
       document.getElementById('monthly-bill').hidden = ro;
       document.getElementById('monthly-prod').hidden = ro;
@@ -4387,7 +4390,7 @@
     }
 
     async function saveMonthly() {
-      if (!isAdmin()) return;
+      if (!canBill()) return;
       const btn = document.getElementById('monthly-save');
       btn.disabled = true;
       try {
@@ -4501,17 +4504,18 @@
     // 시작
     // =====================================================================
     window.addEventListener('beforeunload', e => { if (monthlyDirty) { e.preventDefault(); e.returnValue = ''; } });
+    if (BILL_MODE) { document.querySelector('header h1').textContent = '🧾 유틸리티 고지서 관리'; document.title = '유틸리티 고지서 관리'; }
+    document.querySelectorAll('.tab-btn').forEach(b => { b.hidden = BILL_MODE !== BILL_TABS.includes(b.dataset.tab); b.classList.remove('active'); });
     Portal.start({
-      appId: 'utility',
-      title: '유틸리티 사용량·비용 분석',
+      appId: BILL_MODE ? 'bill' : 'utility',
+      title: BILL_MODE ? '유틸리티 고지서 관리' : '유틸리티 사용량·비용 분석',
       onReady: async P => {
         sb = P.sb; me = P.me;
-        if (!isAdmin()) { const mb = document.querySelector('.tab-btn[data-tab="monthly"]'); if (mb) mb.hidden = true; } // 월간입력(수치 입력)은 관리자만
         document.getElementById('kpis').innerHTML = '<div class="loading">불러오는 중...</div>';
         try {
           await loadAll();
           try { await loadTemps(); } catch (e) { }
-          switchTab('dash');
+          switchTab(BILL_MODE ? 'monthly' : 'dash');
         } catch (e) {
           document.getElementById('kpis').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 7번·8번 SQL을 실행했는지 확인해 주세요.</div>`;
         }
