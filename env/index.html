@@ -186,6 +186,7 @@
         <div class="toolbar">
           <div class="seg"><button id="m-grid" class="on" onclick="setMode('grid')">월 표</button><button id="m-day" onclick="setMode('day')">하루 입력</button></div>
           <div class="month-nav" id="nav-month"><button onclick="shiftMonth(-1)">◀</button><span id="book-month"></span><button onclick="shiftMonth(1)">▶</button></div>
+          <button class="btn small" id="book-xlsx" onclick="bookXlsx()">⬇ 엑셀로 받기</button>
           <div class="month-nav" id="nav-day" hidden><button onclick="shiftDay(-1)">◀</button><input type="date" id="book-day" onchange="dayDate=this.value;renderDay()" style="border:none;font-weight:bold"><button onclick="shiftDay(1)">▶</button></div>
           <span class="hint" id="book-hint">칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다. 엑셀에서 여러 칸을 복사해 시작할 칸을 누르고 Ctrl+V 하면 한 번에 들어갑니다.</span>
         </div>
@@ -357,7 +358,7 @@
     function setMode(m) {
       document.getElementById('m-grid').classList.toggle('on', m === 'grid'); document.getElementById('m-day').classList.toggle('on', m === 'day');
       document.getElementById('book-grid').hidden = m !== 'grid'; document.getElementById('book-day-form').hidden = m !== 'day';
-      document.getElementById('nav-month').hidden = m !== 'grid'; document.getElementById('nav-day').hidden = m !== 'day';
+      document.getElementById('nav-month').hidden = m !== 'grid'; document.getElementById('book-xlsx').hidden = m !== 'grid'; document.getElementById('nav-day').hidden = m !== 'day';
       document.getElementById('book-hint').textContent = m === 'grid' ? '칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 잔고·보관량은 자동 계산됩니다. 엑셀에서 여러 칸을 복사해 시작할 칸을 누르고 Ctrl+V 하면 한 번에 들어갑니다.' : '값을 넣고 아래 [저장]을 누르세요.';
       if (m === 'day') renderDay(); else renderBook();
     }
@@ -1305,7 +1306,7 @@
     }
     function renderChem() {
       const el = document.getElementById('chem-body'); if (!el || !SET) return;
-      const { CH, rows } = chemData(chemFrom, chemTo), showCost = !isPartner(), R = rows.filter(r => !r.future);
+      const { CH, rows } = chemData(chemFrom, chemTo), showCost = true, R = rows.filter(r => !r.future);
       if (!CH.length) { el.innerHTML = '<div class="card">설정 → 폐수일지 7번 약품사용량에 약품 이름이 없습니다.</div>'; return; }
       const sum = (f) => R.reduce((s, r) => s + (f(r) || 0), 0), unitOf = c => c.unit || 'kg';
       let h = `<div class="card"><div class="toolbar"><span class="hint">기간</span> <input type="month" value="${chemFrom}" onchange="chemSetRange(this.value, chemTo)"> ~ <input type="month" value="${chemTo}" onchange="chemSetRange(chemFrom, this.value)">
@@ -1363,7 +1364,7 @@
         ['합계', ...CH.flatMap(c => [sm(r => r.c[c.key].i), sm(r => r.c[c.key].u), null])], ['월평균', ...CH.flatMap(c => [round(sm(r => r.c[c.key].i) / nA, 2), round(sm(r => r.c[c.key].u) / nA, 2), null])]];
       mk(q, mg, '약품 수량', () => '#,##0.0##');
       // 2) 비용 (협력업체 계정은 빼고)
-      if (!isPartner()) {
+      {
         const SUP = HAS_SUPPLY, tI = r => CH.reduce((s, c) => s + (r.c[c.key].ic || 0), 0) + r.supA, tU = r => CH.reduce((s, c) => s + (r.c[c.key].uc || 0), 0) + r.supA;
         const c1 = ['월'], c2 = [''], m2 = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }]; let col = 1;
         CH.forEach(c => { const p = chemPrice(c); c1.push(`${c.name} (${p !== null ? p.toLocaleString('ko-KR') + '원/' + unitOf(c) : '단가 없음'})`, ''); c2.push('구매', '사용'); m2.push({ s: { r: 0, c: col }, e: { r: 0, c: col + 1 } }); col += 2; });
@@ -1380,6 +1381,36 @@
       }
       const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `약품월별_${chemFrom}_${chemTo}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+    // 다온산업 장부 월 표 → 엑셀 (보이는 달, 화면과 같은 칸 순서 · 잔고·보관량·설비검침 값 포함)
+    async function bookXlsx() {
+      try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
+      catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const [y, m] = bookYm.split('-').map(Number), n = new Date(y, m, 0).getDate(), cols = bookCols();
+      try { await loadMeter(`${bookYm}-01`, `${bookYm}-${pad2(n)}`); } catch (e) { }
+      const h1 = ['날짜', '조업', '설비검침 (자동)', '', ''], h2 = ['', '', '상수도 ㎥', '방류량 ㎥', '폐수전력 kWh'];
+      const mg = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, { s: { r: 0, c: 2 }, e: { r: 0, c: 4 } }];
+      let ci = 5; cols.forEach((c, i) => { const prev = cols[i - 1];
+        if (c.solo) { h1.push(c.g); h2.push(''); mg.push({ s: { r: 0, c: ci }, e: { r: 1, c: ci } }); }
+        else if (prev && !prev.solo && prev.g === c.g) { h1.push(''); h2.push(c.label); mg[mg.length - 1].e.c = ci; }
+        else { h1.push(c.g); h2.push(c.label); mg.push({ s: { r: 0, c: ci }, e: { r: 0, c: ci } }); }
+        ci++; });
+      const rows = [h1, h2], sums = {};
+      for (let d = 1; d <= n; d++) {
+        const ds = `${bookYm}-${pad2(d)}`, wd = new Date(ds + 'T00:00:00').getDay(), r = WW[ds] || {};
+        const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use, pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
+        rows.push([`${ds} (${WEEK[wd]})`, r.op === false ? '휴무' : '조업', w, f, pw, ...cols.map(c => {
+          if (c.calc) return ds <= todayStr || WW[ds] ? (c.calc(ds) ?? null) : null;
+          const v = r[c.k]; if (c.text) return v ? String(v) : null; if (v === null || v === undefined || v === '') return null;
+          sums[c.k] = (sums[c.k] || 0) + Number(v); return Number(v); })]);
+      }
+      rows.push(['월 합계', '', null, null, null, ...cols.map(c => /_in$|_use$|sludge_gen|sludge_out|supply_amt/.test(c.k || '') ? round(sums[c.k] || 0, 3) : null)]);
+      const ws = XLSX.utils.aoa_to_sheet(rows); ws['!merges'] = mg.filter(x => x.e.c > x.s.c || x.e.r > x.s.r);
+      Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n') ws[k].z = '#,##0.###'; });
+      ws['!cols'] = h1.map((_, j) => ({ wch: j === 0 ? 14 : (cols[j - 5] && cols[j - 5].text) ? 22 : 9 }));
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `${y}년 ${m}월`);
+      const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `다온산업장부_${bookYm}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
     async function saveChemPrice() {
       const pr = {}; document.querySelectorAll('.chp').forEach(x => { const v = String(x.value).replace(/,/g, '').trim(); pr[x.dataset.k] = v === '' ? null : Number(v); });
