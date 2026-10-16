@@ -4239,24 +4239,29 @@
 
       // 3) 항목별 추이
       document.getElementById('util-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${utilSel === u.k ? 'on' : ''}" onclick="utilSel='${u.k}';renderCharts()">${u.name}</button>`).join('');
-      const metrics = [['usage', '사용량'], ['unit', '원단위'], ['cost', '비용']];
+      const metrics = [['usage', '사용량'], ['daily', '일평균'], ['unit', '원단위'], ['cost', '비용']];
       document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSel === k ? 'on' : ''}" onclick="metricSel='${k}';renderCharts()">${n}</button>`).join('');
       const U = UT.UTILS.find(u => u.k === utilSel);
-      const pick = s => metricSel === 'usage' ? s[U.k].usage : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
-      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'unit' ? `${U.unit}/kg` : '천원';
+      // 일평균: 월 사용량 ÷ 날수 (용수는 고지서 검침 기간 전월 12일~당월 11일이라 전월 날수) · 아직 안 끝난 달은 뺌
+      const dayN = ym => U.k === 'water' ? UT.daysIn(UT.prevYm(ym)) : UT.daysIn(ym);
+      const daily = (s, ym) => { if (s[U.k].usage === null || s[U.k].usage === undefined || ym >= thisYm && !UT.monthComplete(DAILY, ym)) return null; return s[U.k].usage / dayN(ym); };
+      const pick0 = (s, ym) => metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+      const csv = cs.map((s, i) => pick0(s, ms[i])), psv = ps.map((s, i) => pick0(s, pms[i])), pick = s => { const i = cs.indexOf(s); return i >= 0 ? csv[i] : psv[ps.indexOf(s)]; };
+      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'daily' ? `${U.unit}/일` : metricSel === 'unit' ? `${U.unit}/kg` : '천원';
       const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 1000 : null; })
-        : metricSel === 'usage' ? ms.map(ym => (MONTHLY[ym] || {})['plan_' + U.k + '_usage'] ?? null) : null;
+        : metricSel === 'usage' ? ms.map(ym => (MONTHLY[ym] || {})['plan_' + U.k + '_usage'] ?? null)
+        : metricSel === 'daily' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_usage']; return v === undefined || v === null || v === '' ? null : v / dayN(ym); }) : null;
       const ds = [
-        { label: `${y}년`, data: cs.map(pick), borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 4 },
-        { label: `${y - 1}년`, data: ps.map(pick), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
+        { label: `${y}년`, data: csv, borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 4 },
+        { label: `${y - 1}년`, data: psv, borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
       ];
       const hasPlan = plan && plan.some(v => v !== null && v !== undefined);
       if (hasPlan) ds.push({ label: '계획', data: plan, borderColor: '#333', backgroundColor: '#333', borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0, stepped: 'middle' });
       document.getElementById('util-legend').innerHTML =
         `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
-        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}</span>`;
+        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 빼고 표시' : ''}</span>`;
       mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
-        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, cs.map(pick), ps.map(pick), 'util-note'); })() });
+        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' && Math.abs(c.raw) < 100 ? nf1.format(c.raw) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, csv, psv, 'util-note'); })() });
 
       // 4) 생산량
       mkChart('chart-prod', { type: 'bar',
