@@ -253,7 +253,7 @@
           (best.fix >= 30 ? ` 다만 고정분이 ${nf0.format(best.fix)}%라 생산이 늘면 원단위가 저절로 좋아지고 줄면 나빠집니다 → <b>원단위 자체를 목표로 하기보다 「예상 사용량 대비 절감률」(아래 ①②)로 목표를 세우고, 원단위는 결과로 같이 보고</b>하는 걸 권장합니다.` : ` 고정분이 ${nf0.format(best.fix)}%로 작아 원단위를 그대로 목표로 써도 무리가 적습니다.`));
         else concl.push(`<b>${un}</b>: r 0.6 넘게 같이 움직이는 지표가 없습니다 — 생산량보다 날씨·기본 부하 영향이 큰 편이라 원단위 KPI는 맞지 않고, 예상 사용량 대비 절감률로 보는 게 맞습니다.`);
       });
-      h += `<div class="kpi-con">${concl.join('<br>')}</div><div class="hint" style="margin-top:6px">· 원단위 흔들림 = 달마다 (사용량 ÷ 지표) 값의 표준편차 ÷ 평균 · 고정분 비율 = 사용량을 「고정 + 지표 × 계수」 직선으로 맞췄을 때 고정 몫 ÷ 평균 사용량 · 완제품 kg = 포장 EA × 제품 1개 중량 (특이사항 탭) · 달이 적어(6~9개월) 참고용입니다.</div>`;
+      h += `<div class="kpi-con">${concl.join('<br>')}</div><div class="hint" style="margin-top:6px">· 원단위 흔들림 = 달마다 (사용량 ÷ 지표) 값의 표준편차 ÷ 평균 · 고정분 비율 = 사용량을 「고정 + 지표 × 계수」 직선으로 맞췄을 때 고정 몫 ÷ 평균 사용량 · 완제품 kg = 포장 EA × 제품 1개 중량 (원인 찾기 → 생산 일별 요약과 비교 → 「제품 1개 중량」 표) · 달이 적어(6~9개월) 참고용입니다.</div>`;
       el.innerHTML = h;
     }
     function toggleExcl(uk, ym) {
@@ -787,7 +787,7 @@
         ' &nbsp; 비교: ' + [['prev', '전월'], ['ly', '작년 같은 달']].map(([k, n]) => `<button class="chip ${causeCmp === k ? 'on' : ''}" onclick="causeCmp='${k}';renderCause()">${n}</button>`).join('');
       const uk = causeUtil, U = UT.UTILS.find(u => u.k === uk);
       const D = decompose(ym, ym0, uk);
-      document.getElementById('cz-title').textContent = `${U.name} 사용량이 왜 ${D.diff > 0 ? '늘었나' : '줄었나'} — ${ymLabel(ym)} vs ${ymLabel(ym0)}`;
+      document.getElementById('cz-title').textContent = `① ${U.name} 사용량이 왜 ${D.diff > 0 ? '늘었나' : '줄었나'} — ${ymLabel(ym)} vs ${ymLabel(ym0)}`;
       const T = D.act !== undefined ? causeSentences(ym, ym0, uk, D) : null;
       const fx = v => `${v >= 0 ? '+' : '−'}${f0(Math.abs(v))}`;
       document.getElementById('cz-text').innerHTML = !T ? `<div class="empty">${esc(D.err || '자료가 없습니다.')}</div>` :
@@ -823,7 +823,9 @@
            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 4개 항목 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
         : `<div style="white-space:pre-wrap">${esc(cmt) || '<span class="hint">-</span>'}</div>`;
 
-      renderEquip();
+      // ② 어느 날이 튀었나: 고른 달·유틸리티의 일별 그래프 + 최근 이상일 목록
+      if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; anomMonth = ym; renderAnomaly();
+      dcYm = ym; dcU = uk; const dcf = document.getElementById('dc-fold'); if (dcf && dcf.open) renderDayCmp();
       renderCauseRef();
     }
     // ---- 설비 운전 이력 편집 ----
@@ -842,7 +844,7 @@
           <td class="l">${inp(i, 'name', x.name, '120px')}</td><td>${inp(i, 'kw', x.kw, '60px')}</td><td>${inp(i, 'hours', x.hours, '60px')}</td><td>${f0((Number(x.kw) || 0) * (Number(x.hours) || 0))} kWh</td>
           <td class="l">${inp(i, 'note', x.note, '100%')}</td>${ro ? '' : `<td><button class="chip" onclick="eqDel(${i})">삭제</button></td>`}</tr>`).join('') + '</table>' +
         (ro ? '' : `<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn secondary" onclick="eqAdd()">+ 이력 추가</button><button class="btn" onclick="eqSave()">저장</button><span class="hint" id="eq-st"></span></div>`) +
-        `<div class="hint" style="margin-top:6px">폐수동·공조냉동은 계량기로 실측하므로 원인분석에 <b>그 기간에 있었던 변동 내용만 코멘트</b>로 붙습니다. 생산동·기타(계량기 없는 곳)는 kW × 하루 가동시간이 전기 원인분석의 '부하 변동' 줄로 계산에 들어갑니다. 같은 구역·설비는 가장 최근 시작일 줄이 적용됩니다. 대당 kW 계산: 3상 380V × 전류(A) × 1.732 × 0.85 ÷ 1000.</div>`;
+        `<div class="hint" style="margin-top:6px">폐수동·공조냉동은 계량기로 실측하므로 원인 찾기에 <b>그 기간에 있었던 변동 내용만 코멘트</b>로 붙습니다. 생산동·기타(계량기 없는 곳)는 kW × 하루 가동시간이 전기 원인 찾기의 '부하 변동' 줄로 계산에 들어갑니다. 같은 구역·설비는 가장 최근 시작일 줄이 적용됩니다. 대당 kW 계산: 3상 380V × 전류(A) × 1.732 × 0.85 ÷ 1000.</div>`;
       el.querySelectorAll('.eqi').forEach(e => e.addEventListener('change', () => { const x = EQ_EDIT[e.dataset.i], k = e.dataset.k; x[k] = (k === 'kw' || k === 'hours') ? Number(e.value) : e.value; document.getElementById('eq-st').textContent = '저장하지 않음'; }));
     }
     let eqShowAll = false;
@@ -910,7 +912,7 @@
     // =====================================================================
     // 이상 사용 감지
     // =====================================================================
-    let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [];
+    let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [], anomMonth = null;
     function renderAnomaly() {
       setTimeout(renderProdCompare, 0);
       const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
@@ -924,10 +926,10 @@
       document.getElementById('anom-table').innerHTML = !list.length ? '<div class="empty">이 기간에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>' :
         `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th><th></th></tr>` +
         list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
-          return `<tr class="anom-row" onclick="anomUtil='${a.u}';anomFocus='${a.d}';renderAnomChart()"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
+          return `<tr class="anom-row" onclick="anomFocus='${a.d}';goCause('${a.d}','${a.u}')" title="이 날이 있는 달로 위 그래프·원인을 바꿉니다"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
             <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '생산일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
             <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td>
-            <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인분석 →</button></td></tr>`; }).join('') + '</table>';
+            <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인 찾기 →</button></td></tr>`; }).join('') + '</table>';
       bindAnomNotes('#anom-table');
       renderAnomChart();
     }
@@ -951,13 +953,16 @@
       });
     }
     // 이상감지 → 그 달 원인분석으로
-    function goCause(d, u) { causeYm = d.slice(0, 7); causeUtil = u; switchTab('cause'); }
+    function goCause(d, u) { causeYm = d.slice(0, 7); causeUtil = u; switchTab('cause'); setTimeout(() => { const e = document.getElementById('cz-day'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     let anomFocus = null;
     function renderAnomChart() {
       if (!window.Chart) return;
       const uk = anomUtil === 'all' ? 'elec' : anomUtil, U = UT.DAILY_UTILS.find(u => u.k === uk);
-      document.getElementById('anom-chart-title').textContent = `${U.name} 일 사용량 (${U.unit})`;
-      const to = UT.addDays(todayStr, -1), days = []; for (let i = anomDays - 1; i >= 0; i--) days.push(UT.addDays(to, -i));
+      const to = UT.addDays(todayStr, -1), days = [];
+      if (anomMonth) { for (let d = 1; d <= UT.daysIn(anomMonth); d++) { const ds = UT.dateStr(anomMonth, d); if (ds <= to) days.push(ds); } }
+      else for (let i = anomDays - 1; i >= 0; i--) days.push(UT.addDays(to, -i));
+      document.getElementById('anom-chart-title').textContent = `${U.name} 일 사용량 (${U.unit})${anomMonth ? ' · ' + ymLabel(anomMonth) : ''}`;
+      if (anomMonth && days.length && days[0] < UT.addDays(to, -anomDays + 1)) { const extra = UT.anomalies(DAILY, days[0], days[days.length - 1], { ratio: anomRatio }); extra.forEach(a => { if (!anomList.some(b => b.d === a.d && b.u === a.u)) anomList.push(a); }); }
       const vals = days.map(d => UT.dailyUsage(DAILY, d)[uk]);
       const base = days.map(d => UT.baseline(DAILY, d, uk));
       const flagged = new Set(anomList.filter(a => a.u === uk).map(a => a.d));
@@ -1729,14 +1734,14 @@
       if (!unYm) unYm = thisYm;
       const E = unEditId ? utNotes().find(n => n.id === unEditId) : null, ro = !isAdmin();
       const utilBox = (n) => UT.UTILS.map(u => `<label class="un-u"><input type="checkbox" class="un-ut" value="${u.k}" ${(n ? (n.utils || []) : UN_UTIL_DEF['전기']).includes(u.k) ? 'checked' : ''}> ${u.name}</label>`).join('');
-      let h = ro ? '' : `<div class="card"><h3>${E ? '특이사항 고치기' : '특이사항 적기'} <span class="sub">유틸리티·생산설비 — 원인분석·이상감지에서 그 기간 기록이 같이 나옵니다</span></h3>
+      let h = ro ? '' : `<div class="card"><h3>${E ? '특이사항 고치기' : '특이사항 적기'} <span class="sub">유틸리티·생산설비 — 원인 찾기 ③에 그 기간 기록이 같이 나옵니다</span></h3>
         <div class="un-form">
           <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : todayStr)}"></label>
           <label>분류 <select id="un-cat" onchange="unCatChange(this.value)">${UN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
           <label>설비·장소 <input id="un-eq" value="${esc(E ? E.eq || '' : '')}" placeholder="예: 레토르트 2호기, 1번 공기압축기"></label>
           <label class="wide">내용 <textarea id="un-text" rows="2" placeholder="예: 레토르트 2호기 스팀 트랩 누설, 야간 냉동기 수동 운전, 생산 연장(22시까지)">${esc(E ? E.text : '')}</textarea></label>
           <label class="wide">조치 <input id="un-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 트랩 교체, 타이머 재설정"></label>
-          <div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸의 원인분석·이상감지에 나옵니다</span></div>
+          <div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 찾기에 나옵니다</span></div>
           <div><button class="btn" onclick="unSave()">${E ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E ? ` <button class="btn secondary" onclick="unEditId=null;renderNotes()">취소</button>` : ''}</div>
         </div></div>`;
       const list = utNotes().filter(n => (!unYm || n.d.slice(0, 7) === unYm) && (!unCat || n.cat === unCat));
@@ -1751,10 +1756,11 @@
             ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='${n.id}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button></td>`}</tr>`).join('') + '</table></div>'
           : `<div class="empty">${unYm ? '이 달에 적은 특이사항이 없습니다.' : '적은 특이사항이 없습니다.'}</div>`) + '</div>';
       document.getElementById('notes-body').innerHTML = h;
-      if (unYm && dcYm !== unYm) dcYm = unYm; setTimeout(renderDayCmp, 0);
+      if (unYm) causeYm = unYm; else if (!causeYm) causeYm = lastCompleteYm(); // 부하 변동 「이 달만」도 같은 달
+      renderEquip();
     }
-    function unWriteFor(ds) { // 비교표에서 [+ 적기] → 위 입력칸에 날짜 넣고 내용으로 이동
-      if (unEditId) { unEditId = null; renderNotes(); }
+    function unWriteFor(ds) { // 비교표에서 [+ 적기] → 기록 탭 입력칸에 날짜 넣고 내용으로 이동
+      unEditId = null; unYm = ds.slice(0, 7); switchTab('notes');
       const d = document.getElementById('un-d'), t = document.getElementById('un-text'); if (!d || !t) return;
       d.value = ds; document.querySelector('#notes-body .card').scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => t.focus(), 300);
     }
@@ -1781,7 +1787,7 @@
       const a = ym0 < ym ? ym0 : ym, b = ym0 < ym ? ym : ym0;
       const L = notesIn(UT.dateStr(a, 1), UT.dateStr(b, UT.daysIn(b)), uk);
       const U = UT.UTILS.find(u => u.k === uk);
-      return `<h3>이 기간 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 · [특이사항] 탭에서 적음</span></h3>` +
+      return `<h3>③ 그 기간에 무슨 일이 있었나 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">기록</a> 탭에서 적음</span></h3>` +
         (L.length ? `<ul class="un-list">${L.map(n => `<li>${unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
     }
     function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
@@ -1851,7 +1857,7 @@
       const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p = PRODD[ds] || null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); }
       const uv = v => v === null || v === undefined || isNaN(v) ? '<span class="hint">-</span>' : (Math.abs(v) >= 100 ? f0(v) : nf1.format(v));
       const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
-      let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);if(unYm){unYm=dcYm;renderNotes()}else renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);if(unYm){unYm=dcYm;renderNotes()}else renderDayCmp()">▶</button></div>
+      let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);renderDayCmp()">▶</button></div>
         <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
         <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
@@ -1985,7 +1991,7 @@
         <div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${FACS.map(f => `<th>${f[1].replace(/ \(.*\)/, '')}</th>`).join('')}</tr>` +
         PE_COMP.map(([k, n]) => `<tr><th>${n}</th>${FACS.map(([fk]) => { const c = r2(rows.map(r => cv(r, k)), rows.map(r => fv(r, fk)));
           return c ? `<td style="background:${bg(c.r)};cursor:pointer" title="${n} ↔ ${PE_FAC.find(x => x[0] === fk)[1]} · ${c.n}개월" onclick="peComp='${k}';peFac='${fk}';peStack=false;renderPerElec()"><b>${c.r.toFixed(2)}</b></td>` : '<td class="hint">-</td>'; }).join('')}</tr>`).join('') + '</table></div>';
-      h += `<div class="hint" style="margin-top:4px">· ${PU.note} · 포장 생산량·작업시간은 생산 대시보드 일별 실적 합, 완제품 중량 = 포장 EA × 제품 1개 중량 (특이사항 탭 「제품 1개 중량」 표 · 그 달 EA의 90% 이상 중량을 알아야 표시), 생산일수는 월간입력(생산팀 값)·없으면 보일러 가스로 추정 · 달이 적을 때(4~6개월) r은 참고만 하세요.</div>`;
+      h += `<div class="hint" style="margin-top:4px">· ${PU.note} · 포장 생산량·작업시간은 생산 대시보드 일별 실적 합, 완제품 중량 = 포장 EA × 제품 1개 중량 (원인 찾기 → 생산 일별 요약과 비교 → 「제품 1개 중량」 표), 생산일수는 월간입력(생산팀 값)·없으면 보일러 가스로 추정 · 달이 적을 때(4~6개월) r은 참고만 하세요.</div>`;
       if (peUtil === 'elec' || peUtil === 'gas') h += `<div class="story" style="margin-top:10px">2단계 → 3단계: 위 표에서 ${peUtil === 'elec' ? '생산동' : '보일러'}과 같이 움직이는(r이 1에 가까운) 지표를 아래에서 고르면 <a href="#" onclick="switchTab('target');return false">목표 탭</a>의 예상 사용량 식이 그 지표로 바뀝니다. 서로 r 0.8 넘게 같이 움직이는 지표 둘은 같이 고르지 마세요.</div>` + pickBoxHtml(peUtil, 'period', PU.facs);
       // 표
       h += `<div class="tbl-wrap" style="margin-top:8px"><table class="t"><tr><th>월</th>${PE_COMP.map(c => `<th>${c[1]}<br><span class="hint">${cu}</span></th>`).join('')}<th>${F[1]}<br><span class="hint">${fu}</span></th>${F[0] === 'prod' || F[0] === 'ea' || F[0] === 'pkg' ? `<th>${PE_COMP[0][1]} / ${F[0] === 'prod' ? '원육 kg' : F[0] === 'pkg' ? '완제품 kg' : '1,000EA'}</th>` : ''}${F[0] === 'pkg' ? '<th>완제품 ÷ 원육<br><span class="hint">수율</span></th>' : ''}</tr>` +
