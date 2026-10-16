@@ -4,8 +4,25 @@
     let YEARDATA = {};   // { 2027: { targets: {...}, comments: { '2027-01': '...' } } }
     const yd = y => YEARDATA[y] || {};
     const tgt = y => yd(y).targets || {};
+    // 3방향 합치기: 열었을 때 값(o) · 내가 고친 값(m) · 지금 DB 값(t) → 내가 바꾼 부분만 덮고 나머지는 남이 바꾼 최신 값 유지
+    const isObj3 = v => v && typeof v === 'object' && !Array.isArray(v);
+    const eq3 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    function merge3(o, m, t) {
+      if (eq3(m, o)) return t === undefined ? m : t; // 내가 안 바꿈 → 최신 값
+      if (isObj3(m) && isObj3(t)) { const oo = isObj3(o) ? o : {}, out = { ...t };
+        new Set([...Object.keys(m), ...Object.keys(oo)]).forEach(k => {
+          if (!(k in m)) { if (k in oo && eq3(oo[k], t[k])) delete out[k]; return; } // 내가 지운 칸
+          if (eq3(m[k], oo[k])) return; out[k] = merge3(oo[k], m[k], t[k]); });
+        return out; }
+      if (Array.isArray(m) && Array.isArray(t) && Array.isArray(o) && m.length === t.length && m.length === o.length) return m.map((x, i) => merge3(o[i], x, t[i]));
+      return m;
+    }
+    async function freshYear(y) { // 저장 직전에 DB의 최신 연도 자료를 다시 읽음 (여럿이 동시에 고쳐도 덮어쓰지 않게)
+      const { data, error } = await sb.from('ut_monthly').select('data').eq('ym', `${y}-00`).maybeSingle(); if (error) throw error;
+      YEARDATA[y] = (data && data.data) || {}; return YEARDATA[y];
+    }
     async function saveYear(y, patch) {
-      const data = { ...yd(y), ...patch };
+      const data = { ...(await freshYear(y)), ...patch };
       const { error } = await sb.from('ut_monthly').upsert({ ym: `${y}-00`, data }, { onConflict: 'ym' });
       if (error) throw error;
       YEARDATA[y] = data;
@@ -67,7 +84,7 @@
     //   예상 사용량 = 날마다 기본량 × 날수 + 생산 1kg당 × 생산량 + 난방/냉방도일 영향
     //   목표 사용량 = 예상 사용량 × (1 − 절감률)
     // =====================================================================
-    let targetY = null, targetDraft = {}, targetDirty = false, targetUtil = 'elec';
+    let targetY = null, targetDraft = {}, targetDirty = false, targetUtil = 'elec', targetOrig = null;
     const QN = ['1분기', '2분기', '3분기', '4분기'];
     function shiftTargetYear(d) {
       if (targetDirty && !confirm('저장하지 않은 목표가 있습니다. 이동할까요?')) return;
@@ -200,13 +217,15 @@
     }
     async function pickToggle(uk, f, ctx) {
       if (ctx === 'target') { const cur = pickOf(targetDraft, uk) || []; targetDraft.pick = Object.assign({}, targetDraft.pick || {}); targetDraft.pick[uk] = cur.includes(f) ? cur.filter(x => x !== f) : [...cur, f]; targetDirty = true; renderTargets(targetDraft); return; }
-      const y = pickYear(), t = JSON.parse(JSON.stringify(tgt(y))), cur = pickOf(t, uk) || [];
+      const y = pickYear(); try { await freshYear(y); } catch (e) { alert('불러오기 실패: ' + errMsg(e)); return; }
+      const t = JSON.parse(JSON.stringify(tgt(y))), cur = pickOf(t, uk) || [];
       t.pick = Object.assign({}, t.pick || {}); t.pick[uk] = cur.includes(f) ? cur.filter(x => x !== f) : [...cur, f];
       try { await saveYear(y, { targets: t }); resetPickCache(); renderPerElec(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     async function pickClear(uk, ctx) {
       if (ctx === 'target') { targetDraft.pick = Object.assign({}, targetDraft.pick || {}); delete targetDraft.pick[uk]; targetDirty = true; renderTargets(targetDraft); return; }
-      const y = pickYear(), t = JSON.parse(JSON.stringify(tgt(y))); t.pick = Object.assign({}, t.pick || {}); delete t.pick[uk];
+      const y = pickYear(); try { await freshYear(y); } catch (e) { alert('불러오기 실패: ' + errMsg(e)); return; }
+      const t = JSON.parse(JSON.stringify(tgt(y))); t.pick = Object.assign({}, t.pick || {}); delete t.pick[uk];
       try { await saveYear(y, { targets: t }); resetPickCache(); renderPerElec(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
 
@@ -475,6 +494,7 @@
       try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
       document.getElementById('target-year').textContent = `${targetY}년`;
       targetDraft = keepDraft || JSON.parse(JSON.stringify(tgt(targetY))); targetDirty = !!keepDraft;
+      if (!keepDraft || !targetOrig) targetOrig = JSON.parse(JSON.stringify(tgt(targetY)));
       targetDraft.rate = targetDraft.rate || {};
       if (!PRODD && ['elec', 'gas'].some(uk => (pickOf(targetDraft, uk) || []).some(f => PICK_PROD[f]))) { try { await loadProdDaily(); } catch (e) { } }
       const ro = !isAdmin(); document.getElementById('target-save').hidden = ro; document.getElementById('target-fill').hidden = true;
@@ -575,8 +595,9 @@
     function fillTargets() { }
     async function saveTargets() {
       try {
-        const data = JSON.parse(JSON.stringify(targetDraft));
-        await saveYear(targetY, { targets: data });
+        const latest = (await freshYear(targetY)).targets || {};
+        const data = merge3(targetOrig || {}, JSON.parse(JSON.stringify(targetDraft)), latest); // 내가 바꾼 칸만 덮음 (그 사이 다른 사람이 고른 지표 등은 유지)
+        await saveYear(targetY, { targets: data }); targetOrig = null;
         targetDirty = false; document.getElementById('target-note').textContent = '저장했습니다.';
         renderTargets();
       } catch (e) { alert('저장 실패: ' + errMsg(e)); }

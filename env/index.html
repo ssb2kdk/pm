@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>환경일지</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
   <script src="../config.js"></script>
   <script src="../common.js"></script>
   <style>
@@ -726,10 +726,23 @@
     const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? undefined : a[k], o);
     const setP = (o, p, v) => { const ks = p.split('.'); let a = o; ks.slice(0, -1).forEach(k => { a[k] = a[k] || {}; a = a[k]; }); a[ks[ks.length - 1]] = v; };
     const CHEM_KEYS = ['anion', 'cation', 'almin', 'alum', 'defoam', 'etc'];
-    let EDIT = null, setDirty = false;
+    // 3방향 합치기: 열었을 때 값(o) · 내가 고친 값(m) · 지금 DB 값(t) → 내가 바꾼 부분만 덮고 나머지는 남이 바꾼 최신 값 유지
+    const isObj3 = v => v && typeof v === 'object' && !Array.isArray(v);
+    const eq3 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    function merge3(o, m, t) {
+      if (eq3(m, o)) return t === undefined ? m : t; // 내가 안 바꿈 → 최신 값
+      if (isObj3(m) && isObj3(t)) { const oo = isObj3(o) ? o : {}, out = { ...t };
+        new Set([...Object.keys(m), ...Object.keys(oo)]).forEach(k => {
+          if (!(k in m)) { if (k in oo && eq3(oo[k], t[k])) delete out[k]; return; } // 내가 지운 칸
+          if (eq3(m[k], oo[k])) return; out[k] = merge3(oo[k], m[k], t[k]); });
+        return out; }
+      if (Array.isArray(m) && Array.isArray(t) && Array.isArray(o) && m.length === t.length && m.length === o.length) return m.map((x, i) => merge3(o[i], x, t[i]));
+      return m;
+    }
+    let EDIT = null, setDirty = false, SET_ORIG = null;
     async function renderSettings(keep) {
       if (!keep || !EDIT) {
-        EDIT = JSON.parse(JSON.stringify(SET)); setDirty = false;
+        EDIT = JSON.parse(JSON.stringify(SET)); setDirty = false; SET_ORIG = JSON.parse(JSON.stringify(SET));
         EDIT.ww = EDIT.ww || {}; EDIT.air = EDIT.air || {};
         EDIT.ww.quality = EDIT.ww.quality || []; while (EDIT.ww.quality.length < 2) EDIT.ww.quality.push({});
         EDIT.air.outlets = EDIT.air.outlets || []; while (EDIT.air.outlets.length < 2) EDIT.air.outlets.push({});
@@ -775,11 +788,15 @@
     }
     function changeSetView() { renderSettings(true); } // 고친 내용은 유지한 채 양식·날짜만 바꿈
     async function saveSettings() {
-      const v = JSON.parse(JSON.stringify(EDIT));
-      v.chems.forEach((c, i) => c.key = CHEM_KEYS[i]);
+      const mine = JSON.parse(JSON.stringify(EDIT));
+      mine.chems.forEach((c, i) => c.key = CHEM_KEYS[i]);
+      // 저장 직전 최신 설정을 다시 읽어, 내가 고친 칸만 덮음 (그 사이 바뀐 약품 단가 등은 유지)
+      const cur = await sb.from('env_settings').select('value').eq('key', 'env').maybeSingle(); if (cur.error) return alert('저장 실패: ' + errMsg(cur.error));
+      const latest = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SET)), (cur.data && cur.data.value) || {});
+      const v = merge3(SET_ORIG || latest, mine, latest);
       const { error } = await sb.from('env_settings').upsert({ key: 'env', value: v }, { onConflict: 'key' });
       if (error) return alert('저장 실패: ' + errMsg(error));
-      SET = v; calcBalances(); setDirty = false;
+      SET = v; calcBalances(); setDirty = false; SET_ORIG = JSON.parse(JSON.stringify(v)); EDIT = JSON.parse(JSON.stringify(v));
       document.getElementById('set-save').classList.remove('has');
       alert('설정을 저장했습니다.');
     }

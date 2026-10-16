@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>순수본 2공장 시설관리시스템</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
   <script src="config.js"></script>
   <script src="common.js"></script>
   <style>
@@ -57,6 +57,16 @@
         <div class="users-wrap"><div id="user-list"><div class="loading">불러오는 중...</div></div></div>
         <div class="hint">일반: 조회·완료 처리·인쇄 / 관리자: 항목 관리·사용자 관리·설정까지. 사용 중지된 계정은 로그인해도 아무 데이터도 볼 수 없고, 기록은 그대로 남습니다.</div>
       </div>
+      <div class="admin-section" id="backup-section" hidden>
+        <h3>💾 전체 데이터 백업 <span style="font-size:12px;color:#888;font-weight:normal;">(한 달에 한 번 받아 두기 권장)</span></h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn" onclick="backupAll('json')">⬇ 복구용 파일 받기 (.json)</button>
+          <button class="btn secondary" onclick="backupAll('xlsx')">⬇ 엑셀로 받기 (보기용)</button>
+          <label class="hint"><input type="checkbox" id="bk-audit"> 변경 기록(audit_log)도 포함</label>
+          <span class="hint" id="bk-status"></span>
+        </div>
+        <div class="hint">· <b>복구용 .json</b>: 모든 표를 그대로 담은 파일 — DB에 문제가 생기면 이 파일로 되살립니다. 회사 PC 안전한 폴더에 날짜별로 보관하세요.<br>· <b>엑셀</b>: 표마다 시트 하나 (사람이 보기용, 아주 긴 칸은 잘림).<br>· 사진(예방정비·후크메타 사진 보관함)은 포함되지 않습니다.</div>
+      </div>
     </div>
   </div>
 
@@ -94,7 +104,7 @@
         sb = P.sb; me = P.me;
         document.getElementById('welcome').textContent = `${me.name}님, 안녕하세요 👋`;
         renderApps();
-        if (P.isAdmin()) { document.getElementById('user-section').hidden = false; loadUsers(); }
+        if (P.isAdmin()) { document.getElementById('user-section').hidden = false; document.getElementById('backup-section').hidden = false; loadUsers(); }
       }
     });
 
@@ -117,6 +127,37 @@
         <a class="link-card" href="${esc(l.url)}" target="_blank" rel="noopener">
           <span class="i">${l.icon || '🔗'}</span><span><div class="n">${esc(l.name)}</div><div class="d">${esc(l.desc || '')}</div></span><span class="ext">↗</span>
         </a>`).join('');
+    }
+
+    // ---------------- 전체 데이터 백업 (관리자) ----------------
+    const BK_TABLES = ['profiles', 'meter_fields', 'meter_daily', 'ut_monthly', 'ut_daily', 'ww_daily', 'air_daily', 'env_settings', 'insp_items', 'insp_daily',
+      'pm_items', 'pm_logs', 'pm_settings', 'hook_panels', 'hook_breakers', 'hook_readings', 'hook_photos', 'ai_log'];
+    const bkSt = t => { document.getElementById('bk-status').textContent = t; };
+    function loadScript(src) { return new Promise((ok, no) => { const x = document.createElement('script'); x.src = src; x.onload = ok; x.onerror = () => no(new Error('불러오기 실패')); document.head.appendChild(x); }); }
+    async function bkTable(t) { const out = []; for (let from = 0; ; from += 1000) { const { data, error } = await sb.from(t).select('*').range(from, from + 999); if (error) throw error; out.push(...data); if (data.length < 1000) return out; } }
+    function bkSave(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
+    async function backupAll(kind) {
+      const tables = BK_TABLES.concat(document.getElementById('bk-audit').checked ? ['audit_log'] : []), data = {}, skipped = [];
+      const now = new Date(), stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      try {
+        for (const [i, t] of tables.entries()) { bkSt(`읽는 중… ${t} (${i + 1}/${tables.length})`);
+          try { data[t] = await bkTable(t); } catch (e) { skipped.push(`${t}(${/does not exist|schema cache|relation|no table/i.test(e.message || '') ? '표 없음' : '읽기 실패'})`); } }
+        const count = Object.entries(data).map(([t, r]) => `${t} ${r.length}`).join(', ');
+        if (kind === 'json') {
+          bkSave(new Blob([JSON.stringify({ app: '순수본 2공장 시설관리시스템', backup_at: now.toISOString(), by: me.username, tables: data }, null, 1)], { type: 'application/json' }), `2공장_백업_${stamp}.json`);
+        } else {
+          if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+          const wb = XLSX.utils.book_new(); let cut = 0;
+          Object.entries(data).forEach(([t, rows]) => {
+            const cols = [...new Set(rows.flatMap(r => Object.keys(r)))];
+            const aoa = [cols, ...rows.map(r => cols.map(c => { let v = r[c]; if (v !== null && typeof v === 'object') v = JSON.stringify(v); if (typeof v === 'string' && v.length > 32000) { v = v.slice(0, 32000) + ' …(잘림 — .json 백업에 전체 있음)'; cut++; } return v ?? null; }))];
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), t.slice(0, 31));
+          });
+          bkSave(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `2공장_백업_${stamp}.xlsx`);
+          if (cut) skipped.push(`긴 칸 ${cut}개 잘림`);
+        }
+        bkSt(`받았습니다 · ${count}${skipped.length ? ' · 빠진 것: ' + skipped.join(', ') : ''}`);
+      } catch (e) { bkSt(''); alert('백업 실패: ' + (e.message || e)); }
     }
 
     // ---------------- 사용자 관리 (관리자) ----------------
