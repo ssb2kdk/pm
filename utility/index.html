@@ -4261,7 +4261,7 @@
         `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
         (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 빼고 표시' : ''}</span>`;
       mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
-        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' && Math.abs(c.raw) < 100 ? nf1.format(c.raw) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, csv, psv, 'util-note'); })() });
+        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' ? c.raw.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, csv, psv, 'util-note'); })() });
 
       // 4) 생산량
       mkChart('chart-prod', { type: 'bar',
