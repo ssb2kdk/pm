@@ -1009,7 +1009,7 @@
     function wqBillCard() {
       const B = WQ.billc || {}, yms = Object.keys(B).sort().reverse(), canEdit = isAdmin() || isPartner();
       const f = (v, d = 3) => v === null || v === undefined || v === '' ? '<span class="hint">-</span>' : nf(Number(v), d);
-      let h = `<div class="card"><div class="toolbar"><b>폐수 고지서 배출농도 (폐수발생량 산출내역)</b><span class="hint">고지서에 적용된 농도 ↔ 같은 달 수질측정기록부 방류수 실측</span></div>`;
+      let h = `<div class="card"><div class="toolbar"><b>폐수 고지서 배출농도 (폐수발생량 산출내역)</b> ${Portal.tip('wqmin')}<span class="hint">고지서에 적용된 농도 ↔ 같은 달 수질측정기록부 방류수 실측</span></div>`;
       if (yms.length) {
         h += `<div class="tbl-x"><table class="wq"><tr><th rowspan="2">배출월</th><th rowspan="2">상수<br>사용량</th><th rowspan="2">오수<br>발생량</th><th rowspan="2">폐수<br>발생량</th>${BC_K.map(([, n]) => `<th colspan="2">${n} (mg/L)</th>`).join('')}${canEdit ? '<th rowspan="2"></th>' : ''}</tr>
           <tr>${BC_K.map(() => '<th class="g2">고지</th><th class="g1">실측</th>').join('')}</tr>` +

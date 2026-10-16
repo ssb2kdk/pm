@@ -12,6 +12,17 @@
 
   // ---------------- 공통 스타일 ----------------
   const css = `
+    .pt-tip { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #fff3c4; color: #8a6100; border: 1px solid #e6c65c; font-size: 11px; font-weight: 700; cursor: pointer; margin: 0 3px; vertical-align: 1px; line-height: 1; user-select: none; }
+    .pt-tip:hover, .pt-tip:focus-visible { background: #ffe58a; outline: none; }
+    #pt-tipbox { position: fixed; z-index: 3000; background: #fffbe6; border: 1px solid #e6c65c; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 13px; line-height: 1.65; color: #333; max-height: 70vh; overflow: auto; }
+    #pt-tipbox .h { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 4px 12px; border-bottom: 1px dashed #ecd88f; position: sticky; top: 0; background: #fffbe6; }
+    #pt-tipbox .h button { border: none; background: none; font-size: 18px; cursor: pointer; color: #8a6100; line-height: 1; }
+    #pt-tipbox .b, .pt-tipd .b { padding: 8px 12px 10px; font-weight: normal; text-align: left; white-space: normal; }
+    #pt-tipbox .f, .pt-tipd .f { font-family: Consolas, monospace; background: #fff; border: 1px solid #f0e2a8; border-radius: 4px; padding: 5px 8px; margin: 6px 0; }
+    #pt-tipbox .ex, .pt-tipd .ex { color: #6b5a1e; background: #fff7d1; border-radius: 4px; padding: 4px 8px; margin: 6px 0; }
+    #pt-tipbox code, .pt-tipd code { background: #fff; padding: 0 3px; border-radius: 3px; }
+    .pt-tipd { border-bottom: 1px solid #eee; padding: 6px 0; } .pt-tipd summary { cursor: pointer; } .pt-tipd .b { background: #fffbe6; border-radius: 6px; margin-top: 6px; font-size: 13px; line-height: 1.65; }
+
     * { box-sizing: border-box; }
     body { font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; margin: 0; background: #f4f6f8; color: #222; font-size: 14px; }
     [hidden] { display: none !important; }
@@ -255,6 +266,106 @@
     });
   }
   Portal.renderBar = renderBar;
+
+  // =====================================================================
+  // ⓘ 메모 (엑셀 메모처럼): 용어·계산식 설명 — 누르면 열리고, 다시 누르거나 바깥을 누르면 닫힘
+  //  화면에서는 Portal.tip('키') 로 ⓘ 를 붙임 · 전체 목록은 Portal.tipIndex()
+  // =====================================================================
+  const TIPS = {
+    r: { t: '상관계수 r (피어슨)', b: `두 값이 얼마나 <b>같이 움직이는지</b>를 −1 ~ 1로 나타낸 숫자. 엑셀 <code>=CORREL(사용량, 인자)</code>와 같은 값.
+      <div class="f">r = Σ(x − x̄)(y − ȳ) ÷ √[ Σ(x − x̄)² × Σ(y − ȳ)² ]</div>
+      · x = 그 달 인자(예: 원육 투입량), y = 그 달 사용량(예: 생산동 kWh), x̄·ȳ = 기간 평균<br>
+      · 분자: 둘 다 평균보다 많거나 둘 다 적은 달은 +, 한쪽만 많은 달은 − 로 쌓임 · 분모: 각자 흔들린 크기로 나눠 단위를 없앰
+      <div class="ex">예) 원육 30·40·50톤, 생산동 7·8·9만kWh → 평균 40, 8 → 곱의 합 20 ÷ √(200×2)=20 → <b>r = 1.00</b></div>
+      · <b>1에 가까움</b> 같이 늘고 줄어듦 · <b>0 근처</b> 관계 없음 · <b>마이너스</b> 반대로 움직임 (예: 쉬는 날이 많은 달은 사용량이 적음 → 쉬는 날 수와 r이 −)<br>
+      · 0.7 이상 강함 · 0.4~0.7 보통 · 0.2~0.4 약함 · r²(= r×r)은 사용량 차이 중 그 인자로 설명되는 비율 (r 0.8 → 64%)<br>
+      · 구성별 비교: 고른 기간의 <b>마감된 달</b>만, 둘 다 값이 있는 달만, 4개월 미만이면 「-」 · 하루당 보기를 켜면 둘 다 날수로 나눈 뒤 계산<br>
+      · 주의: 달이 적으면(6~9개월) 한두 달에 크게 흔들림 · 원육·포장·생산일처럼 인자끼리도 같이 움직여서 r이 높아도 진짜 원인이라는 보장은 없음` },
+    unit: { t: '원단위 · 일평균', b: `<b>원단위</b> = 사용량 ÷ 생산 지표. 예: 전기 원단위 = 전기 kWh ÷ 원육 투입 kg (kWh/kg). 생산이 많고 적음을 빼고 효율만 비교하려는 값.<br>
+      · 구성별 비교의 원단위 선 = 막대(고른 구성 사용량) ÷ 고른 인자, 한 달 전체 값끼리 나눔 (포장 EA는 1,000EA당) · 평균기온은 0·음수가 있어 나누지 않음<br>
+      <b>일평균</b> = 월 사용량 ÷ 그 달 날수 (2월처럼 날수가 다른 달끼리 공정하게 비교) · 용수는 고지서 검침 기간이 전월 12일~당월 11일이라 전월 날수로 나눔 · 진행 중인 달은 뺌` },
+    persrc: { t: '사용량 출처 · 같은 요일 비교', b: `· <b>월별</b>: 고지서 값. 고지서를 아직 안 넣은 달은 설비검침 일일값 합(「일일합산」 표시)<br>
+      · <b>일별·주별</b>: 전기는 파워플래너 일별값, 나머지는 아침 8시 검침 차이(그날 08시 → 다음날 08시)<br>
+      · <b>전년 동일·전주 비교</b>: 날짜가 아니라 <b>같은 요일</b>끼리 맞춤 — 전년은 364일 전(52주 전), 4주 전은 28일 전. 평일·주말 사용량이 크게 달라서 요일을 맞춰야 공정함<br>
+      · 「생산 없음」: 생산 대시보드 일별 실적에 원육 투입이 없는 날 (자료가 있는 기간 안에서만 표시)` },
+    degday: { t: '난방도일 · 냉방도일 · 더운 정도', b: `기온이 사용량에 주는 영향을 한 달 숫자 하나로 만든 것 (하루 평균기온 = 설비검침 최저·최고 기온의 평균).<br>
+      · <b>난방도일(HDD)</b> = Σ max(0, 18℃ − 하루 평균기온) — 18℃보다 추운 만큼의 한 달 합<br>
+      · <b>냉방도일(CDD)</b> = Σ max(0, 하루 평균기온 − 24℃) — 24℃보다 더운 만큼의 합<br>
+      · 18·24℃는 건물 냉난방에서 쓰는 일반 기준. 우리 공장은 냉동·냉장·자숙실 냉방처럼 훨씬 낮은 기온부터 전기를 쓰기 시작해서, <b>더운 정도</b>는 기준을 5~22℃ 중 <b>실제 사용량에 가장 잘 맞는 온도</b>로 찾아 씀 (지금 계산으로는 5℃)
+      <div class="ex">예) 하루 평균 25℃ 날 → 더운 정도(5℃) 20, 냉방도일(24℃) 1</div>
+      · 가스는 난방용이 없어서(스팀은 자숙탱크·레토르트만) 난방도일이 오차를 줄일 때만 씀 · 현장 온수는 전기보일러라 「추운 정도」는 전기 식에 들어감` },
+    baseline: { t: '예상 사용량 기준선', b: `「<b>원육 투입량·날씨·날수가 이렇다면 원래 이만큼 쓴다</b>」를 계산한 값. 실제 사용량이 이보다 적으면 절감, 많으면 초과.<br>
+      · 기준 달(보통 전년)의 실적으로 식을 한 번 만들어 그 해 내내 <b>고정</b>해서 씀 — 연도를 바꿔 봐도 기준 달이 같으면 식은 그대로<br>
+      · 전기: 생산동(= 전체 − 폐수동 − 공조냉동 − 부하 변동)만 식으로 맞추고, 폐수동·공조냉동은 계량기 실측을 그대로 더함 (26년 1~2월은 계량기 분리 전이라 자동 제외)<br>
+      · 가스: 보일러만 식으로, 식당 가스는 실측 그대로 더함<br>
+      · <b>맞는 정도</b>(R²) 100%에 가까울수록, <b>월 평균 오차</b> 작을수록 믿을 만함 (오차 = 달마다 |식 − 실제| ÷ 실제의 평균)` },
+    ols: { t: '계수 계산 (최소제곱법)', b: `식의 숫자(계수)는 <b>모든 기준 달에서 「식으로 계산한 값 − 실제」의 제곱 합이 가장 작아지는 값</b>으로 찾음. 엑셀 추세선·<code>LINEST</code>와 같은 방법.
+      <div class="f">생산동 = A × 달력 날수 + C × 원육 kg (+ W × 더운 정도)</div>
+      · 예) A = 1,789 → 생산과 관계없이 하루에 기본으로 쓰는 생산동 전기(조명·사무실·공기압축기·계량기 없는 설비) · C = 0.437 → 원육 1kg 더 넣을 때마다 0.437kWh 더 씀<br>
+      · 계수가 마이너스로 나오는 조합은 「늘수록 덜 쓴다」는 말이 안 되는 식이라 쓰지 않음 · 인자를 더 넣어 오차가 확실히(0.3~0.5%p 넘게) 줄 때만 넣음<br>
+      · 각 달에 어떻게 맞았는지는 ① 아래 「계수가 어떻게 나왔는지 보기」 표에서 확인` },
+    rate: { t: '절감률 · 매달 목표', b: `<b>목표 사용량 = 그 달 예상 사용량 × (1 − 절감률)</b>.<br>
+      · 식(기준선)은 고정이지만, 매달 <b>그 달 실제 원육 투입량·날씨</b>를 넣어 예상 사용량을 다시 계산하므로 달마다 목표 숫자는 달라짐 → 생산이 많은 달은 목표도 큼<br>
+      · 평가: 예상보다 절감률 이상 덜 썼으면 달성 · 분기·연간은 달별 예상·실제를 더해서 비교<br>
+      · ④ 연간 계획표는 원육 투입 「계획」과 평년 기온을 넣어 미리 계산한 예산용 숫자` },
+    kpi: { t: 'KPI 지표 검토 용어', b: `「사용량 ÷ 무엇」을 KPI로 쓸지 고를 때 보는 세 가지.<br>
+      · <b>같이 움직임 (r)</b>: 사용량과 그 지표의 상관계수 — 높을수록 좋음<br>
+      · <b>원단위 흔들림</b> = 달마다 (사용량 ÷ 지표)의 표준편차 ÷ 평균 — 작을수록 매달 일정한 지표<br>
+      · <b>고정분 비율</b> = 사용량을 「고정 + 지표 × 계수」 직선으로 맞췄을 때 고정 몫 ÷ 평균 사용량 — 크면 생산이 늘기만 해도 원단위가 저절로 좋아짐 (효율과 관계없이)<br>
+      · <b>생산 많을수록 원단위 r</b>: 마이너스로 크면 위와 같은 이유로 원단위 KPI가 생산량에 끌려다님 → 이럴 땐 원단위보다 「예상 사용량 대비 절감률」로 목표를 잡는 게 공정` },
+    pick: { t: '목표에 쓸 지표 고르기 경고', b: `고른 지표로 식을 만들어 보고 아래 경우 경고함.<br>
+      · <b>계수 마이너스</b>: 그 지표가 늘수록 덜 쓴다는 식 → 목표에 쓰지 않고 자동 식으로 계산 (그 지표를 빼면 적용)<br>
+      · <b>지표끼리 r 0.8 이상</b>: 둘이 거의 똑같이 움직여서 어느 쪽 몫인지 갈리지 않음 → 하나만<br>
+      · <b>지표가 너무 많음</b>: 기준 달 수 ÷ 3개 넘게 넣으면 우연히 잘 맞을 수 있음<br>
+      · 자동 식과 「월 평균 오차」를 나란히 보여 주니 더 잘 맞는 쪽을 고르면 됨` },
+    decomp: { t: '원인 나누기 · 운전·관리 차이', b: `비교 달 대비 늘어난 양을 몫별로 나눔.<br>
+      · <b>실측</b>(폐수동·공조냉동·식당 가스): 계량기 차이 그대로<br>
+      · <b>원육·날수·생산일·날씨</b>: 두 달의 차이 × 예상 사용량 식의 계수 (예: 원육 +14,651kg × 0.437 = +6,396kWh)<br>
+      · <b>이상 사용일</b>: 평소보다 더 쓴 날의 초과분 합의 차이<br>
+      · <b>운전·관리 차이</b> = 전체 차이 − 위 몫을 다 뺀 나머지 → 생산·날씨로 설명 안 되는 진짜 절감·낭비. 크면 그 기간 특이사항·설비 운전을 확인` },
+    anom: { t: '이상 사용일 기준', b: `· <b>평소</b> = 최근 4주 동안 <b>같은 종류 날</b>(생산일끼리, 쉬는 날끼리)의 중앙값. 생산일·쉬는 날은 전기 사용량으로 자동 구분 (주말 특근도 생산일로 봄)<br>
+      · 그날 사용량이 평소의 <b>1.4배</b>(민감도 보통, 높음 1.3·낮음 1.5)를 넘으면 빨간 막대<br>
+      · 「지침 오류」: 검침 지침이 전날보다 작아지는 등 숫자가 맞지 않는 날<br>
+      · 중앙값을 쓰는 이유: 하루 튄 날이 평소 값을 끌어올리지 않게` },
+    pkg: { t: '완제품 중량', b: `<b>완제품 kg = 포장 EA × 제품 1개 중량</b>.<br>
+      · 1개 중량: 직접 넣은 g이 있으면 그 값, 없으면 제품명에 적힌 중량(130g, 1kg, 70g×3 → 210g)을 자동으로 읽음 · 「3입 120g」처럼 애매한 건 곱하지 않음<br>
+      · 그날(그 달) 포장 EA의 90% 이상 중량을 알아야 값이 나옴 · 수율 = 완제품 ÷ 원육` },
+    wqmin: { t: '폐수 고지 농도 최소값', b: `익산시는 별도로 한 달에 3번쯤 채수해서 평균을 냄. <b>BOD 100 · TOC 80 · SS 100 mg/L</b>보다 낮게 나와도 이 값으로 올려서 부과함 (「최소」 표시).` }
+  };
+  function tip(k, label) { return TIPS[k] ? `<span class="pt-tip" tabindex="0" role="button" data-tip="${k}" title="눌러서 설명 보기 — ${esc(TIPS[k].t)}">${label || 'ⓘ'}</span>` : ''; }
+  let tipOpen = null;
+  function tipClose() { const b = document.getElementById('pt-tipbox'); if (b) b.remove(); tipOpen = null; }
+  function tipShow(el, k) {
+    tipClose(); const T = TIPS[k]; if (!T) return;
+    const b = document.createElement('div'); b.id = 'pt-tipbox'; b.setAttribute('role', 'dialog');
+    b.innerHTML = `<div class="h"><b>${esc(T.t)}</b><button type="button" aria-label="닫기">×</button></div><div class="b">${T.b}</div>`;
+    document.body.appendChild(b); tipOpen = k; tipAt = Date.now();
+    b.querySelector('button').onclick = tipClose;
+    const r = el.getBoundingClientRect(), vw = document.documentElement.clientWidth, w = Math.min(460, vw - 24);
+    b.style.width = w + 'px';
+    let left = Math.min(Math.max(12, r.left), vw - w - 12), top = r.bottom + 6;
+    if (top + b.offsetHeight > window.innerHeight - 8 && r.top - b.offsetHeight - 6 > 8) top = r.top - b.offsetHeight - 6;
+    b.style.left = left + 'px'; b.style.top = Math.max(8, top) + 'px';
+  }
+  document.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('.pt-tip');
+    if (t) { e.preventDefault(); e.stopImmediatePropagation(); const k = t.dataset.tip; if (tipOpen === k) tipClose(); else tipShow(t, k); return; }
+    if (tipOpen && !(e.target.closest && e.target.closest('#pt-tipbox'))) tipClose();
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') tipClose(); const t = e.target.closest && e.target.closest('.pt-tip'); if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.click(); } });
+  let tipAt = 0; window.addEventListener('scroll', () => { if (tipOpen && Date.now() - tipAt > 500) tipClose(); }, { passive: true }); // 열자마자 생기는 스크롤은 무시
+  // 전체 목록 (다시 찾아보기)
+  function tipIndex(keys) {
+    tipClose(); const ks = keys || Object.keys(TIPS);
+    let m = document.getElementById('pt-tipindex'); if (m) m.remove();
+    m = document.createElement('div'); m.id = 'pt-tipindex'; m.className = 'modal-overlay active';
+    m.innerHTML = `<div class="modal" style="max-width:640px;max-height:85vh;overflow:auto"><h2>📖 용어·계산식 메모</h2><div class="hint" style="margin-bottom:8px">화면의 ⓘ 를 눌러도 같은 설명이 나옵니다.</div>` +
+      ks.map(k => `<details class="pt-tipd"><summary><b>${esc(TIPS[k].t)}</b></summary><div class="b">${TIPS[k].b}</div></details>`).join('') +
+      `<div class="modal-actions"><button class="btn" type="button" onclick="document.getElementById('pt-tipindex').remove()">닫기</button></div></div>`;
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+  }
+  Portal.tip = tip; Portal.tipIndex = tipIndex; Portal.TIPS = TIPS;
 
   async function changeMyPassword() {
     const a = document.getElementById('pt-pw-new').value, b = document.getElementById('pt-pw-new2').value;

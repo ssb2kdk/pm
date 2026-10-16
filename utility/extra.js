@@ -203,7 +203,7 @@
       const y = ctx === 'target' ? targetY : pickYear(), t = ctx === 'target' ? targetDraft : tgt(y), F = pickOf(t, uk) || [], ad = isAdmin(), U = PICK_U[uk];
       const list = PICK_FAC.filter(f => !facs || facs.includes(f) || F.includes(f));
       const auto = fitModels(t, y, true)[uk], pm = F.length ? fitPick(t, y, uk) : null;
-      let h = `<div class="pick-box"><div><b>🎯 ${y}년 ${U.name} 목표에 쓸 지표</b> <span class="hint">${U.part}만 이 지표로 맞추고 ${uk === 'elec' ? '폐수동·공조냉동은 계량기 그대로' : '식당 가스는 실측 그대로'} 더함${ad ? ' · 눌러서 넣기/빼기' : ' (관리자만 바꿀 수 있음)'}</span></div>
+      let h = `<div class="pick-box"><div><b>🎯 ${y}년 ${U.name} 목표에 쓸 지표</b> ${Portal.tip('pick')} <span class="hint">${U.part}만 이 지표로 맞추고 ${uk === 'elec' ? '폐수동·공조냉동은 계량기 그대로' : '식당 가스는 실측 그대로'} 더함${ad ? ' · 눌러서 넣기/빼기' : ' (관리자만 바꿀 수 있음)'}</span></div>
         <div class="chips" style="margin-top:6px">${list.map(f => `<button class="chip ${F.includes(f) ? 'on' : ''}" ${ad ? `onclick="pickToggle('${uk}','${f}','${ctx}')"` : 'disabled'}>${F.includes(f) ? '✓ ' : ''}${facName(f)}</button>`).join('')}
         ${F.length && ad ? `<button class="chip" onclick="pickClear('${uk}','${ctx}')">자동으로 되돌리기</button>` : ''}</div>`;
       const em = auto ? `자동 식 월 평균 오차 ±${nf1.format(auto.mape)}%` : '자동 식 없음';
@@ -1829,7 +1829,7 @@
       const all = {}; Object.values(PRODD || {}).forEach(p => (p.packItems || []).forEach(x => { const k = dcProdName(x.name); const a = all[k] = all[k] || { ea: 0, last: '', raw: x.name }; a.ea += x.ea; if (p.d > a.last) a.last = p.d; }));
       const ks = Object.keys(all).sort((a, b) => (prodGram(all[a].raw) ? 1 : 0) - (prodGram(all[b].raw) ? 1 : 0) || (all[a].last < all[b].last ? 1 : -1));
       const unk = ks.filter(k => !prodGram(all[k].raw)), ad = isAdmin();
-      let h = `<details ${pgOpen || unk.length ? 'open' : ''} ontoggle="pgOpen=this.open" style="margin-top:12px"><summary style="cursor:pointer"><b>제품 1개 중량 (완제품 kg 계산용)</b> <span class="hint">제품 ${ks.length}개${unk.length ? ` · <span style="color:var(--red)">중량 모름 ${unk.length}개</span>` : ' · 모두 확인됨'}</span></summary>
+      let h = `<details ${pgOpen || unk.length ? 'open' : ''} ontoggle="pgOpen=this.open" style="margin-top:12px"><summary style="cursor:pointer"><b>제품 1개 중량 (완제품 kg 계산용)</b> ${Portal.tip('pkg')} <span class="hint">제품 ${ks.length}개${unk.length ? ` · <span style="color:var(--red)">중량 모름 ${unk.length}개</span>` : ' · 모두 확인됨'}</span></summary>
         <div class="hint" style="margin:4px 0">완제품 kg = 포장 EA × 1개 중량. 제품명에 「130g」「1kg」「70g×3」처럼 적혀 있으면 자동으로 읽고, 없거나 틀리면 g을 직접 넣으세요 (직접 넣은 값이 우선). 그날 포장 EA의 90% 이상 중량을 알아야 그날 완제품 kg이 나옵니다.</div>
         <div class="tbl-wrap"><table class="t"><tr><th class="l">제품명 (포장 공정)</th><th>누적 EA</th><th>최근 생산</th><th>자동 읽음</th><th>1개 중량 g</th></tr>` +
         ks.map(k => { const a = all[k], au = prodGramAuto(a.raw), mv = prodGMap()[k];
@@ -1904,7 +1904,7 @@
       const slope = (c, k, u) => { const m = per[k] || 1, v = c.b * m; return `${unitX[k] === 'h' ? '1h' : k === 'temp' ? '1℃' : (m === 1000 ? '1,000' : '10,000') + unitX[k]}당 ${v >= 0 ? '+' : ''}${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${u[2]}`; };
       // 생산 항목끼리의 연관 (서로 같이 움직이면 어느 게 진짜 원인인지 구분 어려움)
       const PX = cols.map(([k]) => cols.map(([k2]) => { const v = days.filter(d => xv(d, k) !== null && xv(d, k2) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => xv(d, k2))); }));
-      let h = `<h4 style="margin:18px 0 6px">연관성 검토 (상관계수 r) <span class="hint">생산한 날 ${days.length}일 · ${from} ~ ${end}</span></h4>
+      let h = `<h4 style="margin:18px 0 6px">연관성 검토 (상관계수 r) ${Portal.tip('r')} <span class="hint">생산한 날 ${days.length}일 · ${from} ~ ${end}</span></h4>
         <div class="toolbar"><span class="chips">${[[1, '이 달'], [3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 1년']].map(([n, l]) => `<button class="chip ${dcRange === n ? 'on' : ''}" onclick="dcRange=${n};renderDayCmp()">${l}</button>`).join('')}</span></div>`;
       if (days.length < 8) return h + '<div class="empty">생산한 날이 8일 이상 있어야 계산합니다. 기간을 늘려 보세요.</div>';
       h += `<div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>` +
@@ -1986,12 +1986,12 @@
         <div class="toolbar"><span class="hint">${PU.name} (막대)</span><span class="chips">${PE_COMP.map(([k, n]) => `<button class="chip ${peComp === k && !peStack ? 'on' : ''}" onclick="peComp='${k}';peStack=false;renderPerElec()">${n}</button>`).join('')}${PU.stack ? `<button class="chip ${peStack ? 'on' : ''}" onclick="peStack=true;renderPerElec()">구성 쌓아 보기</button>` : ''}</span>
           <label class="hint"><input type="checkbox" ${pePerDay ? 'checked' : ''} onchange="pePerDay=this.checked;renderPerElec()"> 하루당으로 보기 (날수 차이 없앰)</label>
           <span class="hint">기간: <b>${ms[0].slice(2).replace('-', '.')} ~ ${ms[ms.length - 1].slice(2).replace('-', '.')}</b> (${ms.length}개월 · 맨 위 기간 설정을 따름, 진행 중인 달 제외)</span></div>
-        <div class="toolbar"><span class="hint">비교할 것 (선)</span><span class="chips">${FACS.map(([k, n]) => `<button class="chip ${peFac === k ? 'on' : ''}" onclick="peFac='${k}';renderPerElec()">${n}</button>`).join('')}</span>${RT_OK && !peStack ? ` <label class="hint"><input type="checkbox" ${peRatio ? 'checked' : ''} onchange="peRatio=this.checked;renderPerElec()"> 원단위 선도 보기 (${C[1]} ÷ ${F[1].replace(/ \(.*\)/, '')})</label>` : ''}</div>
+        <div class="toolbar"><span class="hint">비교할 것 (선) ${Portal.tip('degday')}</span><span class="chips">${FACS.map(([k, n]) => `<button class="chip ${peFac === k ? 'on' : ''}" onclick="peFac='${k}';renderPerElec()">${n}</button>`).join('')}</span>${RT_OK && !peStack ? ` <label class="hint"><input type="checkbox" ${peRatio ? 'checked' : ''} onchange="peRatio=this.checked;renderPerElec()"> 원단위 선도 보기 (${C[1]} ÷ ${F[1].replace(/ \(.*\)/, '')})</label>${Portal.tip('unit')}` : ''}</div>
         <div class="chart-box" style="height:300px"><canvas id="chart-pe"></canvas></div>`;
       // 연관성 (상관계수 r) — 마감된 달끼리
       const r2 = (xs, ys) => { const p = xs.map((x, i) => [x, ys[i]]).filter(([a, b]) => a !== null && b !== null && a !== undefined && b !== undefined); if (p.length < 4) return null; const pr = pearson(p.map(x => x[0]), p.map(x => x[1])); return pr ? { r: pr.r, n: p.length } : null; };
       const bg = r => { const a = Math.min(1, Math.abs(r)); return r >= 0 ? `rgba(42,120,214,${(a * 0.7).toFixed(2)})` : `rgba(217,48,37,${(a * 0.55).toFixed(2)})`; };
-      h += `<h4 style="margin:12px 0 4px">어떤 게 같이 움직이나 (월별 상관계수 r) <span class="hint">1에 가까울수록 같이 늘고 줄어듦 · 칸을 누르면 그래프가 그 조합으로 바뀜${pePerDay ? ' · 하루당 기준' : ''}</span></h4>
+      h += `<h4 style="margin:12px 0 4px">어떤 게 같이 움직이나 (월별 상관계수 r) ${Portal.tip('r')} <span class="hint">1에 가까울수록 같이 늘고 줄어듦 · 칸을 누르면 그래프가 그 조합으로 바뀜${pePerDay ? ' · 하루당 기준' : ''}</span></h4>
         <div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${FACS.map(f => `<th>${f[1].replace(/ \(.*\)/, '')}</th>`).join('')}</tr>` +
         PE_COMP.map(([k, n]) => `<tr><th>${n}</th>${FACS.map(([fk]) => { const c = r2(rows.map(r => cv(r, k)), rows.map(r => fv(r, fk)));
           return c ? `<td style="background:${bg(c.r)};cursor:pointer" title="${n} ↔ ${PE_FAC.find(x => x[0] === fk)[1]} · ${c.n}개월" onclick="peComp='${k}';peFac='${fk}';peStack=false;renderPerElec()"><b>${c.r.toFixed(2)}</b></td>` : '<td class="hint">-</td>'; }).join('')}</tr>`).join('') + '</table></div>';
