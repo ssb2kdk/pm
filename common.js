@@ -12,6 +12,7 @@
 
   // ---------------- 공통 스타일 ----------------
   const css = `
+    .pt-tip, .pt-admin-only { display: none !important; } body.pt-admin .pt-admin-only { display: inline-block !important; } body.pt-admin .pt-tip { display: inline-flex !important; }
     .pt-tip { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #fff3c4; color: #8a6100; border: 1px solid #e6c65c; font-size: 11px; font-weight: 700; cursor: pointer; margin: 0 3px; vertical-align: 1px; line-height: 1; user-select: none; }
     .pt-tip:hover, .pt-tip:focus-visible { background: #ffe58a; outline: none; }
     #pt-tipbox { position: fixed; z-index: 3000; background: #fffbe6; border: 1px solid #e6c65c; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 13px; line-height: 1.65; color: #333; max-height: 70vh; overflow: auto; }
@@ -219,6 +220,7 @@
     if (error || !prof) { await sb.auth.signOut(); return showLogin('계정 정보를 불러오지 못했습니다. 관리자에게 문의하세요.'); }
     if (!prof.active) { await sb.auth.signOut(); return showLogin('사용 중지된 계정입니다. 관리자에게 문의하세요.'); }
     Portal.me = prof;
+    document.body.classList.toggle('pt-admin', prof.role === 'admin'); // ⓘ 메모는 관리자만
     if (prof.role === 'viewer') viewerGuard(sb); // 보기 전용: 저장·수정·삭제 요청은 보내지 않고 바로 오류 (DB에서도 24번 SQL로 막힘)
     // 협력업체 계정은 허용된 앱만
     if (prof.role === 'partner' && opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId)) {
@@ -332,7 +334,7 @@
       · 그날(그 달) 포장 EA의 90% 이상 중량을 알아야 값이 나옴 · 수율 = 완제품 ÷ 원육` },
     wqmin: { t: '폐수 고지 농도 최소값', b: `익산시는 별도로 한 달에 3번쯤 채수해서 평균을 냄. <b>BOD 100 · TOC 80 · SS 100 mg/L</b>보다 낮게 나와도 이 값으로 올려서 부과함 (「최소」 표시).` }
   };
-  function tip(k, label) { return TIPS[k] ? `<span class="pt-tip" tabindex="0" role="button" data-tip="${k}" title="눌러서 설명 보기 — ${esc(TIPS[k].t)}">${label || 'ⓘ'}</span>` : ''; }
+  function tip(k, label) { return TIPS[k] && Portal.me && Portal.me.role === 'admin' ? `<span class="pt-tip" tabindex="0" role="button" data-tip="${k}" title="눌러서 설명 보기 — ${esc(TIPS[k].t)}">${label || 'ⓘ'}</span>` : ''; }
   let tipOpen = null;
   function tipClose() { const b = document.getElementById('pt-tipbox'); if (b) b.remove(); tipOpen = null; }
   function tipShow(el, k) {
