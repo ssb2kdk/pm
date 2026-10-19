@@ -1905,7 +1905,8 @@
     }
     function pdFeats(uk) {
       let I = null; try { I = stdInfo(uk); } catch (e) { }
-      if (!I || !I.feats) return PD_DEF[uk]; const out = []; I.feats.forEach(f => { const m = pdMap(f); if (m && !out.some(x => x[0] === m[0])) out.push(m); });
+      if (!I || !I.feats) return PD_DEF[uk]; const out = [['prod', '생산한 날']]; // 생산일엔 켜는 설비 기본 부하가 있어 하루 식엔 늘 넣음 (월 식의 「달력 날수」 고정분에 섞여 있던 몫)
+      I.feats.forEach(f => { const m = pdMap(f); if (m && !out.some(x => x[0] === m[0])) out.push(m); });
       return out.length ? out : PD_DEF[uk];
     }
     function pdRow(ds) {
@@ -1960,15 +1961,15 @@
       h += `<div class="tbl-wrap"><table class="t"><tr><th>날짜</th><th>원육 kg</th><th>자숙 h</th><th>포장 EA</th><th>기온</th><th>실제 ${U.unit}</th><th>예상</th><th>차이</th><th class="l">원인 추정 (평소 생산일과 비교)</th></tr>` +
         (list.length ? list.map(r => {
           const why = r.noRec ? '<span class="up">보일러는 돌았는데 생산 실적이 없음 — 대시보드에서 그 날짜를 열면 생깁니다</span>' : r.unknown ? '<span class="hint">생산 실적·보일러 검침이 아직 없음</span>' : r.e === null ? '-' : (() => {
-            const parts = M.feats.map((f, i) => [fl[f], M.co[i + 1] * (r.x[f] - (f === 'prod' ? (r.x.prod ? 1 : 0) : M.mean[f]) * (f === 'prod' ? 1 : r.x.prod ? 1 : 0))]).filter(x => Math.abs(x[1]) >= Math.max(1, r.e * 0.03));
-            const txt = parts.map(([n, v]) => `${n} ${v >= 0 ? '+' : '−'}${f0(Math.abs(v))}`).join(', ');
+            const parts = M.feats.filter(f => f !== 'prod').map((f, i) => [fl[f], M.co[M.feats.indexOf(f) + 1] * (r.x[f] - (r.x.prod ? M.mean[f] : 0))]).filter(x => Math.abs(x[1]) >= Math.max(1, r.e * 0.03));
+            const txt = parts.map(([n, v]) => `${n.replace(/ \(.*\)/, '')} ${v >= 0 ? '많아' : '적어'} ${v >= 0 ? '+' : '−'}${f0(Math.abs(v))}`).join(', ');
             return (r.x.prod ? (txt ? `평소 생산일보다 ${txt}` : '생산 조건은 평소와 비슷') : '생산 없는 날') + (r.hi ? ` · <b class="up">설명 안 되는 +${f0(r.d)} ${U.unit}</b> → 설비 미차단·공회전·누수·특이 작업 확인` : '');
           })();
           const nts = notesIn(r.ds, r.ds, pdUtil === 'gas' ? 'gas' : pdUtil); const ntH = nts.length ? `<br><span class="un-note">📝 ${nts.map(n => `${esc(n.cat)}: ${esc(n.text)}`).join(' / ')}</span>` : '';
           return `<tr class="${r.hi ? 'hl' : ''}"><td>${r.ds.slice(5).replace('-', '/')} (${W[new Date(r.ds + 'T00:00:00').getDay()]})</td><td>${r.p ? f0(r.p.rm) : '-'}</td><td>${r.p ? nf1.format(r.p.steamH) : '-'}</td><td>${r.p ? f0(r.p.ea) : '-'}</td><td>${r.t === undefined || r.t === null ? '-' : nf1.format(r.t) + '℃'}</td>
             <td><b>${fmtV(r.y)}</b></td><td>${fmtV(r.e)}</td><td class="${r.d > 0 ? 'up' : 'down'}">${r.d === null ? '-' : (r.d >= 0 ? '+' : '−') + f0(Math.abs(r.d)) + (r.e ? ` <span class="hint">(${r.d >= 0 ? '+' : ''}${nf1.format(r.d / r.e * 100)}%)</span>` : '')}</td><td class="l">${why}${ntH}</td></tr>`;
         }).join('') : `<tr><td colspan="9" class="empty">최근 ${anomDays}일 동안 예상보다 크게 많이 쓴 날이 없습니다 👍</td></tr>`) + '</table></div>';
-      h += `<div class="hint" style="margin-top:6px">· 생산 실적은 생산 대시보드 일별 요약(읽기 전용)에서 가져옵니다. 대시보드에서 그 날짜를 한 번도 안 연 날은 실적이 없을 수 있습니다.<br>· 「예상보다 많이 쓴 날」 = 예상보다 15% 넘게 더 쓴 날. 원인 추정의 ± 값은 그날 원육·작업시간·기온이 평소 생산일과 달라서 생긴 몫이고, 나머지가 설명 안 되는 몫입니다.<br>· 검침 시각(08시) 기준이라 전기(파워플래너, 0~24시)와 하루 정도 어긋날 수 있습니다.</div>`;
+      h += `<div class="hint" style="margin-top:6px">· <b>원인 추정 읽는 법</b>: 「원육 적어 −700」 = 그날 원육이 <b>평소 생산일 평균(${M.mean.rm !== undefined ? f0(M.mean.rm) + 'kg' : '-'})보다 적어서</b> 예상이 700 ${U.unit} 낮게 잡혔다는 뜻 (마이너스 = 그 요인 때문에 덜 써야 정상). 그런데도 실제가 예상보다 많으면 그 차이가 「설명 안 되는」 몫입니다.<br>· 생산 실적은 생산 대시보드 일별 요약(읽기 전용)에서 가져옵니다. 대시보드에서 그 날짜를 한 번도 안 연 날은 실적이 없을 수 있습니다.<br>· 「예상보다 많이 쓴 날」 = 예상보다 15% 넘게 더 쓴 날. 원인 추정의 ± 값은 그날 원육·작업시간·기온이 평소 생산일과 달라서 생긴 몫이고, 나머지가 설명 안 되는 몫입니다.<br>· 검침 시각(08시) 기준이라 전기(파워플래너, 0~24시)와 하루 정도 어긋날 수 있습니다.</div>`;
       el.innerHTML = h;
     }
 
