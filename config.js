@@ -18,8 +18,8 @@ window.APP_CONFIG = {
     { id: 'hook',    icon: '🔌', name: '후크메타 부하 측정',        desc: '분전반 차단기별 R·S·T 전류를 가끔 재서 설비 가동 부하(kW) 기록 · 절감 포인트 찾기', path: 'hook/',    ready: true },
     { id: 'insp',    icon: '📋', name: '설비점검일지',              desc: '유틸리티 일일 점검 ○Ⅹ△◎ 입력 (핸드폰) · 점검일지 출력',            path: 'insp/',    ready: true },
     { id: 'env',     icon: '🌿', name: '환경일지',                  desc: '다온산업 장부 입력 · 폐수일지 · 대기일지 출력',                     path: 'env/',     ready: true, partner: true },
-    { id: 'utility', icon: '📊', name: '유틸리티 사용량·비용 분석', desc: '전기·가스·용수·폐수 월별 사용량과 금액, 목표 대비, 원단위 추이',   path: 'utility/', ready: true },
-    { id: 'bill',    icon: '🧾', name: '유틸리티 고지서 관리',      desc: '고지서 올리기·월간입력 · 회계보고 · 지출결의 자료 (시설팀 누구나)',  path: 'utility/?bill', ready: true },
+    { id: 'utility', icon: '📊', name: '유틸리티 분석',             desc: '전기·가스·용수·폐수 현황 · 지표 분석 · 원인 찾기 · 목표·예산 · 월간보고서',   path: 'utility/', ready: true },
+    { id: 'bill',    icon: '🧾', name: '유틸리티 마감',             desc: '고지서 입력·확정 · 회계보고 · 지출결의 자료 (시설팀 누구나)',  path: 'utility/?bill', ready: true },
     { id: 'audit',   icon: '🕘', name: '변경 기록',                 desc: '누가·언제·무엇을 바꿨는지 (바뀌기 전 값 포함) — 관리자만', path: 'audit/',   ready: true, admin: true },
     { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: false }
   ],

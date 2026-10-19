@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>유틸리티 사용량·비용 분석</title>
+  <title>유틸리티 분석</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="../config.js"></script>
@@ -296,7 +296,7 @@
 <body>
   <div id="app" hidden>
     <header>
-      <h1>📊 유틸리티 사용량 · 비용 분석 <button type="button" class="memo-idx pt-admin-only" onclick="Portal.tipIndex()" title="용어·계산식 메모 모아 보기">📖 용어·계산식</button></h1>
+      <h1>📊 유틸리티 분석 <button type="button" class="memo-idx pt-admin-only" onclick="Portal.tipIndex()" title="용어·계산식 메모 모아 보기">📖 용어·계산식</button></h1>
       <nav>
         <span class="nav-step an-only">1단계</span>
         <button class="tab-btn active" data-tab="dash">현황</button>
@@ -5073,12 +5073,12 @@
     // 시작
     // =====================================================================
     window.addEventListener('beforeunload', e => { if (monthlyDirty) { e.preventDefault(); e.returnValue = ''; } });
-    if (BILL_MODE) { document.querySelector('header h1').textContent = '🧾 유틸리티 고지서 관리'; document.title = '유틸리티 고지서 관리'; }
+    if (BILL_MODE) { document.querySelector('header h1').textContent = '🧾 유틸리티 마감'; document.title = '유틸리티 마감'; }
     document.querySelectorAll('.tab-btn').forEach(b => { b.hidden = BILL_MODE !== BILL_TABS.includes(b.dataset.tab); b.classList.remove('active'); });
     document.querySelectorAll('.nav-step.an-only').forEach(x => x.hidden = BILL_MODE);
     Portal.start({
       appId: BILL_MODE ? 'bill' : 'utility',
-      title: BILL_MODE ? '유틸리티 고지서 관리' : '유틸리티 사용량·비용 분석',
+      title: BILL_MODE ? '유틸리티 마감' : '유틸리티 분석',
       onReady: async P => {
         sb = P.sb; me = P.me;
         document.getElementById('kpis').innerHTML = '<div class="loading">불러오는 중...</div>';
