@@ -154,7 +154,7 @@
     const facName = f => { if (/^warmT:/.test(f)) return `더운 정도(${f.slice(6)}℃ 넘는 합)`; if (/^coldT:/.test(f)) return `추운 정도(${f.slice(6)}℃ 아래 합)`; const x = PE_FAC.find(z => z[0] === f); return x ? x[1].replace(/ \(.*\)/, '') : f; };
     const facUnit = f => { if (/^(warm|cold)T:/.test(f)) return '℃·일'; const x = PE_FAC.find(z => z[0] === f); return x ? x[2] : ''; };
     function pickYear() { return targetY || (Number(thisYm.slice(5)) >= 10 ? Number(thisYm.slice(0, 4)) + 1 : Number(thisYm.slice(0, 4))); }
-    function resetPickCache() { Object.keys(exploreCache).forEach(k => delete exploreCache[k]); Object.values(YEARDATA).forEach(d => { if (d && d.targets && d.targets._models) d.targets._models = undefined; }); }
+    function resetPickCache() { Object.keys(STD_CACHE).forEach(k => delete STD_CACHE[k]); Object.keys(exploreCache).forEach(k => delete exploreCache[k]); Object.values(YEARDATA).forEach(d => { if (d && d.targets && d.targets._models) d.targets._models = undefined; }); }
     function pickPart(ym, uk) { // { y: 식으로 맞출 몫, fixed: 그대로 더할 실측, all: 전체 }
       const s = S(ym);
       if (uk === 'elec') { if (ym < HVAC_FULL_FROM) return null; const all = s.elec.usage, w = wwKwh(ym), h = meterKwh(ym, 'elec_hvac_kwh'); if (all === null || all === undefined || w === null || h === null) return null;
@@ -822,7 +822,14 @@
     // 📐 기준 식 — 지표 분석 · 원인 찾기 · 목표·예산이 모두 같은 식을 씀 (전기·가스)
     //   순서: 🔒 확정한 식 → 직접 고른 지표 → 자동 식 · 연도 = 지금 목표를 세우는 해 (pickYear)
     // =====================================================================
-    function stdInfo(uk) {
+    const STD_CACHE = {};
+    function stdInfo(uk) { // 같은 조건이면 다시 계산하지 않음 (기준 식 계산이 무거워서 — 하루 식이 날마다 부르면 화면이 느려짐)
+      const y0 = pickYear(), t0 = tgt(y0), key = uk + '|' + y0 + '|' + JSON.stringify([t0.pick, t0.lock, t0.base, t0.excl]) + '|' + (PRODD ? 1 : 0) + (TEMPS ? 1 : 0) + (BT ? 1 : 0) + '|' + Object.keys(MONTHLY).length + '|' + JSON.stringify((YEARDATA[9999] || {}).equip || []);
+      if (STD_CACHE[key] !== undefined) return STD_CACHE[key];
+      Object.keys(STD_CACHE).forEach(k => { if (k.startsWith(uk + '|')) delete STD_CACHE[k]; });
+      return (STD_CACHE[key] = stdInfo0(uk));
+    }
+    function stdInfo0(uk) {
       const y = pickYear(), t = tgt(y), ms = fitModels(t, y), m = ms[uk]; if (!m) return null;
       const L = lockOf(t, uk), pk = (ms._pick || {})[uk], src = m.locked ? 'lock' : m.pick ? 'pick' : 'auto';
       const sp = m.pick ? { feats: m.feats, coef: m.coef } : lockSpec(m, uk, t, y);
@@ -1922,7 +1929,7 @@
       return { ds, p, x, t, noRec, unknown };
     }
     function pdFit(uk, to) {
-      const U = PD_UTIL[uk], rows = [];
+      const U0 = PD_UTIL[uk], U = { ...U0, feats: U0.feats }, rows = [];
       for (let i = 1; i <= 120; i++) { const ds = UT.addDays(to, -i + 1), r = pdRow(ds), y = U.val(ds);
         if (y === null || y === undefined || isNaN(y) || r.noRec || r.unknown || U.feats.some(([f]) => r.x[f] === null)) continue; rows.push({ ...r, y }); }
       if (rows.length < 20) return null;
@@ -1958,7 +1965,7 @@
       try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
       // 기간 = 위에서 고른 달 (원인 찾기 맨 위 ◀ ▶) — 진행 중인 달은 어제까지 · 하루 식은 그 달 마지막 날까지 최근 120일로 맞춤
       const pym = anomMonth || causeYm || lastCompleteYm(), mEnd = UT.dateStr(pym, UT.daysIn(pym)), yst = UT.addDays(todayStr, -1);
-      const to = mEnd > yst ? yst : mEnd, from = UT.dateStr(pym, 1), U = PD_UTIL[pdUtil], M = pdFit(pdUtil, to);
+      const to = mEnd > yst ? yst : mEnd, from = UT.dateStr(pym, 1), U = { ...PD_UTIL[pdUtil] }, M = pdFit(pdUtil, to);
       const HI_PCT = pdUtil === 'water' || pdUtil === 'ww' ? 0.3 : 0.15; // 용수·폐수는 하루 값이 청소·방류 일정에 따라 크게 흔들려 30%
       const fl = M ? M.labels : Object.fromEntries(U.feats), fmtV = v => v === null || v === undefined ? '-' : f0(v);
       let h = `<div class="toolbar"><span class="chips">${Object.entries(PD_UTIL).map(([k, u]) => `<button class="chip ${k === pdUtil ? 'on' : ''}" onclick="pdUtil='${k}';pdFocus=null;renderProdCompare()">${u.name}</button>`).join('')}</span>
