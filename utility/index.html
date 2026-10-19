@@ -1506,20 +1506,22 @@
       const ok = v => v !== null && v !== undefined && !isNaN(v);
       const combos = []; for (let i = 0; i < C.length; i++) { combos.push([C[i]]); for (let j = i + 1; j < C.length; j++) { combos.push([C[i], C[j]]); for (let k = j + 1; k < C.length; k++) combos.push([C[i], C[j], C[k]]); } }
       const res = [], why = { neg: 0, overlap: 0, few: 0 };
-      combos.forEach(F => {
+      const fitC = F => { // 한 조합 맞춰 보기 → 결과 또는 { bad: 빠진 이유 }
+        F.forEach(f => { if (!X[f]) X[f] = parts.map(r => facOf(r.ym, f)); });
         const idx = parts.map((r, i) => i).filter(i => F.every(f => ok(X[f][i])));
-        if (idx.length < F.length + 3) { why.few++; return; }
+        if (idx.length < F.length + 3) return { bad: 'few' };
         const xs = idx.map(i => F.map(f => X[f][i])), ys = idx.map(i => parts[i].p.y), fx = idx.map(i => parts[i].p.fixed), al = idx.map(i => parts[i].p.all);
-        for (let a = 0; a < F.length; a++) for (let b = a + 1; b < F.length; b++) { const pr = pearson(xs.map(x => x[a]), xs.map(x => x[b])); if (pr && Math.abs(pr.r) >= 0.8) { why.overlap++; return; } }
-        const c = UT.ols(xs, ys); if (!c || c.some(v => !(v > 0))) { why.neg++; return; }
+        for (let a = 0; a < F.length; a++) for (let b = a + 1; b < F.length; b++) { const pr = pearson(xs.map(x => x[a]), xs.map(x => x[b])); if (pr && Math.abs(pr.r) >= 0.8) return { bad: 'overlap', pair: [F[a], F[b]], r: pr.r }; }
+        const c = UT.ols(xs, ys); if (!c || c.some(v => !(v > 0))) return { bad: 'neg' };
         const pred = x => x.reduce((s2, v, i) => s2 + c[i] * v, 0);
         const mape = idx.reduce((s2, _, i) => s2 + Math.abs(pred(xs[i]) + fx[i] - al[i]) / al[i], 0) / idx.length * 100;
         let cv = 0, cvn = 0; for (let o = 0; o < idx.length; o++) { const c2 = UT.ols(xs.filter((_, i) => i !== o), ys.filter((_, i) => i !== o)); if (!c2) continue; cv += Math.abs(xs[o].reduce((s2, v, i) => s2 + c2[i] * v, 0) + fx[o] - al[o]) / al[o]; cvn++; }
-        if (!cvn) return;
-        res.push({ feats: F, coef: c, n: idx.length, from: parts[idx[0]].ym, to: parts[idx[idx.length - 1]].ym, mape, cv: cv / cvn * 100 });
-      });
+        if (!cvn) return { bad: 'few' };
+        return { feats: F, coef: c, n: idx.length, from: parts[idx[0]].ym, to: parts[idx[idx.length - 1]].ym, mape, cv: cv / cvn * 100 };
+      };
+      combos.forEach(F => { const r = fitC(F); if (r.bad) why[r.bad]++; else res.push(r); });
       res.sort((a, b) => a.cv - b.cv);
-      return (exploreCache[key] = { list: res, tried: combos.length, why, nBase: parts.length, cands: C });
+      return (exploreCache[key] = { list: res, tried: combos.length, why, nBase: parts.length, cands: C, fitC });
     }
     function exploreHtml(uk, ctx, t, y, F) {
       const E = exploreModels(t, y, uk), top = E.list.slice(0, 5), ad = isAdmin(), U = PICK_U[uk], same = (a, b) => a.length === b.length && a.every(f => b.includes(f));
@@ -1528,6 +1530,12 @@
       if (!top.length) return h + `<div class="hint" style="margin-top:6px">쓸 수 있는 조합이 없습니다 (기준 달 ${E.nBase}개).</div></details>`;
       h += `<div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th>순위</th><th class="l">${U.part} = 지표 × 계수</th><th>기준 달 오차<br><span class="hint">월 평균</span></th><th>교차검증 오차<br><span class="hint">안 쓴 달 맞히기 · 순위 기준</span></th><th>기준 달</th>${ad ? '<th></th>' : ''}</tr>` +
         top.map((m, i) => `<tr${same(m.feats, F) ? ' class="best"' : ''}><td>${i + 1}${i === 0 ? ' ★' : ''}</td><td class="l">${m.feats.map((f, j) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${cf(m.coef[j])}</b>`).join(' + ')}</td><td>±${nf1.format(m.mape)}%</td><td><b>±${nf1.format(m.cv)}%</b></td><td>${m.n}개<br><span class="hint">${m.from.slice(2).replace('-', '.')}~${m.to.slice(2).replace('-', '.')}</span>${m.n < E.nBase ? '<br><span class="warn" title="이 지표 자료가 없는 달은 빼고 맞춤 — 달이 적으면 오차가 작게 나올 수 있음">달 적음</span>' : ''}</td>${ad ? `<td>${same(m.feats, F) ? '<span class="good">고름</span>' : `<button class="btn secondary small" onclick="pickSet('${uk}','${m.feats.join(',')}','${ctx}')">이걸로 고르기</button>`}</td>` : ''}</tr>`).join('') + '</table></div>' +
+        (() => { // 지금 목표 식(직접 고른 지표, 없으면 자동 식)이 탐색에서 몇 위인지
+          const cur = F.length ? F : (() => { const sp = lockSpec(fitModels(t, y, true)[uk], uk, t, y); return sp ? sp.feats.map(f => f === 'warmT:5' ? 'warm' : f) : null; })(); if (!cur || !cur.length) return '';
+          const i = E.list.findIndex(m => same(m.feats, cur)); if (i >= 0 && i < 5) return `<div class="hint" style="margin-top:4px">지금 ${F.length ? '고른 지표' : '자동 식'}(${cur.map(facName).join(' · ')})는 위 ${i + 1}위입니다.</div>`;
+          const r = i >= 0 ? E.list[i] : E.fitC(cur), nm = cur.map(facName).join(' · ');
+          if (r.bad) return `<div class="hint" style="margin-top:4px">지금 ${F.length ? '고른 지표' : '자동 식'}(${nm})는 탐색에서 빠졌습니다 — ${r.bad === 'overlap' ? `${facName(r.pair[0])}·${facName(r.pair[1])}가 서로 r ${r.r.toFixed(2)}로 겹침` : r.bad === 'neg' ? '계수 마이너스' : '자료 있는 달 부족'}.</div>`;
+          return `<div style="margin-top:6px;font-size:13px">비교: 지금 ${F.length ? '고른 지표' : '자동 식'} <b>${nm}</b> → 기준 달 오차 ±${nf1.format(r.mape)}% · <b>교차검증 오차 ±${nf1.format(r.cv)}%</b>${i >= 0 ? ` (탐색 ${i + 1}위)` : ''} <span class="hint">— 자동 식은 기준 달 오차가 가장 작은 식을 고르고, 탐색은 교차검증 오차로 순위를 매겨서 다를 수 있음 ${Portal.tip('explore')}</span></div>`; })() +
         `<div class="hint" style="margin-top:4px">뺀 조합: 계수 마이너스 ${E.why.neg}개 · 지표끼리 겹침(r≥0.8) ${E.why.overlap}개 · 자료 있는 달 부족 ${E.why.few}개. 「이걸로 고르기」를 누르기 전까지 목표 식은 바뀌지 않습니다.</div></details>`;
       return h;
     }
