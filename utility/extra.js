@@ -1702,9 +1702,9 @@
     // ---- 보일러 켠 시간: 생산 대시보드 공정 원본 기록 (읽기만)
     //      자숙 cooking: date, start, end  ·  레토르트 retort: date, t1(가동 시작) ~ t3(가열 종료) — t3 뒤 냉각·배출은 스팀 안 씀
     //      그날 구간을 모두 모아 겹치는 건 합침 → 켠 시간 = 가장 이른 시작 ~ 가장 늦은 끝, 실제 가동 = 합친 구간 길이 합 (쉬는 틈 뺌)
-    //      켠 시각 = 전처리 시작 (전처리 들어가며 켬) — 전처리 기록 저장소를 아직 몰라 그동안은 첫 자숙 시작으로 대신
+    //      켠 시각 = 그날 첫 전처리 시작 (전처리 들어가며 켬) — 전처리 기록 없는 날만 첫 자숙 시작으로 대신
     //      끈 시각 = 레토르트 있는 날: 마지막 회차 t4(배출 완료) / 없는 날: 포장 종료 + 1시간 (FC 3kg 장조림 날 + 2시간)
-    const PREP_COL = null, PACK_COL = null; // 전처리·포장 시각 컬렉션 이름 (확인되면 넣음): 필드 date, start, end ("HH:MM")
+    const PREP_COL = 'preprocess', PACK_COL = 'packing'; // 전처리(회차별 start) · 내포장(호기별 end — 그날 가장 늦은 end) · 외포장은 시각 없음
     let BT = null, BT_ERR = '', RET_FROM = null, COOK_FROM = null;
     function tMin(v) { const m = String(v || '').trim().match(/^(\d{1,2}):(\d{2})/); if (!m) return null; const h = Number(m[1]), mi = Number(m[2]); return h < 48 && mi < 60 ? h * 60 + mi : null; }
     async function fsList(col, fields) {
@@ -2048,7 +2048,7 @@
           const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td><td>${np ? f0(sum(r => r.p ? pkgOf(r.p).kg : 0) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}<td>${(() => { const b = pd.filter(r => r.p.boilH !== undefined); return b.length ? nf1.format(b.reduce((t, r) => t + r.p.boilH, 0) / b.length) : ''; })()}</td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
           const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="9"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 전처리 시작 (확인 전까지 첫 자숙 시작) ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 포장 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
       h += prodGHtml() + dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
