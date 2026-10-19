@@ -287,7 +287,11 @@
       .br-comment { display: none; } .print-only { display: block !important; white-space: pre-wrap; min-height: 40px; }
       .st, .br-kpi, table.t th, .fc-note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
-  </style>
+  .std-badge{border:1px solid #c9d7ee;background:#f3f7fd;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:13px;line-height:1.6}
+.std-badge .std-src{display:inline-block;font-size:12px;padding:0 8px;border-radius:10px;background:#e7ecf3;margin-left:4px}
+.std-badge .std-src.lock{background:#dff3e4;color:#1d6b35}.std-badge .std-src.pick{background:#e3ecfb;color:#1d4f9a}.std-badge .std-src.auto{background:#fff2d6;color:#8a5a00}
+.std-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}@media(max-width:800px){.std-row{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
   <div id="app" hidden>
@@ -417,9 +421,10 @@
           <div class="month-nav"><button onclick="shiftCauseMonth(-1)">◀</button><span id="cause-month"></span><button onclick="shiftCauseMonth(1)">▶</button></div>
           <span class="chips" id="cause-chips"></span>
         </div>
+        <div id="cz-std"></div>
         <div class="card">
           <h3 id="cz-title">사용량이 왜 늘었나·줄었나</h3>
-          <div class="hint" style="margin:-6px 0 10px"><span class="pt-tip" tabindex="0" role="button" data-tip="decomp" title="눌러서 설명 보기">ⓘ</span> 비교 달과의 차이를 <b>생산일·달력 날수·원육 투입량·날씨</b> 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
+          <div class="hint" style="margin:-6px 0 10px"><span class="pt-tip" tabindex="0" role="button" data-tip="decomp" title="눌러서 설명 보기">ⓘ</span> 비교 달과의 차이를 위 <b>📐 기준 식의 지표</b>(원육·날수·날씨 등) 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
           <div class="cz-wrap">
             <div class="cz-text" id="cz-text"></div>
             <div class="chart-box cz-chart"><canvas id="chart-cz"></canvas></div>
@@ -1842,6 +1847,7 @@
       const lk = isLocked(t), roB = ro || lk;
       let h = lk ? `<div class="lockbar on">🔒 <b>${y}년 목표 식 확정</b> ${Portal.tip('lock')} · ${esc(t.lock.at || '')} ${esc(t.lock.by || '')} · 기준 달 ${base[0].slice(2).replace('-', '.')} ~ ${base[base.length - 1].slice(2).replace('-', '.')} (${base.length}개) — 전기·가스 지표와 계수가 고정되어 데이터가 쌓이거나 고쳐져도 목표가 바뀌지 않습니다.${ad0() ? ' <button class="btn secondary small" onclick="unlockTargets()">확정 풀기</button>' : ''}</div>`
         : `<div class="lockbar">⚠ <b>아직 확정 전</b> ${Portal.tip('lock')} — 지금은 기준 달이 늘거나(전년 달이 마감될 때마다) 고지서 값이 고쳐지면 지표·계수가 다시 계산됩니다. 지표를 정했으면 확정해 두세요.${ad0() ? ' <button class="btn small" onclick="lockTargets()">🔒 이 식으로 목표 확정</button>' : ''}</div>`;
+      if (y === pickYear()) h += `<div class="std-row">${stdBadgeHtml('elec', 'target')}${stdBadgeHtml('gas', 'target')}</div>`;
       h += `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (${lk ? '확정되어 바꿀 수 없음' : `눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}`}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
         cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${roB ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
       const MAIN = ['elec', 'gas'], tgHead = `<table class="t tg" style="margin-top:10px;width:100%"><colgroup><col style="width:90px"><col><col style="width:80px"><col style="width:90px"></colgroup><tr><th class="l">항목</th><th class="l">예상 사용량 식 (기준 달 ${base.length}개로 계산)</th><th>맞는 정도</th><th>월 평균 오차</th></tr>`;
@@ -2030,9 +2036,32 @@
       const m = UT.effective(ym, MONTHLY, DAILY, {}); const h = Number(m.gas_heat) || 42.5, c = Number(m.gas_boiler_corr) || 1;
       return v * h * c;
     }
-    // 증감 원인 나누기
+    // =====================================================================
+    // 📐 기준 식 — 지표 분석 · 원인 찾기 · 목표·예산이 모두 같은 식을 씀 (전기·가스)
+    //   순서: 🔒 확정한 식 → 직접 고른 지표 → 자동 식 · 연도 = 지금 목표를 세우는 해 (pickYear)
+    // =====================================================================
+    function stdInfo(uk) {
+      const y = pickYear(), t = tgt(y), ms = fitModels(t, y), m = ms[uk]; if (!m) return null;
+      const L = lockOf(t, uk), pk = (ms._pick || {})[uk], src = m.locked ? 'lock' : m.pick ? 'pick' : 'auto';
+      const sp = m.pick ? { feats: m.feats, coef: m.coef } : lockSpec(m, uk, t, y);
+      return { y, t, m, src, feats: sp ? sp.feats : null, coef: sp ? sp.coef : null, pickErr: pk && (pk.err || pk.neg) ? (pk.err || '마이너스 계수') : null, lockAt: L ? (t.lock.at || '') : '' };
+    }
+    function stdBadgeHtml(uk, where) {
+      if (uk !== 'elec' && uk !== 'gas') return '';
+      const I = stdInfo(uk), U = PICK_U[uk]; if (!I) return `<div class="std-badge"><b>📐 ${U.name} 기준 식</b> <span class="hint">아직 만들 수 없음 (기준 달 부족)</span></div>`;
+      const cf = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
+      const srcT = I.src === 'lock' ? `🔒 확정한 식 (${esc(I.lockAt)})` : I.src === 'pick' ? '직접 고른 지표' : '자동 식 (확정 전 — 데이터가 쌓이면 바뀔 수 있음)';
+      const b = baseFor(I.t, I.y, uk).filter(ym => uk !== 'elec' || ym >= HVAC_FULL_FROM);
+      const fml = I.feats ? I.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${cf(I.coef[i])}</b>`).join(' + ') : '휴무일 기준 예비 식';
+      const go = where === 'period' ? '' : ` · <a href="#" onclick="switchTab('period');setTimeout(()=>{const e=document.querySelector('#per-elec .pick-box');if(e)e.scrollIntoView({behavior:'smooth',block:'center'})},600);return false">지표 바꾸기 (지표 분석)</a>`;
+      return `<div class="std-badge"><b>📐 ${I.y}년 ${U.name} 기준 식</b> ${Portal.tip('std')} <span class="std-src ${I.src}">${srcT}</span><div>${U.part} = ${fml} <span class="hint">+ ${uk === 'elec' ? '폐수동·공조냉동·부하 변동 (실측)' : '식당 가스 (실측)'}</span></div>
+        <div class="hint">기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} · 월 평균 오차 ±${nf1.format(I.m.mape || 0)}%${I.pickErr ? ` · <span class="warn">고른 지표는 ${esc(I.pickErr)}라 자동 식 사용</span>` : ''} — 이 식 하나로 <b>지표 분석 · 원인 찾기 · 목표·예산</b>이 같이 계산됩니다${go}</div></div>`;
+    }
+    // 증감 원인 나누기 — 기준 식(확정 → 고른 지표 → 자동)으로
     function decompose(ym, ym0, uk) {
-      const y = Number(ym.slice(0, 4)), t = tgt(y);
+      const I = (uk === 'elec' || uk === 'gas') ? stdInfo(uk) : null;
+      if (I && I.m && I.m.pick && !(uk === 'elec' && (ym < HVAC_FULL_FROM || ym0 < HVAC_FULL_FROM))) return decomposePick(ym, ym0, uk, I);
+      const y = I ? I.y : Number(ym.slice(0, 4)), t = tgt(y);
       const models = fitModels(t, y, true), mdl = models[uk];
       const r = monthRow(ym), r0 = monthRow(ym0);
       const fill = x => { if (x.hdd === null) { const nm = normals()[Number(x.ym.slice(5))]; if (nm) { x.hdd = nm.hdd; x.cdd = nm.cdd; x.wxGuess = true; } } };
@@ -2058,7 +2087,27 @@
       out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
       return out;
     }
+    // 기준 식이 「고른 지표/확정」일 때: 지표마다 계수 × (이번 달 − 비교 달)
+    function decomposePick(ym, ym0, uk, I) {
+      const m = I.m, F = m.feats, r = monthRow(ym), r0 = monthRow(ym0), act = r[uk], act0 = r0[uk];
+      if (act === null || act0 === null || act === undefined || act0 === undefined) return { err: '두 달 중 사용량이 없는 달이 있습니다.' };
+      const out = { act, act0, diff: act - act0, r, r0, mdl: m, parts: [], pickMode: true, std: I };
+      const x1 = F.map(f => facOf(ym, f)), x0 = F.map(f => facOf(ym0, f)), bad = F.filter((f, i) => [x1[i], x0[i]].some(v => v === null || v === undefined || isNaN(v)));
+      if (bad.length) { out.err = `${bad.map(facName).join(', ')} 자료가 없는 달이 있어 요인별로 나눌 수 없습니다. (비교 달을 바꿔 보세요)`; out.mdl = null; return out; }
+      const by = [];
+      if (uk === 'elec') { [r, r0].forEach(x => { x.wwk = wwKwh(x.ym) || 0; x.hvk = meterKwh(x.ym, 'elec_hvac_kwh') || 0; x.eq = equipKwh(x.ym, ['생산동', '기타']); });
+        by.push(['폐수동 (실측)', r.wwk - r0.wwk], ['공조냉동 (실측)', r.hvk - r0.hvk]); if (Math.abs(r.eq - r0.eq) >= 0.5) by.push(['부하 변동 (생산동·기타)', r.eq - r0.eq]); }
+      else { [r, r0].forEach(x => { x.grest = gasRestMJ({ ym: x.ym, days: UT.daysIn(x.ym) }, null) || 0; }); by.push(['식당 가스 (실측)', r.grest - r0.grest]); }
+      out.fac = F.map((f, i) => ({ f, x0: x0[i], x1: x1[i], c: m.coef[i], v: m.coef[i] * (x1[i] - x0[i]) }));
+      out.fac.forEach(o => by.push([facName(o.f), o.v]));
+      const explained = by.reduce((a, b) => a + b[1], 0);
+      const an = monthAnoms(ym, uk), an0 = monthAnoms(ym0, uk), ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
+      const anomPart = ex(an) - ex(an0), rest = out.diff - explained - anomPart;
+      out.parts = by.concat([['이상 사용일', anomPart], ['운전·관리 차이', rest]]); out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
+      return out;
+    }
     function causeSentences(ym, ym0, uk, D, short) {
+      if (D.pickMode) return causeSentencesPick(ym, ym0, uk, D);
       const U = UT.UTILS.find(u => u.k === uk), un = U.unit, fx = v => `${v >= 0 ? '+' : '−'}${f0(Math.abs(v))} ${un}`;
       const ml = x => `${Number(x.slice(5))}월`, cmpName = ym0.slice(0, 4) === ym.slice(0, 4) ? ml(ym0) : `작년 ${ml(ym0)}`;
       const pct = D.act0 ? D.diff / D.act0 * 100 : null;
@@ -2116,6 +2165,30 @@
       concl += `<div class="hint" style="margin-top:4px">※ ${uk === 'elec' ? '폐수동·공조냉동은 계량기 실측, ' : ''}생산일·날수·원육·날씨 몫은 목표·예산 탭 ①의 예상 사용량 식(월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
       return { lead, rows, concl, plain };
     }
+    function causeSentencesPick(ym, ym0, uk, D) {
+      const U = UT.UTILS.find(u => u.k === uk), un = U.unit, fx = v => `${v >= 0 ? '+' : '−'}${f0(Math.abs(v))} ${un}`;
+      const ml = x => `${Number(x.slice(5))}월`, cmpName = ym0.slice(0, 4) === ym.slice(0, 4) ? ml(ym0) : `작년 ${ml(ym0)}`, pct = D.act0 ? D.diff / D.act0 * 100 : null;
+      const lead = `${ml(ym)} ${U.name} 사용량은 <b>${f0(D.act)} ${un}</b>로 ${cmpName}(${f0(D.act0)})보다 <b class="${D.diff > 0 ? 'up' : 'down'}">${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${nf1.format(Math.abs(pct))}%)` : ''} ${D.diff > 0 ? '늘었습니다' : '줄었습니다'}</b>.`;
+      if (D.err && !D.mdl) return { lead, rows: [], concl: D.err, plain: `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}` };
+      const r = D.r, r0 = D.r0, P = Object.fromEntries(D.parts), rows = [];
+      const cf = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR'), fv = (v, f) => { const d = (PE_FAC.find(z => z[0] === f) || [])[3]; return Math.abs(v) >= 100 || d === 0 ? f0(v) : nf1.format(v); };
+      const perDay = (v, x) => v === null || v === undefined ? '-' : f0(v / UT.daysIn(x.ym));
+      if ('폐수동 (실측)' in P) rows.push(['폐수동 (실측)', `폐수동 계량기 ${f0(r0.wwk)} → ${f0(r.wwk)} ${un} (하루 ${perDay(r0.wwk, r0)} → ${perDay(r.wwk, r)})`, P['폐수동 (실측)']]);
+      if ('공조냉동 (실측)' in P) rows.push(['공조냉동 (실측)', `냉동·냉장·공조 계량기 합 ${f0(r0.hvk)} → ${f0(r.hvk)} ${un} (하루 ${perDay(r0.hvk, r0)} → ${perDay(r.hvk, r)})`, P['공조냉동 (실측)']]);
+      if ('부하 변동 (생산동·기타)' in P) rows.push(['부하 변동 (생산동·기타)', `특이사항 ⚡ 부하 변동 ${f0(r0.eq)} → ${f0(r.eq)} ${un}`, P['부하 변동 (생산동·기타)']]);
+      if ('식당 가스 (실측)' in P) rows.push(['식당 가스 (실측)', `식당(기숙사) 가스 ${f0(r0.grest)} → ${f0(r.grest)} ${un} · 실측 그대로`, P['식당 가스 (실측)']]);
+      D.fac.forEach(o => { const u = facUnit(o.f), d = o.x1 - o.x0; rows.push([facName(o.f), `${fv(o.x0, o.f)} → ${fv(o.x1, o.f)} ${u} (${d >= 0 ? '+' : '−'}${fv(Math.abs(d), o.f)})<br><span class="calc">= ${d >= 0 ? '+' : '−'}${fv(Math.abs(d), o.f)} ${u} × ${cf(o.c)} ${un}/${u || '단위'}</span>`, o.v]); });
+      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
+      rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
+      const tol = D.mdl.mape || 5, restPct = D.act ? D.rest / D.act * 100 : 0;
+      const big = rows.filter(x => !x[3]).filter(x => Math.abs(x[2]) > 0.5).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2])).slice(0, 2);
+      let concl = big.length ? `가장 크게 작용한 건 <b>${big.map(x => `${x[0]}(${fx(x[2])})`).join(', ')}</b>입니다. ` : '';
+      concl += Math.abs(restPct) <= tol ? `기준 식으로 설명되는 몫과 이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
+        : D.rest < 0 ? `그걸 빼고도 <b class="down">${f0(-D.rest)} ${un} (${nf1.format(-restPct)}%) 덜 썼습니다 → 실제 절감</b>으로 볼 수 있습니다.` : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
+      concl += `<div class="hint" style="margin-top:4px">※ 지표 몫은 📐 기준 식(${D.std.src === 'lock' ? '확정한 식' : '직접 고른 지표'}, 월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
+      const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` + rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
+      return { lead, rows, concl, plain };
+    }
     async function renderCause() {
       if (!window.Chart) return;
       try { await loadTemps(); } catch (e) { TEMPS = {}; }
@@ -2126,6 +2199,7 @@
       document.getElementById('cause-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${causeUtil === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderCause()">${u.name}</button>`).join('') +
         ' &nbsp; 비교: ' + [['prev', '전월'], ['ly', '작년 같은 달']].map(([k, n]) => `<button class="chip ${causeCmp === k ? 'on' : ''}" onclick="causeCmp='${k}';renderCause()">${n}</button>`).join('');
       const uk = causeUtil, U = UT.UTILS.find(u => u.k === uk);
+      { const sb2 = document.getElementById('cz-std'); if (sb2) sb2.innerHTML = stdBadgeHtml(uk, 'cause'); }
       const D = decompose(ym, ym0, uk);
       document.getElementById('cz-title').textContent = `① ${U.name} 사용량이 왜 ${D.diff > 0 ? '늘었나' : '줄었나'} — ${ymLabel(ym)} vs ${ymLabel(ym0)}`;
       const T = D.act !== undefined ? causeSentences(ym, ym0, uk, D) : null;
@@ -3034,17 +3108,32 @@
       return (PRODD = out);
     }
     const PD_UTIL = {
-      elec: { name: '전기', unit: 'kWh', val: ds => (UT.dailyUsage(DAILY, ds) || {}).elec, feats: [['prod', '생산한 날'], ['rm', '원육 kg'], ['warm', '더운 정도 (18℃ 넘는 ℃)']] },
-      gas: { name: '보일러 가스', unit: '㎥', val: ds => UT.diffReading(DAILY, ds, ['gas_boiler']), feats: [['steamH', '자숙 작업시간 (h)'], ['ea1k', '포장 1,000EA'], ['cold', '추운 정도 (15℃ 아래 ℃)']] },
+      elec: { name: '전기', unit: 'kWh', val: ds => (UT.dailyUsage(DAILY, ds) || {}).elec, get feats() { return pdFeats('elec'); } },
+      gas: { name: '보일러 가스', unit: '㎥', val: ds => UT.diffReading(DAILY, ds, ['gas_boiler']), get feats() { return pdFeats('gas'); } },
       water: { name: '용수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).water, feats: [['prod', '생산한 날'], ['rm', '원육 kg']] },
       ww: { name: '폐수', unit: '㎥', val: ds => (UT.dailyUsage(DAILY, ds) || {}).ww, feats: [['prod', '생산한 날'], ['rm', '원육 kg']] }
     };
+    // 일별 예상 식의 요인 = 📐 기준 식의 지표를 하루 단위로 바꾼 것 (달력 날수 → 하루 기본, 생산일수 → 생산한 날, 원육 → 그날 원육 kg …)
+    const PD_DEF = { elec: [['prod', '생산한 날'], ['rm', '원육 kg'], ['w18', '더운 정도 (18℃ 넘는 ℃)']], gas: [['steamH', '자숙 작업시간 (h)'], ['ea1k', '포장 1,000EA'], ['c15', '추운 정도 (15℃ 아래 ℃)']] };
+    function pdMap(f) {
+      if (f === 'days' || f === 'idle') return null; if (f === 'op') return ['prod', '생산한 날']; if (f === 'prod') return ['rm', '원육 kg']; if (f === 'pkg') return ['pkg', '완제품 kg']; if (f === 'ea') return ['ea1k', '포장 1,000EA'];
+      if (f === 'steamH') return ['steamH', '자숙 작업시간 (h)']; if (f === 'packH') return ['packH', '포장 작업시간 (h)']; if (f === 'boilH') return ['boilH', '보일러 켠 시간 (h)']; if (f === 'runH') return ['runH', '보일러 실가동 (h)'];
+      if (f === 'warm') return ['w5', '더운 정도 (5℃ 넘는 ℃)']; if (/^warmT:/.test(f)) return ['w' + f.slice(6), `더운 정도 (${f.slice(6)}℃ 넘는 ℃)`]; if (/^coldT:/.test(f)) return ['c' + f.slice(6), `추운 정도 (${f.slice(6)}℃ 아래 ℃)`];
+      if (f === 'hdd') return ['c18', '추운 정도 (18℃ 아래 ℃)']; if (f === 'hddOn') return ['con', '보일러 켠 날 추운 정도 (18℃ 아래 ℃)']; return null;
+    }
+    function pdFeats(uk) {
+      let I = null; try { I = stdInfo(uk); } catch (e) { }
+      if (!I || !I.feats) return PD_DEF[uk]; const out = []; I.feats.forEach(f => { const m = pdMap(f); if (m && !out.some(x => x[0] === m[0])) out.push(m); });
+      return out.length ? out : PD_DEF[uk];
+    }
     function pdRow(ds) {
       const p = PRODD[ds], t = (TEMPS || {})[ds], boiler = UT.diffReading(DAILY, ds, ['gas_boiler']);
       const noRec = !p && boiler !== null && boiler > 50; // 보일러는 돌았는데 생산 기록이 없는 날
       const unknown = !p && boiler === null; // 생산 기록도, 보일러 검침도 없는 날 → 판단 안 함
-      const x = { prod: p && p.rm > 0 ? 1 : 0, rm: p ? p.rm : 0, steamH: p ? p.steamH : 0, ea1k: p ? p.ea / 1000 : 0,
-        warm: t === undefined || t === null ? null : Math.max(0, t - 18), cold: t === undefined || t === null ? null : Math.max(0, 15 - t) };
+      const on = p && p.rm > 0, hasT = t !== undefined && t !== null;
+      const x = { prod: on ? 1 : 0, rm: p ? p.rm : 0, steamH: p ? p.steamH : 0, packH: p ? p.packH : 0, ea1k: p ? p.ea / 1000 : 0, pkg: on ? pkgDay(p) : 0,
+        boilH: on ? (p.boilH === undefined ? null : p.boilH) : 0, runH: on ? (p.runH === undefined ? null : p.runH) : 0, con: !hasT ? null : on ? Math.max(0, 18 - t) : 0 };
+      for (let T = 0; T <= 25; T++) { x['w' + T] = hasT ? Math.max(0, t - T) : null; x['c' + T] = hasT ? Math.max(0, T - t) : null; }
       return { ds, p, x, t, noRec, unknown };
     }
     function pdFit(uk, to) {
@@ -3431,6 +3520,7 @@
       // 표
       h += `<div class="tbl-wrap" style="margin-top:8px"><table class="t"><tr><th>월</th>${PE_COMP.map(c => `<th>${c[1]}<br><span class="hint">${cu}</span></th>`).join('')}<th>${F[1]}<br><span class="hint">${fu}</span></th>${RT_OK ? `<th>${C[1]} ÷ ${F[1].replace(/ \(.*\)/, '')}<br><span class="hint">${rtU}</span></th>` : ''}${F[0] === 'pkg' ? '<th>완제품 ÷ 원육<br><span class="hint">수율</span></th>' : ''}</tr>` +
         rows.slice().reverse().map(r => `<tr><td>${r.ym.slice(2).replace('-', '.')}</td>${PE_COMP.map(([k]) => `<td>${cv(r, k) === null ? '<span class="hint">-</span>' : f0(cv(r, k))}</td>`).join('')}<td><b>${fmtF(fv(r, F[0]), F[0])}</b></td>${RT_OK ? `<td>${rtFmt(rt(r, peComp))}</td>` : ''}${F[0] === 'pkg' ? `<td>${r.f.pkg && r.f.prod ? nf1.format(r.f.pkg / r.f.prod * 100) + '%' : '-'}</td>` : ''}</tr>`).join('') + '</table></div>';
+      if (peUtil === 'elec' || peUtil === 'gas') h = stdBadgeHtml(peUtil, 'period') + h;
       el.innerHTML = h;
       const labels = rows.map(r => r.ym.slice(2).replace('-', '.'));
       const bars = peStack ? PE_COMP.filter(c => PU.stack.includes(c[0])).map(([k, n, col]) => ({ type: 'bar', label: n, data: rows.map(r => cv(r, k)), backgroundColor: col + 'cc', stack: 's', yAxisID: 'y', order: 2 }))
