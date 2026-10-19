@@ -1119,7 +1119,7 @@
       document.getElementById('anom-chips').innerHTML =
         [['all', '전체'], ...UT.DAILY_UTILS.map(u => [u.k, u.name])].map(([k, n]) => `<button class="chip ${anomTblU === k ? 'on' : ''}" onclick="anomTblU='${k}';renderAnomaly()">${n} ${k === 'all' ? anomList.length : anomList.filter(a => a.u === k).length}</button>`).join('') +
         ' &nbsp; ' + [[1, ymLabel(am)], [3, `${Number(UT.prevYm(UT.prevYm(am)).slice(5))}~${Number(am.slice(5))}월 (3개월)`]].map(([n, l]) => `<button class="chip ${anomSpan === n ? 'on' : ''}" onclick="anomSpan=${n};renderAnomaly()">${l}</button>`).join('') +
-        ' &nbsp; 민감도 ' + [[1.3, '높음'], [1.4, '보통'], [1.5, '낮음']].map(([r, n]) => `<button class="chip ${anomRatio === r ? 'on' : ''}" onclick="anomRatio=${r};renderAnomaly()">${n}</button>`).join('');
+        ' &nbsp; 평소보다 ' + [1.2, 1.3, 1.4, 1.5, 1.7, 2].map(r => `<button class="chip ${anomRatio === r ? 'on' : ''}" onclick="anomRatio=${r};renderAnomaly()" title="그날 사용량이 평소의 ${r}배를 넘으면 이상 사용일">+${Math.round((r - 1) * 100)}%</button>`).join('') + ' <span class="hint">넘게 쓴 날</span>';
       const list = anomList.filter(a => anomTblU === 'all' || a.u === anomTblU);
       const W = ['일', '월', '화', '수', '목', '금', '토'];
       document.getElementById('anom-table').innerHTML = !list.length ? `<div class="empty">${from.slice(5).replace('-', '/')} ~ ${to.slice(5).replace('-', '/')}에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>` :
