@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>유틸리티 사용량·비용 분석</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root {
+      --c-elec: #2a78d6; --c-gas: #eb6834; --c-water: #1baf7a; --c-ww: #eda100;
+      --c-prev: #a3a29d; --ink: #222; --ink2: #555; --muted: #888; --line: #e3e6ea; --bg: #f4f6f8; --card: #fff;
+      --brand: #2c5aa0; --good: #1e8e3e; --bad: #d93025;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: var(--ink); font-size: 14px; }
+    [hidden] { display: none !important; }
+    header { background: var(--brand); color: #fff; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    header h1 { font-size: 18px; margin: 0; }
+    .memo-idx { font-size: 12px; font-weight: normal; margin-left: 10px; border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.12); color: #fff; border-radius: 6px; padding: 3px 8px; cursor: pointer; vertical-align: 3px; }
+    nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .nav-step { font-size: 11px; color: rgba(255,255,255,.75); margin: 0 0 0 8px; white-space: nowrap; } .nav-step:first-child { margin-left: 0; }
+    .lockbar { border: 1px solid #f0d58a; background: #fff8e1; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; line-height: 1.6; } .lockbar.on { border-color: #9cc5a4; background: #eef8f0; }
+    .lock-b { display: inline-block; font-size: 12px; background: #e3f3e6; color: #1e6b33; border: 1px solid #9cc5a4; border-radius: 10px; padding: 0 8px; margin-left: 6px; }
+    .un-loadsw { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 6px; padding: 6px 10px; } .un-loadbox { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: #fffdf4; border: 1px dashed #e6c65c; border-radius: 6px; padding: 8px 10px; }
+    .un-cat.eq { background: #fff1c2; color: #8a5a00; } .hidden-f { display: none !important; } tr.eq-row td { background: #fffdf4; }
+    .pick-box { border: 1px solid #c9d8ee; background: #f6f9fd; border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+    .pick-box .chip.on { background: #1f5fae; color: #fff; border-color: #1f5fae; } .pick-box .warn { color: #b3261e; } .pick-box .good { color: #1e7d32; }
+    .story { background: #fff8e6; border: 1px solid #f0dca8; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; line-height: 1.6; }
+    nav button { background: rgba(255,255,255,0.15); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    nav button.active { background: #fff; color: var(--brand); font-weight: bold; }
+    .container { padding: 16px; max-width: 1280px; margin: 0 auto; }
+    .tab { display: none; } .tab.active { display: block; }
+
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .toolbar select, .toolbar input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background: #fff; }
+    .month-nav { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 2px; }
+    .month-nav button { border: none; background: transparent; cursor: pointer; font-size: 15px; padding: 4px 9px; border-radius: 4px; }
+    .month-nav button:hover { background: #eef3fb; }
+    .month-nav span { font-weight: bold; min-width: 92px; text-align: center; }
+    .btn { background: var(--brand); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn.secondary { background: #666; } .btn:disabled { opacity: .5; cursor: default; } .btn:hover { opacity: .9; }
+    .hint { font-size: 12px; color: var(--muted); }
+    .card { background: var(--card); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    .card h3 { margin: 0 0 12px; font-size: 15px; color: var(--brand); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .card h3 .sub { font-size: 12px; color: var(--muted); font-weight: normal; }
+    .loading, .empty { text-align: center; padding: 30px; color: var(--muted); }
+
+    /* 상태 배지 */
+    .st { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: bold; white-space: nowrap; }
+    .st-확정 { background: #e6f4ea; color: #1e6b33; }
+    .st-가마감 { background: #fff4e0; color: #8a5300; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+    /* KPI */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .kpi { background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-top: 4px solid #ccc; }
+    .kpi .lab { font-size: 12px; color: var(--ink2); display: flex; justify-content: space-between; gap: 6px; }
+    .kpi .val { font-size: 22px; font-weight: bold; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+    .kpi .val small { font-size: 12px; font-weight: normal; color: var(--muted); }
+    .kpi .cmp { font-size: 12px; color: var(--ink2); line-height: 1.6; font-variant-numeric: tabular-nums; }
+    .up { color: var(--bad); } .down { color: var(--good); }
+    .kpi.total { border-top-color: #333; } .kpi.elec { border-top-color: var(--c-elec); } .kpi.gas { border-top-color: var(--c-gas); }
+    .kpi.water { border-top-color: var(--c-water); } .kpi.ww { border-top-color: var(--c-ww); } .kpi.prod { border-top-color: #777; }
+
+    /* 차트 */
+    .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 16px; }
+    .charts .card { min-width: 0; }
+    .chart-box { position: relative; height: 280px; cursor: zoom-in; }
+    #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #zoom[hidden] { display: none !important; }
+    #udet { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #udet[hidden] { display: none !important; }
+    #udet .zoom-hd { flex-wrap: wrap; }
+    .kpi.clickable { cursor: pointer; transition: box-shadow .15s; } .kpi.clickable:hover { box-shadow: 0 3px 10px rgba(0,0,0,.15); }
+    table.ud tr.cmp td { font-size: 11px; color: #8a8f98; background: #fbfcfd; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
+    table.ud tr.cmp td.l { padding-left: 16px; } table.ud tr.cmp td.up { color: #d93025; } table.ud tr.cmp td.down { color: #1565c0; } table.ud tr.cmp .pc { font-size: 10px; opacity: .85; }
+    table.ud tr.m1 td { font-weight: 700; } table.ud td.na { color: #bbb; } table.ud td.prov { background: #fffaf0; }
+    .zoom-box { background: #fff; border-radius: 12px; width: min(1400px, 100%); height: min(900px, 100%); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
+    .zoom-hd { display: flex; align-items: center; gap: 12px; } .zoom-hd b { font-size: 16px; color: var(--brand); } .zoom-hd .hint { flex: 1; }
+    .zoom-hd button { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    .zoom-sum { font-size: 15px; font-weight: 600; color: #333; min-height: 0; } .zoom-sum:empty { display: none; }
+    .zoom-chart { position: relative; flex: 1; min-height: 300px; }
+    .zoom-table { max-height: 34%; overflow: auto; }
+    .zoom-table table.zal { table-layout: fixed; border-collapse: collapse; } .zoom-table table.zal td, .zoom-table table.zal th { padding: 5px 4px; text-align: center; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+    .zoom-table table.zal td.l, .zoom-table table.zal th.l { text-align: left; white-space: normal; word-break: keep-all; }
+    .cz-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.3fr; gap: 16px; align-items: start; }
+    .cz-chart { height: 300px; }
+    .cz-text { font-size: 14px; line-height: 1.7; }
+    .cz-text .lead { font-size: 15px; margin-bottom: 8px; }
+    .cz-text table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+    .cz-text td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: top; } .cz-text td.v { text-align: right; white-space: nowrap; font-weight: 600; }
+    .cz-text tr.key td { background: #fff8e1; } .cz-text .concl { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #f2f6ff; }
+    .tg-whyd { margin-top: 8px; } .tg-whyd summary { cursor: pointer; color: var(--brand); font-size: 13px; font-weight: 600; }
+    .tg-why td, .tg-why th { font-size: 12px; }
+    .cz-text .calc { color: #2f5aa8; font-size: 12px; }
+    .cz-per { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding: 6px 2px 8px; border-bottom: 1px dashed #ccd; margin-bottom: 8px; }
+    .cz-more summary { cursor: pointer; font-size: 14px; }
+    .cz-memo-ta { width: 100%; min-height: 90px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; line-height: 1.6; font-family: inherit; }
+    @media (max-width: 900px) { .cz-wrap { grid-template-columns: 1fr; } }
+    .per-range { font-size: 13px; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .per-range input, .per-range select { padding: 5px 6px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .anom-note { width: 100%; min-width: 180px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 5px; font-size: 12px; }
+    .anom-note.saved { border-color: #43a047; background: #f1f8e9; }
+    #bill { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 210; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    #bill[hidden] { display: none !important; }
+    .bill-box { background: #fff; border-radius: 12px; width: min(1200px, 100%); height: min(940px, 100%); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
+    .bill-box .zoom-hd { flex-wrap: wrap; } .bill-box select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .warnc { color: #c62828; font-weight: 600; }
+    .bill-box .zoom-hd button.btn { background: var(--brand); color: #fff; border: none; font-weight: 600; } .bill-box .zoom-hd button.btn:disabled { background: #9aa7bd; }
+    #bill-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 2px dashed #b9c3d6; border-radius: 10px; padding: 26px 12px; text-align: center; cursor: pointer; background: #f7f9fc; }
+    #bill-drop.over { background: #e3edff; border-color: var(--brand); }
+    #bill-drop .big { font-size: 15px; font-weight: 600; color: #333; }
+    #bill-drop.small { flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 8px 12px; } #bill-drop.small .hint { display: none; } #bill-drop.small .big { font-size: 13px; }
+    .ex-text { width: 100%; font-family: "Malgun Gothic", sans-serif; font-size: 14px; line-height: 1.7; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    .ex-cp { cursor: copy; } .ex-cp:hover { background: #eef5ff; } .ex-done { background: #d7f5e3 !important; }
+    .ex-chart { overflow-x: auto; } .ex-chart canvas { border: 1px solid #e3e6ea; }
+    #bill-status { min-height: 16px; color: var(--brand); font-weight: 600; }
+    #bill-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+    .bcard { border: 1px solid #ddd; border-radius: 10px; padding: 10px 12px; }
+    .bhd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .bhd b { color: var(--brand); } .bhd .hint { flex: 1; }
+    .bx { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+    .bwarn { background: #fff4e5; border: 1px solid #ffcc80; color: #8a4b00; border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-bottom: 6px; }
+    .bok { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-bottom: 6px; }
+    .bbody { display: flex; gap: 12px; align-items: flex-start; }
+    .btbl { flex: 1; border-collapse: collapse; font-size: 13px; }
+    .btbl th { background: #f2f4f8; font-weight: 600; padding: 5px 6px; text-align: left; font-size: 12px; }
+    .btbl td { border-top: 1px solid #eee; padding: 4px 6px; vertical-align: middle; }
+    .btbl .u { color: #999; font-size: 11px; } .btbl .hint { font-size: 11px; }
+    .btbl input.bv { width: 130px; padding: 5px 6px; border: 1px solid #bbb; border-radius: 5px; text-align: right; font-size: 13px; }
+    .btbl input.bv.low { background: #fff8e1; border-color: #f0b400; } .btbl input.bv.bad { background: #ffebee; border-color: #e53935; }
+    .btbl tr.none td { color: #aaa; } .btbl tr.diff td.cur { color: #d84315; font-weight: 600; }
+    .btbl td.cur { text-align: right; white-space: nowrap; } .btbl .ok { color: #2e7d32; font-size: 11px; font-weight: 600; }
+    .btbl td.crop img { max-height: 34px; max-width: 220px; border: 1px solid #ddd; border-radius: 3px; cursor: zoom-in; display: block; }
+    .bthumb img { width: 150px; border: 1px solid #ccc; cursor: zoom-in; }
+    @media (max-width: 800px) { .bbody { flex-direction: column; } .bthumb { display: none; } .btbl td.crop img { max-width: 120px; } .btbl input.bv { width: 100px; } }
+    .chip:disabled { opacity: .4; cursor: default; }
+    .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+    .chip { border: 1px solid #ccc; background: #fff; border-radius: 14px; padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--ink2); }
+    .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink2); margin: -4px 0 8px; }
+    .legend span { display: inline-flex; align-items: center; }
+    .legend .ln { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 5px; }
+    .legend .ln.dash { border-top-style: dashed; }
+
+    /* 표 */
+    .tbl-wrap { overflow-x: auto; }
+    table.t { border-collapse: collapse; width: 100%; font-size: 12px; background: #fff; font-variant-numeric: tabular-nums; }
+    table.t th, table.t td { border: 1px solid var(--line); padding: 5px 7px; text-align: right; white-space: nowrap; }
+    table.t th { background: #f0f3f8; color: var(--ink2); font-weight: bold; text-align: center; position: sticky; top: 0; }
+    table.t td.l, table.t th.l { text-align: left; }
+    table.t tr.grp td { background: #f7f9fc; font-weight: bold; color: var(--brand); text-align: left; }
+    table.t tr.sum td { font-weight: bold; background: #fafafa; }
+    table.t td.na { color: #bbb; }
+    table.t td.prov { background: #fffaf0; }
+    #pd-body tr.hl td { background: #fff5f4; }
+    .noprod { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; background: #fdecea; color: #b3261e; font-weight: 600; white-space: nowrap; }
+    .srcd { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; background: #fff4e0; color: #8a5a00; white-space: nowrap; }
+    .dc-t td { text-align: center; white-space: nowrap; } .dc-t td.l { text-align: left; }
+    table.t.dc-t td:first-child { text-align: center; }
+    .dc-t td.dc-note { white-space: normal; min-width: 180px; max-width: 320px; font-size: 12px; } .dc-note div { margin-bottom: 2px; }
+    .dc-t td.dc-pack { white-space: normal; min-width: 170px; font-size: 12px; } .dc-pn { color: #555; }
+    table.t.dc-corr td { text-align: center; min-width: 92px; vertical-align: middle; } table.t.dc-corr th { white-space: nowrap; }
+    .dc-lv { font-size: 11px; } .dc-sl { font-size: 10px; color: #333; opacity: .8; }
+    .dc-sun { color: #d93025; } .dc-sat { color: #1565c0; }
+    .dc-t tr.dc-off td { color: #999; background: #fafafa; }
+    .dc-t tr.dc-sum td { background: #f2f5fa; font-weight: 600; }
+    .un-form { display: grid; grid-template-columns: 160px 160px 1fr; gap: 8px 12px; align-items: end; }
+    .un-form label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 3px; }
+    .un-form .wide { grid-column: 1 / -1; font-size: 12px; color: #555; }
+    .un-form input, .un-form select, .un-form textarea { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; }
+    .un-u { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 3px; margin-right: 10px; font-size: 13px; color: #333; }
+    @media (max-width: 700px) { .un-form { grid-template-columns: 1fr 1fr; } }
+    .un-cat { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eef3fb; color: #1a4f8b; white-space: nowrap; }
+    #notes-body td { text-align: center; }
+    #notes-body td.l { text-align: left; }
+    td.un-txt { white-space: pre-wrap; min-width: 200px; max-width: 420px; }
+    .un-note { color: #6a3d9a; font-size: 12px; }
+    .un-list { margin: 4px 0 0 18px; padding: 0; line-height: 1.9; font-size: 13px; }
+    #year-table tr.cmp td { font-size: 11px; color: #8a8f98; background: #fbfcfd; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
+    #year-table tr.cmp td.l { padding-left: 16px; }
+    #year-table tr.cmp td.up { color: #d93025; } #year-table tr.cmp td.down { color: #1565c0; }
+    #year-table tr.cmp .pc { font-size: 10px; opacity: .85; }
+    #year-table tr.m1 td { border-top: 1px solid #e3e6ea; font-weight: 600; }
+    table.t.rep th.key { background: #2c5aa0; color: #fff; }
+    table.t.rep td.key { background: #e8f0fb; font-weight: bold; color: #1d3f73; }
+    table.t.rep tr.sum td.key { background: #d3e2f7; }
+    table.t.rep tr.subrow td { color: #666; font-size: 11.5px; }
+    table.t.rep tr.subrow td.key { font-weight: normal; color: #1d3f73; }
+    @media print { table.t.rep td.key, table.t.rep th.key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+    /* 일일검침 */
+    table.daily { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; background: #fff; }
+    table.daily th, table.daily td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; }
+    table.daily th { background: #f0f3f8; color: var(--ink2); font-size: 12px; position: sticky; top: 0; z-index: 2; }
+    table.daily th .u { font-weight: normal; color: var(--muted); font-size: 11px; }
+    table.daily td:first-child, table.daily th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; text-align: left; white-space: nowrap; font-weight: bold; }
+    table.daily th:first-child { background: #f0f3f8; z-index: 3; }
+    table.daily tr.today td { background: #eef3fb; }
+    table.daily tr.today td:first-child { background: #dde8f7; }
+    table.daily tr.weekend td:first-child { color: var(--bad); }
+    table.daily input { width: 100px; padding: 5px 6px; border: 1px solid #d5d9df; border-radius: 5px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+    table.daily input.small { width: 76px; }
+    table.daily input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+    table.daily input.saving { background: #fffbe6; }
+    table.daily input.saved { background: #eaf6ec; }
+    table.daily input.err { background: #fdeceb; border-color: var(--bad); }
+    table.daily input.warn { border-color: #f29900; background: #fff8e8; }
+    table.daily .use { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; min-height: 13px; font-variant-numeric: tabular-nums; }
+    table.daily tr.sum td { background: #f7f9fc; font-weight: bold; font-size: 12px; position: sticky; bottom: 0; }
+    .daily-wrap { overflow: auto; max-height: calc(100vh - 220px); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+    /* 월간입력 */
+    .mgrid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .mgrid { grid-template-columns: 1fr; } }
+    .fgroup { margin-bottom: 14px; }
+    .fgroup > summary { cursor: pointer; font-weight: bold; color: var(--brand); padding: 6px 0; font-size: 14px; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px; padding: 6px 0 4px; }
+    .f label { display: block; font-size: 12px; color: var(--ink2); margin-bottom: 3px; }
+    .f label .u { color: var(--muted); }
+    .f input, .f select { width: 100%; padding: 7px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+    .f select { text-align: left; }
+    .f input.filled { border-color: var(--brand); background: #f6f9fe; }
+    .f input::placeholder { color: #b3b8c0; font-style: italic; }
+    .f .src { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 13px; }
+    .preview { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    .pv-sub { color: #8a8f98; font-size: 11px; } .preview tr td .pv-sub { padding-left: 8px; }
+    .pv-ok { color: #1e6b33; font-weight: bold; margin-left: 4px; } .pv-ng { color: #d93025; font-weight: bold; margin-left: 4px; }
+    .preview table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .preview td { padding: 4px 2px; border-bottom: 1px solid #f0f0f0; }
+    .preview td:last-child { text-align: right; }
+    .preview tr.h td { font-weight: bold; color: var(--brand); padding-top: 10px; border-bottom: 1px solid #d8e0ec; }
+    .preview tr.tot td { font-weight: bold; font-size: 14px; border-top: 2px solid #333; }
+
+    .st-예측 { background: #ede7fb; color: #5b3fa8; }
+    .anom-banner { background: #fff4e5; border: 1px solid #f3c98b; color: #8a5300; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; cursor: pointer; font-size: 13px; }
+    .fc-card { border-left: 4px solid #7b5cd6; }
+    .fc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .fc-grid b { font-size: 18px; display: block; margin: 2px 0; }
+    .fc-note { background: #f3effc; border-left: 4px solid #7b5cd6; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; }
+    table.tg input { padding: 5px 6px; border: 1px solid #c8d3e6; border-radius: 5px; text-align: right; font-size: 13px; background: #fff; }
+    table.tg td.key, table.tg th.key { background: #eef4fd; }
+    #tg-model table.tg td.l { white-space: normal; line-height: 1.8; min-width: 120px; } /* 예상 사용량 식이 화면 밖으로 안 넘치게 줄바꿈 */
+    #tg-model table.tg td.l .hint { white-space: normal; }
+    #tg-model .plus { color: #888; font-weight: 700; margin-right: 2px; }
+    .tg-excl { margin-top: 4px; font-size: 11px; color: #777; } .tg-excl .chip.mini { font-size: 10px; padding: 1px 6px; margin: 1px; }
+    .tg-excl .chip.mini.off { background: #fdecea; color: #b3261e; border-color: #f2b8b5; text-decoration: line-through; }
+    #tg-model .tbl-x, #tg-model { overflow-x: auto; }
+    details.fold > summary { cursor: pointer; padding: 2px 0; } details.fold[open] > summary { margin-bottom: 4px; }
+    .kpi.kpi-minor { opacity: .85; } .kpi.kpi-minor .val { font-size: 20px; } .kpi.kpi-minor a { color: inherit; }
+    .kpi-tbl td.best { background: #e6f4ea; font-weight: 700; } .kpi-tbl td.bad { color: #b3261e; } .kpi-con { background: #f4f7fb; border-radius: 8px; padding: 10px 12px; margin-top: 10px; line-height: 1.7; }
+    table.t tr.qrow td { background: #f3f6fb; font-weight: bold; }
+    #tab-target table.t th { position: static; }
+    table.plan input { padding: 4px 6px; border: 1px solid #c8d3e6; border-radius: 5px; text-align: right; font-size: 12px; }
+    .rate-grid { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+    .rate-grid label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+    .rate-grid input { width: 70px; padding: 6px; border: 1px solid #c8d3e6; border-radius: 6px; text-align: right; font-size: 14px; }
+    .chip:disabled { cursor: default; }
+    .ok { color: var(--good); font-weight: bold; } .ng { color: var(--bad); font-weight: bold; }
+    tr.anom-row { cursor: pointer; } tr.anom-row:hover td { background: #f6f9fe; }
+    /* 월간보고서 */
+    .brief-sheet { background: #fff; width: 190mm; min-height: 270mm; margin: 0 auto; padding: 10mm; box-shadow: 0 2px 8px rgba(0,0,0,.15); font-size: 11px; }
+    .br-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1d3f73; padding-bottom: 6px; margin-bottom: 8px; }
+    .br-title { font-size: 20px; font-weight: bold; color: #1d3f73; }
+    .br-sign { border-collapse: collapse; font-size: 10px; } .br-sign td { border: 1px solid #999; width: 16mm; text-align: center; height: 5mm; } .br-sign tr:last-child td { height: 12mm; }
+    .br-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+    .br-kpi { border: 1px solid #d8dee8; border-top: 3px solid #1d3f73; border-radius: 4px; padding: 6px 8px; }
+    .br-kpi .l { font-size: 10px; color: #555; } .br-kpi .v { font-size: 16px; font-weight: bold; margin: 2px 0; } .br-kpi .s { font-size: 9.5px; color: #555; line-height: 1.5; }
+    table.br-t { font-size: 10.5px; } table.br-t th, table.br-t td { padding: 4px 5px; }
+    .br-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+    .br-ct { font-size: 11px; font-weight: bold; color: #1d3f73; margin-bottom: 2px; }
+    .br-box { position: relative; height: 62mm; }
+    .br-sec { font-weight: bold; color: #1d3f73; margin: 8px 0 3px; font-size: 12px; border-left: 3px solid #1d3f73; padding-left: 6px; }
+    .br-txt { font-size: 11px; line-height: 1.6; }
+    .br-comment { width: 100%; min-height: 70px; font: inherit; font-size: 12px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    .print-only { display: none; }
+    @media print {
+      @page { size: A4 portrait; margin: 8mm; }
+      header, nav, .no-print, .pt-bar { display: none !important; }
+      body { background: #fff; }
+      .container { padding: 0; max-width: none; }
+      .tab:not(.active) { display: none !important; }
+      .card { box-shadow: none; }
+      .brief-sheet { box-shadow: none; padding: 0; width: auto; min-height: 0; }
+      .br-comment { display: none; } .print-only { display: block !important; white-space: pre-wrap; min-height: 40px; }
+      .st, .br-kpi, table.t th, .fc-note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  .std-badge{border:1px solid #c9d7ee;background:#f3f7fd;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:13px;line-height:1.6}
+.std-badge .std-src{display:inline-block;font-size:12px;padding:0 8px;border-radius:10px;background:#e7ecf3;margin-left:4px}
+.std-badge .std-src.lock{background:#dff3e4;color:#1d6b35}.std-badge .std-src.pick{background:#e3ecfb;color:#1d4f9a}.std-badge .std-src.auto{background:#fff2d6;color:#8a5a00}
+.std-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}@media(max-width:800px){.std-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <div id="app" hidden>
+    <header>
+      <h1>📊 유틸리티 사용량 · 비용 분석 <button type="button" class="memo-idx pt-admin-only" onclick="Portal.tipIndex()" title="용어·계산식 메모 모아 보기">📖 용어·계산식</button></h1>
+      <nav>
+        <span class="nav-step an-only">1단계</span>
+        <button class="tab-btn active" data-tab="dash">현황</button>
+        <span class="nav-step an-only">2단계</span>
+        <button class="tab-btn" data-tab="period">지표 분석</button>
+        <button class="tab-btn" data-tab="cause">원인 찾기</button>
+        <button class="tab-btn" data-tab="notes">특이사항</button>
+        <span class="nav-step an-only">3단계</span>
+        <button class="tab-btn" data-tab="target">목표·예산</button>
+        <button class="tab-btn" data-tab="monthly">월간입력</button>
+        <button class="tab-btn" data-tab="report">회계보고</button>
+        <button class="tab-btn" data-tab="brief">월간보고서</button>
+        <span class="nav-step an-only">입력</span>
+        <button class="tab-btn" data-tab="daily">검침 입력</button>
+        <button class="tab-btn" data-tab="expense">지출결의</button>
+      </nav>
+    </header>
+
+    <div class="container">
+      <!-- ================= 현황 ================= -->
+      <div id="tab-dash" class="tab active">
+        <div class="toolbar">
+          <label class="hint">기준 월</label>
+          <div class="month-nav"><button onclick="shiftDashMonth(-1)">◀</button><span id="dash-month"></span><button onclick="shiftDashMonth(1)">▶</button></div>
+          <span id="dash-status"></span>
+          <span class="hint" id="dash-note"></span>
+        </div>
+        <div id="anom-banner"></div>
+        <div id="fc-box"></div>
+        <div class="kpis" id="kpis"><div class="loading">불러오는 중...</div></div>
+        <div class="kpis" id="kpis2"></div>
+
+        <div class="charts">
+          <div class="card">
+            <h3>월별 유틸리티 비용 <span class="sub" id="cost-chart-sub"></span></h3>
+            <div class="legend" id="cost-legend"></div>
+            <div class="chart-box"><canvas id="chart-cost"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>원육 kg당 유틸리티 비용 <span class="sub">원/kg · 올해 vs 전년</span></h3>
+            <div class="legend"><span><i class="ln" style="border-color:#333"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
+            <div class="chart-box"><canvas id="chart-unitcost"></canvas></div>
+            <div class="hint" id="unitcost-note"></div>
+          </div>
+          <div class="card">
+            <h3>항목별 추이
+              <span class="chips" id="util-chips"></span>
+              <span class="chips" id="metric-chips"></span><span class="pt-tip" tabindex="0" role="button" data-tip="unit" title="눌러서 설명 보기">ⓘ</span>
+            </h3>
+            <div class="legend" id="util-legend"></div>
+            <div class="chart-box"><canvas id="chart-util"></canvas></div>
+            <div class="hint" id="util-note"></div>
+          </div>
+          <div class="card">
+            <h3>원육 투입량 <span class="sub">kg · 올해 vs 전년</span></h3>
+            <div class="legend"><span><i class="dot" style="background:#777"></i>올해</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>전년</span></div>
+            <div class="chart-box"><canvas id="chart-prod"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>월별 상세표 <span class="sub" id="table-year-label"></span> <span id="yt-cmp"></span>
+            <button class="btn secondary no-print" style="margin-left:auto;padding:5px 10px;font-size:12px;" onclick="downloadYearTable()">📥 엑셀</button>
+          </h3>
+          <div class="hint" style="margin:-6px 0 8px;">노란 칸 = 가마감(고지서 전 자체 계산값). 고지서 금액을 입력하면 확정으로 바뀝니다.</div>
+          <div class="tbl-wrap" id="year-table"></div>
+        </div>
+      </div>
+
+      <!-- ================= 기간비교 ================= -->
+      <div id="tab-period" class="tab">
+        <div class="story no-print"><b>2단계 · 지표 분석</b> — 기간별 증감을 보고, 아래 「구성별 비교」에서 전기(생산동)·가스(보일러)와 같이 움직이는 지표를 골라 목표에 씁니다.</div>
+        <div class="toolbar"><span class="chips" id="per-chips"></span><span class="hint">사용량 출처·같은 요일 비교 <span class="pt-tip" tabindex="0" role="button" data-tip="persrc" title="눌러서 설명 보기">ⓘ</span></span></div>
+        <div class="toolbar" id="per-range"></div>
+        <div class="card">
+          <h3 id="per-title"></h3>
+          <div class="hint" id="per-note" style="margin:-6px 0 8px"></div>
+          <div class="chart-box" style="height:340px"><canvas id="chart-period"></canvas></div>
+        </div>
+        <details class="card fold"><summary><b>숫자 표</b> <span class="hint">기간별 이번·전년 동월·전월 값 — 눌러서 펼치기</span></summary><div class="tbl-wrap" id="per-table" style="margin-top:8px"></div></details>
+        <div class="card"><h3>구성별 비교 (월별) <span class="sub">전기(생산동·폐수동·공조냉동) · 가스(보일러·식당) · 용수 · 폐수 ↔ 원육·포장 생산량·작업시간·기온·생산일수 등</span></h3><div id="per-elec"></div></div>
+      </div>
+
+      <!-- ================= 목표 ================= -->
+      <div id="tab-target" class="tab">
+        <div class="story no-print"><b>3단계 · 목표·예산</b> — KPI 지표 검토 → ① 고른 지표로 만든 예상 사용량 식 → ② 절감률 → ③ 월별 평가 → ④ 연간 계획(예산) 순서로 봅니다.</div>
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftTargetYear(-1)">◀</button><span id="target-year"></span><button onclick="shiftTargetYear(1)">▶</button></div>
+          <button class="btn secondary" id="target-fill" hidden onclick="fillTargets()"></button>
+          <button class="btn" id="target-save" onclick="saveTargets()">저장</button>
+          <span class="hint" id="target-note"></span>
+        </div>
+        <div class="card">
+          <h3>KPI 지표 검토 <span class="pt-tip" tabindex="0" role="button" data-tip="kpi" title="눌러서 설명 보기">ⓘ</span> <span class="sub">전기·가스 — 「원육 kg당 사용량」이 맞는 지표인지, 다른 분모와 비교</span></h3>
+          <div id="tg-kpi"><div class="loading">생산 실적 불러오는 중...</div></div>
+        </div>
+        <div class="card">
+          <h3>① 예상 사용량 기준선 <span class="pt-tip" tabindex="0" role="button" data-tip="baseline" title="눌러서 설명 보기">ⓘ</span> <span class="sub" style="margin-left:0">계수 계산</span><span class="pt-tip" tabindex="0" role="button" data-tip="ols" title="눌러서 설명 보기">ⓘ</span> <span class="sub" style="margin-left:0">몫 나누기</span><span class="pt-tip" tabindex="0" role="button" data-tip="share" title="눌러서 설명 보기">ⓘ</span> <span class="sub">원육 투입량·날씨가 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
+          <div id="tg-model"></div>
+        </div>
+        <div class="card">
+          <h3>② 절감 목표 <span class="pt-tip" tabindex="0" role="button" data-tip="rate" title="눌러서 설명 보기">ⓘ</span> <span class="sub">예상 사용량보다 몇 % 덜 쓸지 · 매달 같은 기준이라 월·분기·연간 목표가 자동으로 맞춰집니다</span></h3>
+          <div id="tg-rate"></div>
+        </div>
+        <div class="card">
+          <h3>③ 실적 평가 — 월별·분기별 <span class="chips" id="target-chips"></span></h3>
+          <div class="chart-box" style="height:240px"><canvas id="chart-target"></canvas></div>
+          <div class="tbl-wrap" id="target-table" style="margin-top:10px"></div>
+          <h4 style="margin:14px 0 6px;color:var(--brand)">항목별 연 누적</h4>
+          <div class="tbl-wrap" id="tg-summary"></div>
+        </div>
+        <div class="card">
+          <h3>④ 연간 계획표 (예산용) <span class="sub">원육 투입 계획 + 평년 날씨 → 월별·분기별 목표 사용량·비용</span></h3>
+          <div id="tg-plan"></div>
+        </div>
+      </div>
+
+      <!-- ================= 원인분석 ================= -->
+      <div id="tab-cause" class="tab">
+        <div class="story no-print"><b>2단계 · 원인 찾기</b> — 한 달을 고르면 위에서 아래로 <b>① 무엇 때문에 늘었나 → ② 어느 날이 튀었나 → ③ 그 기간에 무슨 일이 있었나 → ④ 이 달 원인 정리</b> 순서로 봅니다. 특이사항·부하 변동은 <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적습니다.</div>
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftCauseMonth(-1)">◀</button><span id="cause-month"></span><button onclick="shiftCauseMonth(1)">▶</button></div>
+          <span class="chips" id="cause-chips"></span>
+        </div>
+        <div id="cz-std"></div>
+        <div class="card">
+          <h3 id="cz-title">사용량이 왜 늘었나·줄었나</h3>
+          <div class="hint" style="margin:-6px 0 10px"><span class="pt-tip" tabindex="0" role="button" data-tip="decomp" title="눌러서 설명 보기">ⓘ</span> 비교 달과의 차이를 위 <b>📐 기준 식의 지표</b>(원육·날수·날씨 등) 때문에 생긴 몫과 <b>이상 사용일</b>, 그리고 그걸 다 빼고 남는 <b>운전·관리 차이</b>(진짜 절감·낭비)로 나눠 봅니다.</div>
+          <div class="cz-wrap">
+            <div class="cz-text" id="cz-text"></div>
+            <div class="chart-box cz-chart"><canvas id="chart-cz"></canvas></div>
+          </div>
+        </div>
+        <div class="card" id="cz-day">
+          <h3>② 어느 날이 튀었나 <span class="pt-tip" tabindex="0" role="button" data-tip="anom" title="눌러서 설명 보기">ⓘ</span> <span class="sub" id="anom-chart-title"></span></h3>
+          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 전기 사용량으로 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 아래 표에서 줄을 누르면 그 항목 그래프로 바뀝니다.</div>
+          <div class="chart-box"><canvas id="chart-anom"></canvas></div>
+          <div class="tbl-wrap" id="cz-anom" style="margin-top:8px"></div>
+          <details class="fold" style="margin-top:10px"><summary><b>이 달 이상 사용일 전체</b> <span class="hint">위에서 고른 달 · 모든 유틸리티 · 3개월로 넓혀 보기 · 기준(평소보다 +○%) 조절</span></summary>
+            <div class="toolbar" style="margin-top:6px"><span class="chips" id="anom-chips"></span></div><div class="tbl-wrap" id="anom-table"></div></details>
+          <details class="fold" style="margin-top:6px"><summary><b>일별 예상과 비교 — 예상보다 많이 쓴 날 원인 추정</b> <span class="hint">📐 기준 식의 지표를 하루 단위로 바꿔 그날 예상 사용량 계산 (생산 실적 + 기온)</span></summary><div id="pd-body" style="margin-top:6px"></div></details>
+          <details class="fold" id="dc-fold" style="margin-top:6px" ontoggle="if(this.open)renderDayCmp()"><summary><b>생산 일별 요약과 비교</b> <span class="hint">원육 부위·포장 제품·공정별 작업시간 ↔ 유틸리티 · 상관계수 · 제품 1개 중량</span></summary><div id="dc-body" style="margin-top:6px"></div></details>
+        </div>
+        <div class="card" id="cz-notes"></div>
+        <div class="card">
+          <h3>④ 이 달 원인 정리 <span class="sub">여기 쓴 내용은 월간보고서 「특이사항 및 조치 계획」에 그대로 들어갑니다</span></h3>
+          <div id="cz-memo"></div>
+        </div>
+        <details class="card cz-more">
+          <summary><b>참고 그래프</b> <span class="hint">— 위 계산의 근거 (날씨·원육 투입량이 사용량에 주는 영향, 전력 구성)</span></summary>
+          <div class="charts" style="margin-top:10px">
+            <div>
+              <h3>기온에 따라 하루에 얼마나 더 쓰나 <span class="sub">평일만 · 점 하나 = 하루 · 최근 <span id="cz-days"></span></span></h3>
+              <div class="chart-box"><canvas id="chart-temp"></canvas></div>
+              <div class="hint" id="temp-note" style="margin-top:6px"></div>
+            </div>
+            <div>
+              <h3>원육을 많이 넣은 달은 kg당 얼마나 덜 쓰나 <span class="sub">점 하나 = 한 달</span></h3>
+              <div class="chart-box"><canvas id="chart-produnit"></canvas></div>
+              <div class="hint" id="produnit-note" style="margin-top:6px"></div>
+            </div>
+          </div>
+          <h3 style="margin-top:14px">전력 사용 구성 <span class="sub">공조냉동·폐수동 = 설비검침 계량기 / 그 외 = 전체 − 두 항목</span></h3>
+          <div class="chart-box"><canvas id="chart-elecmix"></canvas></div>
+        </details>
+      </div>
+
+      <!-- ================= 기록 (특이사항·부하 변동) ================= -->
+      <div id="tab-notes" class="tab">
+        <div class="story no-print"><b>2단계 · 특이사항</b> — 설비·운전에 있었던 일을 한 곳에 적습니다 (한 번 있었던 일 = 특이사항, 그날부터 계속되는 운전 변화 = ⚡ 부하 변동). 적어 두면 <a href="#" onclick="switchTab('cause');return false">원인 찾기</a> ③에 그 기간 기록이 같이 나옵니다.</div>
+        <div id="notes-body"></div>
+      </div>
+
+      <!-- ================= 일일검침 ================= -->
+      <div id="tab-daily" class="tab">
+        <div class="story no-print"><b>검침 입력</b> — 매일 검침 원자료(파워플래너 전력 포함)입니다. 설비검침과 같은 데이터라 여기서 넣든 설비검침에서 넣든 둘 다 바뀝니다. 원인 찾기·월말 예상이 이 값으로 계산됩니다.</div>
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftDailyMonth(-1)">◀</button><span id="daily-month"></span><button onclick="shiftDailyMonth(1)">▶</button></div>
+          <button class="btn secondary" onclick="jumpToday()">오늘로</button>
+          <button class="btn secondary" onclick="dailyFillMonth()" title="쉬는 날 못 읽은 지침을 다시 읽은 날 값으로 채움">📋 쉬는 날 빈칸 채우기</button>
+          <span class="hint"><b>이 값들은 설비검침에서 입력한 값과 같은 데이터입니다.</b> 여기서 고쳐도 설비검침에 그대로 반영됩니다. 칸에 입력하고 다른 칸으로 넘어가면 바로 저장됩니다. 지침은 계량기 누적값, 아래 회색 숫자는 그날 사용량(다음날 지침 − 당일 지침)입니다. 쉬는 날 다음에 지침을 넣으면 그 사이 빈 날(최대 6일)은 같은 지침으로 자동으로 채워집니다 (가스 식당, 용수 40A·50A, 폐수 유량계 — 가스 보일러는 제외).</span>
+        </div>
+        <div class="daily-wrap" id="daily-wrap"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+      <!-- ================= 월간입력 ================= -->
+      <div id="tab-monthly" class="tab">
+        <div class="toolbar">
+          <div class="month-nav"><button onclick="shiftMonthlyMonth(-1)">◀</button><span id="monthly-month"></span><button onclick="shiftMonthlyMonth(1)">▶</button></div>
+          <button class="btn" id="monthly-save" onclick="saveMonthly()">저장</button>
+          <button class="btn secondary" id="monthly-bill" onclick="openBill()">📄 고지서로 채우기</button>
+          <button class="btn secondary" id="monthly-prod" onclick="openProdImport()">🏭 생산팀 실적 가져오기</button>
+          <span class="hint" id="monthly-note"></span>
+        </div>
+        <div class="mgrid">
+          <div class="card" id="monthly-form"><div class="loading">불러오는 중...</div></div>
+          <div class="card preview" id="monthly-preview"></div>
+        </div>
+      </div>
+
+      <!-- ================= 월간보고서 ================= -->
+      <div id="tab-brief" class="tab">
+        <div class="toolbar no-print">
+          <div class="month-nav"><button onclick="shiftBriefMonth(-1)">◀</button><span id="brief-month"></span><button onclick="shiftBriefMonth(1)">▶</button></div>
+          <button class="btn" onclick="window.print()">🖨 인쇄 (A4 한 장)</button>
+          <span class="hint">목표는 [목표] 탭, 특이사항은 아래 칸에 적고 [코멘트 저장]. 진행 중인 달은 월말 예측값으로 나옵니다.</span>
+        </div>
+        <div class="brief-sheet" id="brief-sheet"></div>
+      </div>
+
+      <!-- ================= 지출결의 자료 ================= -->
+      <div id="tab-expense" class="tab">
+        <div class="toolbar no-print">
+          <div class="month-nav"><button onclick="shiftExMonth(-1)">◀</button><span id="ex-month"></span><button onclick="shiftExMonth(1)">▶</button></div>
+          <span id="ex-utils"></span>
+          <span class="hint">그룹웨어 지출결의서에 붙여넣을 숫자·추가의견·그래프를 유틸별로 만듭니다.</span>
+        </div>
+        <div id="ex-body"></div>
+      </div>
+
+      <!-- ================= 회계보고 ================= -->
+      <div id="tab-report" class="tab">
+        <div class="toolbar no-print">
+          <div class="month-nav"><button onclick="shiftReportMonth(-1)">◀</button><span id="report-month"></span><button onclick="shiftReportMonth(1)">▶</button></div>
+          <button class="btn" onclick="downloadReport()">📥 엑셀 다운로드</button>
+          <button class="btn secondary" onclick="window.print()">🖨 인쇄</button>
+        </div>
+        <div class="card" id="report-body"><div class="loading">불러오는 중...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="zoom" hidden onclick="if (event.target.id === 'zoom') closeZoom()">
+    <div class="zoom-box">
+      <div class="zoom-hd"><b id="zoom-title"></b><span class="hint">범례를 누르면 그 항목을 숨기거나 보일 수 있습니다 · Esc 닫기</span><button id="zoom-lbl" onclick="toggleZoomLabels()">수치 숨기기</button><button onclick="closeZoom()">✕ 닫기</button></div>
+      <div id="zoom-sum" class="zoom-sum"></div>
+      <div class="zoom-chart"><canvas id="zoom-canvas"></canvas></div>
+      <div class="zoom-table tbl-wrap" id="zoom-table"></div>
+    </div>
+  </div>
+  <div id="udet" hidden onclick="if (event.target.id === 'udet') closeUDet()">
+    <div class="zoom-box">
+      <div class="zoom-hd"><b id="udet-title"></b><span id="udet-utils" class="chips"></span><span id="udet-cmp"></span>
+        <span class="hint">엑셀 각 상세 탭과 같은 구성 · 노란 칸 = 가마감 · Esc 닫기</span>
+        <button onclick="udYear--;renderUDet()">◀ 전년</button><button onclick="udYear++;renderUDet()">다음 해 ▶</button><button onclick="downloadUDet()">📥 엑셀</button><button onclick="closeUDet()">✕ 닫기</button></div>
+      <div class="tbl-wrap" id="udet-table" style="flex:1;overflow:auto"></div>
+    </div>
+  </div>
+  <div id="bill" hidden>
+    <div class="bill-box">
+      <div class="zoom-hd"><b>📄 고지서로 채우기</b>
+        <span class="hint">넣을 달 <select id="bill-ym"></select> <span id="bill-ymnote" class="warnc"></span></span>
+        <button class="btn" id="bill-apply" onclick="billApply()" disabled>✓ 확정</button>
+        <button onclick="closeBill()">✕ 닫기</button></div>
+      <label id="bill-drop">
+        <input type="file" id="bill-file" accept="application/pdf,.pdf,image/*" multiple hidden onchange="billFiles(this.files)">
+        <span class="big">📎 고지서 PDF·사진을 여기로 끌어다 놓거나 눌러서 고르세요</span>
+        <span class="hint">전기(한전 청구내역서·이메일 청구서) · 도시가스(앞·뒤) · 상수도 40A/50A · 폐수(산출기준·사용료·개선충당금) — 여러 개 한꺼번에 가능<br>
+        파일은 서버로 보내지 않고 이 브라우저 안에서만 읽습니다. 스캔은 반듯하게, 사진은 고지서가 화면에 꽉 차게 찍어 주세요.</span>
+        <button type="button" class="btn secondary" id="bill-pick" onclick="document.getElementById('bill-file').click()">파일 고르기</button>
+      </label>
+      <div id="bill-status" class="hint"></div>
+      <div id="bill-list"></div>
+    </div>
+  </div>
+  <script>
+/*__CALC__*/
+  </script>
+  <script>
+/*__EXTRA__*/
+  </script>
+  <script>
+/*__BILL__*/
+  </script>
+  <script>
+    // =====================================================================
+    // 공통
+    // =====================================================================
+    let sb = null, me = null;
+    const isAdmin = () => !!(me && me.role === 'admin');
+    // 고지서 관리 모드 (utility/?bill): 월간입력·회계보고·지출결의만 — 시설팀 일반 계정도 입력 가능 (협력업체 제외)
+    const BILL_MODE = /(^\?|&)bill\b/.test(location.search), BILL_TABS = ['monthly', 'report', 'expense'];
+    const canBill = () => isAdmin() || (BILL_MODE && !!(me && me.role === 'user'));
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0');
+    const errMsg = e => (e && (e.message || e.error_description || e.error)) || String(e);
+    const nf0 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
+    const nf1 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 1 });
+    const nf2 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+    const f0 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v);
+    const f1 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf1.format(v);
+    const f2 = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf2.format(v);
+    // 원육 kg당 사용량(원단위): 전기·가스 소수 1자리, 용수·폐수 소수 3자리 (엑셀 보고서와 같게). u = 'elec'|'gas'|'water'|'ww' 또는 단위 글자
+    const unitDp = u => /water|ww|㎥/.test(String(u)) ? 3 : 1;
+    const fU = (v, u) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: unitDp(u), maximumFractionDigits: unitDp(u) });
+    const won = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v) + '원';
+    const man = v => (v === null || v === undefined || isNaN(v)) ? '-' : nf0.format(v / 1000) + '천원'; // 금액은 천원 단위 (반올림)
+    const ratio = (a, b) => (a === null || b === null || !b) ? null : a / b;
+    const pctTxt = (cur, prev) => {
+      if (cur === null || prev === null || !prev) return '<span class="hint">비교 없음</span>';
+      const p = (cur / prev - 1) * 100;
+      const cls = p > 0.05 ? 'up' : (p < -0.05 ? 'down' : '');
+      return `<span class="${cls}">${p > 0 ? '▲' : (p < 0 ? '▼' : '')} ${nf1.format(Math.abs(p))}%</span>`;
+    };
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+    const thisYm = todayStr.slice(0, 7);
+    const ymLabel = ym => `${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월`;
+
+    // ---------------- 데이터 ----------------
+    let MONTHLY = {}, DAILY = {}, cache = {};
+    function resetCache() { cache = {}; }
+
+    async function fetchAll(table, cols, orderCol) {
+      const out = []; let from = 0; const step = 1000;
+      while (true) {
+        const { data, error } = await sb.from(table).select(cols).order(orderCol).range(from, from + step - 1);
+        if (error) throw error;
+        out.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
+      return out;
+    }
+
+    async function loadAll() {
+      const [m, d] = await Promise.all([
+        fetchAll('ut_monthly', 'ym, data', 'ym'),
+        fetchAll('ut_daily_v', 'd, elec_kwh, elec_peak_kw, gas_boiler, gas_rest, water_40a, water_50a, wastewater, ww_power, hvac_power', 'd')
+      ]);
+      MONTHLY = {}; YEARDATA = {};
+      m.forEach(r => { if (r.ym.endsWith('-00')) YEARDATA[Number(r.ym.slice(0, 4))] = r.data || {}; else MONTHLY[r.ym] = r.data || {}; });
+      DAILY = {};
+      d.forEach(r => { const { d: k, ...rest } = r; DAILY[k] = rest; });
+      resetCache();
+    }
+    const S = ym => UT.summary(ym, MONTHLY, DAILY, cache);
+
+    // 데이터가 있는 마지막 달
+    function latestYm() {
+      let best = null;
+      const cands = new Set([...Object.keys(MONTHLY), ...Object.keys(DAILY).map(d => d.slice(0, 7))]);
+      [...cands].sort().forEach(ym => { if (ym <= thisYm) { const s = S(ym); if (s.total !== null) best = ym; } });
+      // 이번 달이 아직 진행 중이면 지난달을 기본으로 (이번 달은 월말 예상 카드로)
+      if (best === thisYm && !UT.monthComplete(DAILY, thisYm)) best = UT.prevYm(thisYm);
+      return best || thisYm;
+    }
+
+    // ---------------- 탭 ----------------
+    const loaders = { dash: renderDash, period: renderPeriod, target: () => renderTargets(), cause: renderCause, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief, expense: renderExpense, notes: renderNotes };
+    function switchTab(t) {
+      if (t === 'anom') { t = 'cause'; setTimeout(() => { const e = document.getElementById('cz-day'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); } // 예전 이상감지 → 원인 찾기 ②
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-' + t));
+      loaders[t]();
+    }
+    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+    // =====================================================================
+    // 분석
+    // =====================================================================
+    let dashYm = null;
+    let utilSel = 'elec', metricSel = 'unit';
+    const charts = {};
+
+    function shiftDashMonth(d) { dashYm = d > 0 ? UT.nextYm(dashYm) : UT.prevYm(dashYm); renderDash(); }
+
+    function yearMonths(y) { return Array.from({ length: 12 }, (_, i) => UT.ym(y, i + 1)); }
+
+    function kpiTile(cls, label, valHtml, cmpHtml, status, det) {
+      const uk = det || (UT.UTILS.some(u => u.k === cls) ? cls : null);
+      return `<div class="kpi ${cls} ${uk ? 'clickable' : ''}" ${uk ? `onclick="openUDet('${uk}')" title="누르면 ${label} 상세 내역"` : ''}><div class="lab"><span>${label}</span>${status ? `<span class="st st-${status}">${status}</span>` : ''}</div>
+        <div class="val">${valHtml}</div><div class="cmp">${cmpHtml}</div></div>`;
+    }
+
+    function renderDash() {
+      if (!dashYm) dashYm = latestYm();
+      document.getElementById('dash-month').textContent = ymLabel(dashYm);
+      const cur = S(dashYm), prev = S(UT.prevYm(dashYm));
+      const ly = S(UT.ym(Number(dashYm.slice(0, 4)) - 1, Number(dashYm.slice(5))));
+      document.getElementById('dash-status').innerHTML = cur.status ? `<span class="st st-${cur.status}">${cur.status}</span>` : '';
+      document.getElementById('dash-note').textContent = cur.status === '가마감' ? '고지서가 아직 반영되지 않은 항목은 자체 검침값으로 계산한 예상 금액입니다.' : '';
+
+      const unitCost = s => ratio(s.total, s.production);
+      let html = kpiTile('total', '유틸리티 총비용 (VAT 포함)', `${man(cur.total)}`,
+        `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null, 'sumTotal');
+      html += kpiTile('prod', '원육 투입량', `${f0(cur.production)}<small> kg</small>`,
+        `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null, 'sumProd');
+      html += kpiTile('total', '원육 kg당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
+        `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null, 'sumUnit');
+      document.getElementById('kpis').innerHTML = html;
+      document.getElementById('fc-box').innerHTML = forecastCard(thisYm); // 진행 중인 이번 달 월말 예상
+      // 최근 7일 이상 사용
+      const an7 = UT.anomalies(DAILY, UT.addDays(todayStr, -7), UT.addDays(todayStr, -1));
+      document.getElementById('anom-banner').innerHTML = an7.length ? `<div class="anom-banner" onclick="switchTab('anom')">⚠ 최근 7일 평소보다 많이 쓴 날 <b>${an7.length}건</b> — ${an7.slice(-3).reverse().map(a => `${a.d.slice(5).replace('-', '/')} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}${a.kind === '과다' ? (a.pct === null ? ' (평소 0)' : ' +' + nf0.format(a.pct) + '%') : ' 지침오류'}`).join(', ')} <u>자세히 보기</u></div>` : '';
+      html = '';
+      UT.UTILS.forEach(u => {
+        const c = cur[u.k], p = prev[u.k];
+        const unitNow = ratio(c.usage, cur.production), unitPrev = ratio(p.usage, prev.production);
+        html += kpiTile(u.k, `${u.name}`,
+          `${man(c.cost)}`,
+          `사용량 ${f0(c.usage)} ${u.unit} (${pctTxt(c.usage, p.usage)})<br>원단위 ${fU(unitNow, u.k)} ${u.unit}/kg (${pctTxt(unitNow, unitPrev)})` +
+            (() => { const e = evalFor(dashYm, u.k); return e ? `<br>예상 대비 ${saveTxt(e.save)}${e.rate !== null ? ` · 목표 ${e.rate}% ${judge(e)}` : ''}` : ''; })(),
+          c.status);
+      });
+      document.getElementById('kpis2').innerHTML = html;
+      renderCharts();
+      renderYearTable();
+    }
+
+    const baseOpts = (yTitle) => ({
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {} } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#666' } },
+        y: { beginAtZero: true, grid: { color: '#eef0f3' }, border: { display: false }, ticks: { color: '#666' }, title: { display: !!yTitle, text: yTitle, color: '#888' } }
+      }
+    });
+    // 전년 값이 올해보다 훨씬 커서(공장 가동 초기) 그래프가 납작해지면 축을 올해 기준으로 자름
+    function clipAxis(opts, cur, prev, noteId) {
+      const mx = a => Math.max(0, ...a.filter(v => v !== null && v !== undefined && isFinite(v)));
+      const c = mx(cur), p = mx(prev);
+      const clipped = c > 0 && p > c * 2.5;
+      if (clipped) {
+        const raw = c * 1.5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+        opts.scales.y.max = Math.ceil(raw / mag * 2) / 2 * mag; // 보기 좋은 숫자로 올림
+      }
+      const el = noteId && document.getElementById(noteId);
+      if (el) el.textContent = clipped ? '※ 전년 일부 값(가동 초기)이 커서 그래프 범위 밖은 잘려 보입니다' : '';
+      return opts;
+    }
+    function mkChart(id, cfg) {
+      CHART_CFG[id] = cfg;
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), cfg);
+    }
+    const monthLabels = Array.from({ length: 12 }, (_, i) => (i + 1) + '월');
+
+    function renderCharts() {
+      if (!window.Chart) return;
+      const y = Number(dashYm.slice(0, 4));
+      const ms = yearMonths(y), pms = yearMonths(y - 1);
+      const cs = ms.map(S), ps = pms.map(S);
+
+      // 1) 월별 비용 (항목별 누적 막대)
+      document.getElementById('cost-chart-sub').textContent = `${y}년 · 천원 · VAT 포함`;
+      document.getElementById('cost-legend').innerHTML = UT.UTILS.map(u => `<span><i class="dot" style="background:${u.color}"></i>${u.name}</span>`).join('');
+      mkChart('chart-cost', {
+        type: 'bar',
+        data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({
+          label: u.name, data: cs.map(s => s[u.k].cost === null ? null : s[u.k].cost / 1000),
+          backgroundColor: u.color, borderColor: '#fff', borderWidth: { top: 2 }, borderRadius: 0, stack: 'c', maxBarThickness: 34
+        })) },
+        options: (() => { const o = baseOpts('천원'); o.scales.x.stacked = true; o.scales.y.stacked = true;
+          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)}천원`;
+          o.plugins.tooltip.callbacks.footer = items => { const t = items.reduce((a, i) => a + (i.raw || 0), 0); return `합계 ${f0(t)}천원`; };
+          return o; })()
+      });
+
+      // 2) 원육 kg당 비용
+      const uc = arr => arr.map(s => ratio(s.total, s.production));
+      mkChart('chart-unitcost', {
+        type: 'line',
+        data: { labels: monthLabels, datasets: [
+          { label: `${y}년`, data: uc(cs), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 4, spanGaps: false },
+          { label: `${y - 1}년`, data: uc(ps), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
+        ] },
+        options: (() => { const o = baseOpts('원/kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} 원/kg`; return clipAxis(o, uc(cs), uc(ps), 'unitcost-note'); })()
+      });
+
+      // 3) 항목별 추이
+      document.getElementById('util-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${utilSel === u.k ? 'on' : ''}" onclick="utilSel='${u.k}';renderCharts()">${u.name}</button>`).join('');
+      const metrics = [['usage', '사용량'], ['daily', '일평균'], ['unit', '원단위'], ['cost', '비용']];
+      document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSel === k ? 'on' : ''}" onclick="metricSel='${k}';renderCharts()">${n}</button>`).join('');
+      const U = UT.UTILS.find(u => u.k === utilSel);
+      // 일평균: 월 사용량 ÷ 날수 (용수는 고지서 검침 기간 전월 12일~당월 11일이라 전월 날수) · 아직 안 끝난 달은 뺌
+      const dayN = ym => U.k === 'water' ? UT.daysIn(UT.prevYm(ym)) : UT.daysIn(ym);
+      const daily = (s, ym) => { if (s[U.k].usage === null || s[U.k].usage === undefined || ym >= thisYm && !UT.monthComplete(DAILY, ym)) return null; return s[U.k].usage / dayN(ym); };
+      // 진행 중인 달: 전기는 고지서 전이면 파워플래너 일일값을 어제까지만 더한 값이라 (한 달 일부) 그래프에서 뺌 · 용수 「10월」은 고지서 기간(9/12~10/11)이 이미 끝난 값이라 그대로
+      const partial = (s, ym) => U.k === 'elec' && ym >= thisYm && s.elec.status !== '확정';
+      const pick0 = (s, ym) => partial(s, ym) ? null : metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+      const csv = cs.map((s, i) => pick0(s, ms[i])), psv = ps.map((s, i) => pick0(s, pms[i])), pick = s => { const i = cs.indexOf(s); return i >= 0 ? csv[i] : psv[ps.indexOf(s)]; };
+      const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'daily' ? `${U.unit}/일` : metricSel === 'unit' ? `${U.unit}/kg` : '천원';
+      const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 1000 : null; })
+        : metricSel === 'usage' ? ms.map(ym => (MONTHLY[ym] || {})['plan_' + U.k + '_usage'] ?? null)
+        : metricSel === 'daily' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_usage']; return v === undefined || v === null || v === '' ? null : v / dayN(ym); }) : null;
+      const ds = [
+        { label: `${y}년`, data: csv, borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 4 },
+        { label: `${y - 1}년`, data: psv, borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
+      ];
+      const hasPlan = plan && plan.some(v => v !== null && v !== undefined);
+      if (hasPlan) ds.push({ label: '계획', data: plan, borderColor: '#333', backgroundColor: '#333', borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0, stepped: 'middle' });
+      document.getElementById('util-legend').innerHTML =
+        `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
+        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 빼고 표시' : ''}${(() => { const i = ms.findIndex((ym, k) => partial(cs[k], ym)); return i >= 0 && cs[i].elec.usage ? ` · ${Number(ms[i].slice(5))}월 전기는 진행 중(파워플래너 어제까지 ${f0(cs[i].elec.usage)} kWh)이라 빼고 표시` : ''; })()}${U.k === 'water' ? ' · 용수 ○월 = 고지서 검침 기간(전월 12일~당월 11일)' : ''}</span>`;
+      mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
+        options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' ? c.raw.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, csv, psv, 'util-note'); })() });
+
+      // 4) 생산량
+      mkChart('chart-prod', { type: 'bar',
+        data: { labels: monthLabels, datasets: [
+          { type: 'bar', label: `${y}년`, data: cs.map(s => s.production), backgroundColor: '#8a8f98', borderRadius: { topLeft: 4, topRight: 4 }, maxBarThickness: 34 },
+          { type: 'line', label: `${y - 1}년`, data: ps.map(s => s.production), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
+        ] },
+        options: (() => { const o = baseOpts('kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} kg`; return o; })() });
+    }
+
+    // 월별 상세표 (엑셀 Utility_SSB 요약과 같은 구성)
+    let yearTableRows = [];
+    function renderYearTable() {
+      const y = Number(dashYm.slice(0, 4));
+      document.getElementById('table-year-label').textContent = `${y}년`;
+      document.getElementById('yt-cmp').innerHTML = cmpChips();
+      const ms = yearMonths(y), cs = ms.map(S);
+      const rows = [];
+      const sumOf = arr => arr.some(v => v !== null) ? arr.reduce((a, v) => a + (v || 0), 0) : null;
+      const avgOf = arr => { const v = arr.filter(x => x !== null && !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+      const add = (label, vals, fmt, opts = {}) => rows.push({ label, vals, fmt, sum: opts.noSum ? null : sumOf(vals), avg: avgOf(vals), cls: opts.cls, prov: opts.prov });
+      // 전월대비 · 전년동월대비 (엑셀 Utility_SSB 처럼 항목 바로 아래 두 줄: 차이 + 증감률)
+      const cmpRows = (get, fmt) => [['전월대비', ym => UT.prevYm(ym)], ['전년동월대비', ym => UT.ym(Number(ym.slice(0, 4)) - 1, Number(ym.slice(5)))]].forEach(([nm, ref]) => {
+        const d = [], p = [];
+        ms.forEach((ym, i) => { if (ym >= thisYm && !UT.monthComplete(DAILY, ym)) { d.push(null); p.push(null); return; } // 진행 중인 달은 비교 안 함
+          const c = get(cs[i]), b = get(S(ref(ym)));
+          if (c === null || c === undefined || isNaN(c) || b === null || b === undefined || isNaN(b)) { d.push(null); p.push(null); return; }
+          d.push(c - b); p.push(b ? (c / b - 1) * 100 : null); });
+        if (CMP_SHOW[nm === '전월대비' ? 'prev' : 'ly']) rows.push({ label: nm, cmp: true, vals: d, pct: p, fmt, sum: null, avg: null });
+      });
+      const addC = (label, get, fmt, opts = {}) => { add(label, cs.map(get), fmt, opts); cmpRows(get, fmt); };
+      rows.push({ grp: '합계' });
+      add('상태', cs.map(s => s.status), v => v ? `<span class="st st-${v}">${v}</span>` : '-', { noSum: true });
+      addC('유틸리티 합계 (원)', s => s.total, f0, { cls: 'sum', prov: cs.map(s => s.status === '가마감') });
+      add('VAT 별도 (원)', cs.map(s => s.exvat), f0);
+      addC('원육 투입량 (kg)', s => s.production, f0);
+      addC('원육 kg당 비용 (원/kg)', s => ratio(s.total, s.production), f0, { noSum: true });
+      UT.UTILS.forEach(u => {
+        rows.push({ grp: u.name });
+        addC('비용 (원)', s => s[u.k].cost, f0, { cls: 'm1', prov: cs.map(s => s[u.k].status === '가마감') });
+        addC(`사용량 (${u.unit})`, s => s[u.k].usage, f0, { cls: 'm1' });
+        addC(`원육 kg당 비용 (원/kg)`, s => ratio(s[u.k].cost, s.production), f1, { cls: 'm1', noSum: true });
+        addC(`원육 kg당 사용량 (${u.unit}/kg)`, s => ratio(s[u.k].usage, s.production), v => fU(v, u.k), { cls: 'm1', noSum: true });
+        if (u.k === 'elec') add('최대전력 (kW)', cs.map(s => s.elec.maxKw), f1, { noSum: true });
+        if (u.k === 'ww') {
+          add('위탁처리비 (원, 합계 제외)', cs.map(s => s.ww.outsource), f0);
+          add('슬러지처리비 (원, 합계 제외)', cs.map(s => s.ww.sludge), f0);
+        }
+      });
+      rows.push({ grp: '이산화탄소' });
+      add('전기 (tCO2)', cs.map(s => s.co2.elec), f1);
+      add('가스 (tCO2)', cs.map(s => s.co2.gas), f1);
+      yearTableRows = { y, rows };
+
+      let h = `<table class="t"><tr><th class="l">구분</th>${monthLabels.map(m => `<th>${m}</th>`).join('')}<th>합계</th><th>평균</th></tr>`;
+      rows.forEach(r => {
+        if (r.grp) { h += `<tr class="grp"><td colspan="15">${esc(r.grp)}</td></tr>`; return; }
+        if (r.cmp) { // 차이 + 증감률 (늘면 빨강, 줄면 파랑)
+          h += `<tr class="cmp"><td class="l">└ ${esc(r.label)}</td>` + r.vals.map((d, i) => d === null ? '<td class="na">-</td>' :
+            `<td class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : d < 0 ? '−' : ''}${r.fmt(Math.abs(d))}${r.pct[i] === null ? '' : `<br><span class="pc">${r.pct[i] >= 0 ? '+' : ''}${nf1.format(r.pct[i])}%</span>`}</td>`).join('') + '<td></td><td></td></tr>';
+          return;
+        }
+        h += `<tr class="${r.cls || ''}"><td class="l">${esc(r.label)}</td>` +
+          r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}</td>`).join('') +
+          `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.label === '상태' ? '' : (r.avg === null ? '' : r.fmt(r.avg))}</td></tr>`;
+      });
+      document.getElementById('year-table').innerHTML = h + '</table>';
+    }
+
+    async function ensureXLSX() {
+      if (window.XLSX) return;
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = res; s.onerror = () => rej(new Error('엑셀 변환 도구를 불러오지 못했습니다.'));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function downloadYearTable() {
+      try {
+        await ensureXLSX();
+        const { y, rows } = yearTableRows;
+        const aoa = [['구분', ...monthLabels, '합계', '평균']];
+        let grp = '';
+        rows.forEach(r => {
+          if (r.grp) { grp = r.grp; aoa.push([`[${r.grp}]`]); return; }
+          const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 100) / 100 : v);
+          if (r.cmp) { aoa.push([`${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
+          aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), r.label === '상태' ? '' : clean(r.avg)]);
+        });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `${y}년`);
+        XLSX.writeFile(wb, `유틸리티_월별상세_${y}.xlsx`);
+      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
+    }
+
+    // =====================================================================
+    // 일일검침
+    // =====================================================================
+    let dailyYm = thisYm;
+    const DCOLS = [
+      { k: 'elec_kwh', label: '전기 사용량', unit: 'kWh', kind: 'usage', small: false },
+      { k: 'elec_peak_kw', label: '전기 최대수요', unit: 'kW', kind: 'usage', small: true },
+      { k: 'gas_boiler', label: '가스 보일러', unit: '지침 ㎥', kind: 'reading' },
+      { k: 'gas_rest', label: '가스 식당', unit: '지침 ㎥', kind: 'reading', small: true },
+      { k: 'water_40a', label: '용수 40A', unit: '지침 ㎥', kind: 'reading', small: true },
+      { k: 'water_50a', label: '용수 50A', unit: '지침 ㎥', kind: 'reading', small: true },
+      { k: 'wastewater', label: '폐수 유량계', unit: '지침 ㎥', kind: 'reading', small: true }
+    ];
+    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+
+    function shiftDailyMonth(d) { dailyYm = d > 0 ? UT.nextYm(dailyYm) : UT.prevYm(dailyYm); renderDaily(); }
+    function jumpToday() { dailyYm = thisYm; renderDaily(); }
+
+    // 일일검침 칸 → 설비검침 항목ID
+    const METER_ID = { elec_kwh: '전력사용량', elec_peak_kw: '최대수요', gas_boiler: '가스보일러', gas_rest: '가스식당', water_40a: '상수도40A', water_50a: '상수도50A', wastewater: '폐수방류량' };
+    function dval(dateStr, k) { const r = DAILY[dateStr]; return r && r[k] !== null && r[k] !== undefined ? Number(r[k]) : null; }
+    function nextDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+    function prevDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+
+    function useText(dateStr, col) {
+      if (col.kind !== 'reading') return '';
+      const a = dval(dateStr, col.k), b = dval(nextDate(dateStr), col.k);
+      if (a === null || b === null) return '';
+      const u = b - a;
+      return (u < 0 ? '⚠ ' : '') + f2(u);
+    }
+
+    function renderDaily() {
+      document.getElementById('daily-month').textContent = ymLabel(dailyYm);
+      const n = UT.daysIn(dailyYm);
+      let h = `<table class="daily"><tr><th>날짜</th>${DCOLS.map(c => `<th>${c.label}<br><span class="u">${c.unit}</span></th>`).join('')}</tr>`;
+      for (let d = 1; d <= n; d++) {
+        const ds = UT.dateStr(dailyYm, d);
+        const wd = new Date(ds + 'T00:00:00').getDay();
+        h += `<tr class="${ds === todayStr ? 'today' : ''} ${wd === 0 || wd === 6 ? 'weekend' : ''}" id="row-${ds}">
+          <td>${d}일 (${WEEK[wd]})</td>` +
+          DCOLS.map(c => {
+            const v = dval(ds, c.k);
+            const warn = c.kind === 'reading' && v !== null && dval(prevDate(ds), c.k) !== null && v < dval(prevDate(ds), c.k);
+            return `<td><input type="number" step="any" inputmode="decimal" class="${c.small ? 'small' : ''} ${warn ? 'warn' : ''}" data-d="${ds}" data-k="${c.k}" value="${v === null ? '' : v}" ${warn ? 'title="전날 지침보다 작습니다"' : ''}>
+              <span class="use" id="use-${ds}-${c.k}">${useText(ds, c)}</span></td>`;
+          }).join('') + '</tr>';
+      }
+      // 월 합계 (사용량)
+      const st = UT.dailyStats(DAILY, dailyYm);
+      const sumCell = c => {
+        if (c.k === 'elec_kwh') return `${f0(st.elec_kwh)} kWh`;
+        if (c.k === 'elec_peak_kw') return `최대 ${f1(st.elec_peak)}`;
+        return st[c.k] === null ? '-' : `${f2(st[c.k])} ㎥`;
+      };
+      h += `<tr class="sum"><td>월 합계</td>${DCOLS.map(c => `<td>${sumCell(c)}</td>`).join('')}</tr></table>`;
+      const wrap = document.getElementById('daily-wrap');
+      wrap.innerHTML = h;
+      wrap.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('change', () => saveDailyCell(inp));
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { // 엔터 → 다음 날 같은 칸
+            e.preventDefault();
+            const nx = wrap.querySelector(`input[data-d="${nextDate(inp.dataset.d)}"][data-k="${inp.dataset.k}"]`);
+            if (nx) nx.focus(); else inp.blur();
+          }
+        });
+      });
+      if (dailyYm === thisYm) {
+        const row = document.getElementById('row-' + todayStr);
+        if (row) setTimeout(() => row.scrollIntoView({ block: 'center' }), 50);
+      }
+    }
+
+    async function saveDailyCell(inp) {
+      const d = inp.dataset.d, k = inp.dataset.k;
+      const raw = inp.value.trim();
+      const v = raw === '' ? null : Number(raw);
+      if (raw !== '' && isNaN(v)) { inp.classList.add('err'); return; }
+      inp.classList.remove('saved', 'err'); inp.classList.add('saving');
+      const { error } = await sb.rpc('meter_save', { p_d: d, p_weather: null, p_tmin: null, p_tmax: null, p_patch: { [METER_ID[k]]: v } });
+      inp.classList.remove('saving');
+      if (error) { inp.classList.add('err'); inp.title = '저장 실패: ' + error.message; alert('저장 실패: ' + error.message); return; }
+      inp.classList.add('saved'); inp.title = '';
+      DAILY[d] = { ...(DAILY[d] || {}), [k]: v };
+      resetCache();
+      // 그날·전날 사용량 표시 갱신
+      const col = DCOLS.find(c => c.k === k);
+      [d, prevDate(d)].forEach(ds => { const el = document.getElementById(`use-${ds}-${k}`); if (el) el.textContent = useText(ds, col); });
+      const prevV = dval(prevDate(d), k);
+      inp.classList.toggle('warn', col.kind === 'reading' && v !== null && prevV !== null && v < prevV);
+      if (v !== null && Portal.FILL_METERS.includes(METER_ID[k])) {
+        const from = new Date(d + 'T00:00:00'); from.setDate(from.getDate() - 7);
+        await dailyFill(`${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`, d, true);
+      }
+    }
+    // 쉬는 날 빈칸 채우기 → 화면 갱신
+    const METER_KEY = Object.fromEntries(Object.entries(METER_ID).map(([k, id]) => [id, k]));
+    async function dailyFill(from, to, quiet) {
+      try {
+        const f = await Portal.fillMeterGaps(from, to);
+        f.forEach(x => { const k = METER_KEY[x.id]; if (k) DAILY[x.d] = { ...(DAILY[x.d] || {}), [k]: x.v }; });
+        if (f.length) { resetCache(); renderDaily(); }
+        if (!quiet) alert(f.length ? `쉬는 날 빈칸 ${f.length}칸을 채웠습니다.\n\n` + [...new Set(f.map(x => x.d))].map(ds => `${ds.slice(5).replace('-', '/')}: ${f.filter(x => x.d === ds).map(x => x.id).join(', ')}`).join('\n') : '채울 빈칸이 없습니다.');
+        return f;
+      } catch (e) { if (!quiet) alert('빈칸 채우기 실패: ' + errMsg(e)); return []; }
+    }
+    function dailyFillMonth() {
+      if (!confirm(`${ymLabel(dailyYm)} 쉬는 날 빈칸을 채울까요?\n\n가스 식당·용수 40A/50A·폐수 유량계의 빈 날에 다시 검침한 날의 지침을 그대로 넣습니다. (이미 입력된 칸은 그대로)`)) return;
+      const last = UT.dateStr(dailyYm, UT.daysIn(dailyYm));
+      dailyFill(UT.dateStr(dailyYm, 1), last < todayStr ? UT.addDays(last, 7) : todayStr);
+    }
+
+    // =====================================================================
+    // 월간입력
+    // =====================================================================
+    let monthlyYm = null, monthlyDraft = {};
+
+    function shiftMonthlyMonth(d) {
+      if (monthlyDirty && !confirm('저장하지 않은 입력이 있습니다. 이동할까요?')) return;
+      monthlyYm = d > 0 ? UT.nextYm(monthlyYm) : UT.prevYm(monthlyYm); renderMonthly();
+    }
+    let monthlyDirty = false;
+
+    function renderMonthly() {
+      if (!monthlyYm) monthlyYm = UT.prevYm(thisYm); // 보통 지난달 마감
+      document.getElementById('monthly-month').textContent = ymLabel(monthlyYm);
+      monthlyDraft = { ...(MONTHLY[monthlyYm] || {}) };
+      monthlyDirty = false;
+      const ro = !canBill();
+      document.getElementById('monthly-save').hidden = ro;
+      document.getElementById('monthly-bill').hidden = ro;
+      document.getElementById('monthly-prod').hidden = ro;
+      document.getElementById('monthly-note').textContent = ro ? '월간입력은 관리자만 수정할 수 있습니다. (보기 전용)' :
+        (monthlyDraft._imported ? '엑셀에서 옮겨온 달입니다. 빈 칸 자동 채움이 꺼져 있습니다.' : '빈 칸은 회색 글씨 값(전월 값·자체 검침값)으로 계산됩니다.');
+      const eff = UT.effective(monthlyYm, MONTHLY, DAILY, {});
+      const groups = [];
+      UT.FIELDS.forEach(f => { let g = groups.find(x => x.g === f.g); if (!g) groups.push(g = { g: f.g, fields: [] }); g.fields.push(f); });
+      const openGroups = ['원육 투입', '전기', '가스', '용수', '폐수', '고지서 실제 금액'];
+      let h = '';
+      groups.forEach(g => {
+        h += `<details class="fgroup" ${openGroups.includes(g.g) ? 'open' : ''}><summary>${esc(g.g)}</summary><div class="fields">`;
+        g.fields.forEach(f => {
+          const v = monthlyDraft[f.k];
+          const filled = v !== undefined && v !== null && v !== '';
+          const effV = eff[f.k];
+          const src = eff._src[f.k];
+          const ph = (!filled && effV !== undefined && effV !== null && effV !== '') ? (f.text ? effV : f2(Number(effV))) : '';
+          const srcTxt = !filled && ph !== '' ? `${src === '자동' ? '자동' : (src === '전월' ? '전월 값' : '기본값')}: ${esc(ph)}` : (f.hint ? esc(f.hint) : '');
+          let input;
+          if (f.options) {
+            input = `<select data-k="${f.k}" ${ro ? 'disabled' : ''}><option value="">${ph ? `(${esc(ph)})` : '-'}</option>${f.options.map(o => `<option ${v === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+          } else {
+            input = `<input ${f.text ? 'type="text"' : 'type="number" step="any" inputmode="decimal"'} data-k="${f.k}" class="${filled ? 'filled' : ''}" value="${filled ? esc(typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v) : ''}" placeholder="${esc(ph)}" ${ro ? 'disabled' : ''}>`;
+          }
+          const note = !filled && eff._note && eff._note[f.k] ? `<div class="src" style="color:#b26a00">※ ${esc(eff._note[f.k])}</div>` : '';
+          h += `<div class="f"><label>${esc(f.label)} <span class="u">${esc(f.unit)}</span></label>${input}<div class="src">${srcTxt}</div>${note}</div>`;
+        });
+        h += '</div></details>';
+      });
+      const form = document.getElementById('monthly-form');
+      form.innerHTML = h;
+      form.querySelectorAll('input, select').forEach(el => el.addEventListener('input', () => {
+        const k = el.dataset.k, f = UT.FIELD[k];
+        const raw = el.value.trim();
+        if (raw === '') delete monthlyDraft[k];
+        else monthlyDraft[k] = (f.text || f.options) ? raw : Number(raw);
+        el.classList.toggle('filled', raw !== '');
+        monthlyDirty = true;
+        renderMonthlyPreview();
+      }));
+      renderMonthlyPreview();
+    }
+
+    function renderMonthlyPreview() {
+      // 고지서와 같은 줄 순서로 계산값을 보여 주고, 고지서 금액을 넣었으면 맞는지 바로 표시
+      const tmp = { ...MONTHLY, [monthlyYm]: monthlyDraft };
+      const s = UT.summary(monthlyYm, tmp, DAILY, {});
+      const e = s.elec.calc, g = s.gas.calc, m = s.m || {}, raw = monthlyDraft || {};
+      const has = v => v !== undefined && v !== null && v !== '' && !isNaN(Number(v));
+      const nv = k => has(m[k]) ? Number(m[k]) : 0;
+      const row = (a, b, cls = '') => `<tr class="${cls}"><td>${a}</td><td>${b}</td></tr>`;
+      const sub = (a, b) => row(`<span class="pv-sub">${a}</span>`, `<span class="pv-sub">${b}</span>`);
+      const head = (u, st) => `<tr class="h"><td><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${st ? `<span class="st st-${st}">${st}</span>` : ''}</td></tr>`;
+      // 계산값 vs 고지서 값
+      const chk = (label, calc, billKey) => {
+        if (!has(raw[billKey])) return row(`<b>${label}</b>`, `<b>${won(calc)}</b> <span class="pv-sub">(고지서 금액 넣으면 비교)</span>`);
+        const bill = Number(raw[billKey]), d = calc === null || calc === undefined ? null : bill - calc;
+        return row(`<b>${label}</b>`, `<b>${won(calc)}</b>`) + row('고지서 입력값', `<b>${won(bill)}</b> ${d === null ? '' : Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`);
+      };
+      let h = `<h3>계산 결과 미리보기 <span class="sub">${ymLabel(monthlyYm)} · 고지서 줄 순서</span></h3><table>`;
+      // ---- 전기 (한전 청구서 순서) ----
+      h += head(UT.UTILS[0], s.elec.status);
+      if (e) {
+        const wk = Math.floor(nv('elec_wkd_kwh_light') * nv('elec_wkd_rate_light')) + Math.floor(nv('elec_wkd_kwh_mid') * nv('elec_wkd_rate_mid'));
+        h += row('사용량', `${f0(e.kwh)} kWh`) + sub('경부하 · 중간 · 최대', `${f0(nv('elec_kwh_light'))} · ${f0(nv('elec_kwh_mid'))} · ${f0(nv('elec_kwh_peak'))}`);
+        h += row('기본요금', won(e.base)) + sub('요금적용전력 × 단가', `${f0(nv('elec_contract_kw'))} kW × ${f0(nv('elec_base_rate'))}`);
+        h += row('전력량요금', won(e.energy)) + (wk ? sub('주말 할인 포함', `−${won(wk)}`) : '');
+        h += row('기후환경요금', won(e.climate)) + row('연료비조정액', won(e.fuel));
+        h += row('지상역률료', won(e.pfFee)) + (e.leadFee ? row('진상역률료', won(e.leadFee)) : '') + (e.settlement ? row('정산요금', won(e.settlement)) : '');
+        h += row('<b>전기요금계</b>', `<b>${won(e.subtotal)}</b>`) + row('부가가치세', won(e.vat)) + row('전력기금', won(e.fund));
+        if (e.late) h += row('연체료', won(e.late));
+        h += row('원단위절사', won(e.total - (e.subtotal + e.vat + e.fund + e.late)));
+        h += chk('당월요금계', e.total, 'elec_bill_total');
+        if (has(raw.elec_bill_exvat)) { const d = Number(raw.elec_bill_exvat) - e.exvat; h += sub(`부가세 별도 (요금계+기금) ${won(e.exvat)}`, Math.abs(d) < 1 ? '<span class="pv-ok">✓</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}</span>`); }
+      } else h += row('입력 없음', '');
+      // ---- 가스 (도시가스 고지서 순서) ----
+      h += head(UT.UTILS[1], s.gas.status);
+      if (g) {
+        [['보일러', g.boiler, 'gas_boiler', 'gas_heat', 'gas_boiler_corr'], ['식당', g.rest, 'gas_rest', has(m.gas_rest_heat) ? 'gas_rest_heat' : 'gas_heat', 'gas_rest_corr']].forEach(([n, x, k, hk, ck]) => {
+          if (!x) return;
+          const fx = (v, d) => v === null || v === undefined || v === '' || isNaN(Number(v)) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+          const pv = nv(k + '_prev'), cv = nv(k + '_cur');
+          h += row(`<b>${n}</b>`, '') + sub('전월지침 → 당월지침', `${fx(pv, 4)} → ${fx(cv, 4)}`);
+          h += sub('보정계수', has(m[ck]) && Number(m[ck]) !== 1 ? fx(m[ck], 6) : '(없음)') + sub('사용량 (㎥)', fx(x.m3, 4));
+          h += sub('열량계수 (MJ/㎥)', fx(m[hk], 4)) + sub('청구량 (MJ)', fx(x.mj, 4)) + sub('단가 (원/MJ)', fx(m.gas_price, 4));
+          h += row('가스사용료', won(x.cost));
+          if (x.fee) h += row('보정기교체비용', won(x.fee));
+          h += row('부가세', won(x.vat)) + row('<b>소계</b>', `<b>${won(x.total)}</b>`) + sub('공급가액 (사용료 + 교체비)', won(x.cost + x.fee));
+        });
+        h += row('합계 청구량', `${Number(g.mj).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} MJ`) + sub('합계 사용량', `${Number(g.m3).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ㎥`);
+        h += row('<b>공급가액 합</b>', `<b>${won(g.exvat)}</b>`) + (has(raw.gas_bill_exvat) ? (() => { const d = Number(raw.gas_bill_exvat) - g.exvat; return row('고지서 공급가액', `${won(Number(raw.gas_bill_exvat))} ${Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`); })() : '');
+        h += chk('청구금액 (10원 미만 절사)', g.total, 'gas_bill_total');
+      } else h += row('입력 없음', '');
+      // ---- 용수 (상수도 고지서 순서, 계량기별) ----
+      h += head(UT.UTILS[2], s.water.status);
+      [['40A', s.water.w40, 'w40_bill'], ['50A', s.water.w50, 'w50_bill']].forEach(([n, w, bk]) => {
+        if (!w) { h += row(n, '입력 없음'); return; }
+        h += row(`<b>${n}</b>`, `${f0(w.usage)} ㎥`) + row('상수도 사용료', won(w.useFee));
+        if (w.reduce) h += row('감면', won(w.reduce));
+        h += row('구경별 요금', won(w.baseFee)) + row('물이용부담금', won(w.waterUse));
+        if (w.reduce2) h += row('물이용부담금 감면', won(w.reduce2));
+        h += chk(`${n} 합계`, w.total, bk);
+      });
+      // ---- 폐수 (익산시 고지서: 시설사용료·개선부담금) ----
+      h += head(UT.UTILS[3], s.ww.status);
+      h += row('발생량 (폐수 + 오수)', `${f1(s.ww.usage)} ㎥`) + sub('폐수 · 오수', `${f1(s.ww.flow)} · ${f1(s.ww.sewage)} ㎥`);
+      if (s.ww.status === '확정') h += row('시설사용료', won(nv('ww_facility_fee'))) + row('개선부담금', won(nv('ww_improve_fee'))) + row('<b>계</b>', `<b>${won(s.ww.cost)}</b>`);
+      else h += row('<b>예상 금액</b>', `<b>${won(s.ww.cost)}</b>`) + sub('발생량 × 전월 ㎥당 금액', '고지서 금액 넣으면 확정');
+      // 클러스터 검침값 비교
+      const pm = (UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {}));
+      if (m.cluster_water_reading !== undefined || m.cluster_ww_reading !== undefined) {
+        const cw = (m.cluster_water_reading != null && pm.cluster_water_reading != null) ? m.cluster_water_reading - pm.cluster_water_reading : null;
+        const cww = (m.cluster_ww_reading != null && pm.cluster_ww_reading != null) ? m.cluster_ww_reading - pm.cluster_ww_reading : null;
+        h += row('클러스터 상수 사용량', cw === null ? '전월 값 필요' : `${f1(cw)} ㎥ (우리 용수 ${f1(s.water.usage)})`);
+        h += row('클러스터 폐수 사용량', cww === null ? '전월 값 필요' : `${f1(cww)} ㎥ (우리 폐수 ${f1(s.ww.flow)})`);
+      }
+      h += `<tr class="tot"><td>합계 (VAT 포함)</td><td>${won(s.total)}</td></tr>`;
+      h += `<tr><td>VAT 별도</td><td>${won(s.exvat)}</td></tr>`;
+      h += `<tr><td>원육 kg당 비용</td><td>${f0(ratio(s.total, s.production))} 원/kg</td></tr></table>`;
+      document.getElementById('monthly-preview').innerHTML = h;
+    }
+
+    async function saveMonthly() {
+      if (!canBill()) return;
+      const btn = document.getElementById('monthly-save');
+      btn.disabled = true;
+      try {
+        const data = {};
+        Object.entries(monthlyDraft).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined && !(typeof v === 'number' && isNaN(v))) data[k] = typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v; });
+        const { error } = await sb.from('ut_monthly').upsert({ ym: monthlyYm, data }, { onConflict: 'ym' });
+        if (error) throw error;
+        MONTHLY[monthlyYm] = data;
+        resetCache();
+        monthlyDirty = false;
+        btn.textContent = '저장됨 ✓';
+        setTimeout(() => { btn.textContent = '저장'; }, 1500);
+      } catch (e) {
+        alert('저장 실패: ' + errMsg(e));
+      } finally { btn.disabled = false; }
+    }
+
+    // =====================================================================
+    // 회계보고 (월초 예상값 / 확정값)
+    // =====================================================================
+    let reportYm = null, reportRows = [];
+    function shiftReportMonth(d) { reportYm = d > 0 ? UT.nextYm(reportYm) : UT.prevYm(reportYm); renderReport(); }
+
+    // 전기: 전기요금계(부가세 제외) / 부가세 / 전력기금 / 연체료 나누기
+    function elecParts(s) {
+      const e = s.elec.calc;
+      const raw = MONTHLY[s.ym] || {};
+      const late = Number((s.m || {}).elec_late_fee) || 0;
+      if (s.elec.status !== '확정') {
+        if (!e) return null;
+        return { sub: e.subtotal, vat: e.vat, fund: e.fund, late: e.late, total: e.total };
+      }
+      // 확정(고지서 금액 입력): 청구액에서 거꾸로 나눔 (전력기금 = 전기요금계 × 2.7% 10원 미만 절사)
+      const T = Number(raw.elec_bill_total);
+      let sub = Math.round((T - late) / 1.127);
+      let fund = Math.trunc(sub * 0.027 / 10) * 10;
+      if (raw.elec_bill_exvat !== undefined && raw.elec_bill_exvat !== null && raw.elec_bill_exvat !== '') {
+        sub = Number(raw.elec_bill_exvat) - late - fund;
+        fund = Math.trunc(sub * 0.027 / 10) * 10;
+        sub = Number(raw.elec_bill_exvat) - late - fund;
+      }
+      return { sub, vat: Math.round(sub * 0.1), fund, late, total: T };
+    }
+
+    // 가스 보일러/식당 나누기: 가마감은 계산값 그대로, 확정(고지서)은 계산 비율대로 청구액을 나눔 (합계가 고지서와 꼭 맞게)
+    function gasSplit(s) {
+      const g = s.gas.calc; if (!g) return [];
+      const parts = [['보일러', g.boiler], ['식당', g.rest]].filter(([, x]) => x).map(([name, x]) => ({ name, m3: x.m3, exvat: x.cost + x.fee, total: x.total }));
+      if (s.gas.status !== '확정' || !parts.length) return parts;
+      const fit = (key, target) => {
+        const sum = parts.reduce((a, p) => a + (p[key] || 0), 0);
+        if (target === null || !sum) return;
+        parts.forEach(p => p[key] = Math.round(p[key] * target / sum));
+        parts[0][key] += target - parts.reduce((a, p) => a + p[key], 0); // 끝전은 보일러에
+      };
+      fit('total', s.gas.cost); fit('exvat', s.gas.exvat);
+      return parts;
+    }
+
+    // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
+    function renderReport() {
+      if (!reportYm) reportYm = UT.prevYm(thisYm);
+      document.getElementById('report-month').textContent = ymLabel(reportYm);
+      const fc = FC(reportYm);
+      const s = fc || S(reportYm);
+      const g = s.gas.calc, ep = elecParts(s);
+      const gasConf = s.gas.status === '확정';
+      reportRows = [
+        ['전기', '', s.elec.usage, 'kWh', s.elec.exvat, s.elec.cost, s.elec.status],
+        ...(ep ? [
+          ['', '전기요금계 (부가세 제외)', null, '', ep.sub, ep.sub + ep.vat, ''],
+          ['', '전력기금', null, '', ep.fund, ep.fund, ''],
+          ...(ep.late ? [['', '연체료', null, '', ep.late, ep.late, '']] : [])
+        ] : []),
+        ['가스', '', s.gas.m3, '㎥', s.gas.exvat, s.gas.cost, s.gas.status],
+        ...gasSplit(s).map(x => ['', x.name, x.m3, '㎥', x.exvat, x.total, '']),
+        ['용수', '', s.water.usage, '㎥', s.water.exvat, s.water.cost, s.water.status],
+        ['', '40A', s.water.w40 ? s.water.w40.usage : null, '㎥', s.water.w40cost, s.water.w40cost, ''],
+        ['', '50A', s.water.w50 ? s.water.w50.usage : null, '㎥', s.water.w50cost, s.water.w50cost, ''],
+        ['폐수', '', s.ww.usage, '㎥', s.ww.exvat, s.ww.cost, s.ww.status],
+        ['합계', '', null, '', s.exvat, s.total, s.status]
+      ];
+      let h = (fc ? `<div class="fc-note no-print">🔮 아직 진행 중인 달이라 <b>${fc.forecast.asOf.slice(5).replace('-', '/')}까지 검침(${fc.forecast.days}일)으로 월말까지 추정한 예측값</b>입니다. 남은 날은 평일·주말 평균 사용량으로 채웠습니다.</div>` : '') +
+        `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성일 ${todayStr}</span></h3>`;
+      h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
+      reportRows.forEach(r => {
+        const isSum = r[0] === '합계', isSub = !r[0] && !isSum;
+        h += `<tr class="${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''}"><td class="l">${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
+          <td class="key">${r[4] === null ? '' : f0(r[4])}</td><td>${r[5] === null ? '' : f0(r[5])}</td>
+          <td>${r[6] ? `<span class="st st-${r[6]}">${r[6]}</span>` : ''}</td></tr>`;
+      });
+      h += '</table></div>';
+      h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
+      document.getElementById('report-body').innerHTML = h;
+    }
+
+    async function downloadReport() {
+      try {
+        await ensureXLSX();
+        const aoa = [[`${ymLabel(reportYm)} 유틸리티 비용`], [], ['구분', '세부', '사용량', '단위', '공급가액(VAT별도)', '금액(VAT포함)', '상태']];
+        reportRows.forEach(r => aoa.push(r.map(v => typeof v === 'number' ? Math.round(v * 10) / 10 : (v ?? ''))));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 6 }, { wch: 18 }, { wch: 16 }, { wch: 8 }];
+        XLSX.utils.book_append_sheet(wb, ws, reportYm);
+        XLSX.writeFile(wb, `유틸리티비용_${reportYm.replace('-', '')}.xlsx`);
+      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
+    }
+
+    // =====================================================================
+    // 시작
+    // =====================================================================
+    window.addEventListener('beforeunload', e => { if (monthlyDirty) { e.preventDefault(); e.returnValue = ''; } });
+    if (BILL_MODE) { document.querySelector('header h1').textContent = '🧾 유틸리티 고지서 관리'; document.title = '유틸리티 고지서 관리'; }
+    document.querySelectorAll('.tab-btn').forEach(b => { b.hidden = BILL_MODE !== BILL_TABS.includes(b.dataset.tab); b.classList.remove('active'); });
+    document.querySelectorAll('.nav-step.an-only').forEach(x => x.hidden = BILL_MODE);
+    Portal.start({
+      appId: BILL_MODE ? 'bill' : 'utility',
+      title: BILL_MODE ? '유틸리티 고지서 관리' : '유틸리티 사용량·비용 분석',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        document.getElementById('kpis').innerHTML = '<div class="loading">불러오는 중...</div>';
+        try {
+          await loadAll();
+          try { await loadTemps(); } catch (e) { }
+          switchTab(BILL_MODE ? 'monthly' : 'dash');
+          if (!BILL_MODE) loadProdDaily().then(() => { resetPickCache(); const a = document.querySelector('.tab-btn.active'); if (a && a.dataset.tab === 'dash') renderDash(); }).catch(() => {}); // 고른 지표(완제품·포장 등) 계산용
+        } catch (e) {
+          document.getElementById('kpis').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 7번·8번 SQL을 실행했는지 확인해 주세요.</div>`;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

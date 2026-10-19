@@ -4577,7 +4577,9 @@
       // 일평균: 월 사용량 ÷ 날수 (용수는 고지서 검침 기간 전월 12일~당월 11일이라 전월 날수) · 아직 안 끝난 달은 뺌
       const dayN = ym => U.k === 'water' ? UT.daysIn(UT.prevYm(ym)) : UT.daysIn(ym);
       const daily = (s, ym) => { if (s[U.k].usage === null || s[U.k].usage === undefined || ym >= thisYm && !UT.monthComplete(DAILY, ym)) return null; return s[U.k].usage / dayN(ym); };
-      const pick0 = (s, ym) => metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+      // 진행 중인 달: 전기는 고지서 전이면 파워플래너 일일값을 어제까지만 더한 값이라 (한 달 일부) 그래프에서 뺌 · 용수 「10월」은 고지서 기간(9/12~10/11)이 이미 끝난 값이라 그대로
+      const partial = (s, ym) => U.k === 'elec' && ym >= thisYm && s.elec.status !== '확정';
+      const pick0 = (s, ym) => partial(s, ym) ? null : metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
       const csv = cs.map((s, i) => pick0(s, ms[i])), psv = ps.map((s, i) => pick0(s, pms[i])), pick = s => { const i = cs.indexOf(s); return i >= 0 ? csv[i] : psv[ps.indexOf(s)]; };
       const unitTxt = metricSel === 'usage' ? U.unit : metricSel === 'daily' ? `${U.unit}/일` : metricSel === 'unit' ? `${U.unit}/kg` : '천원';
       const plan = metricSel === 'cost' ? ms.map(ym => { const v = (MONTHLY[ym] || {})['plan_' + U.k + '_cost']; return v ? v / 1000 : null; })
@@ -4591,7 +4593,7 @@
       if (hasPlan) ds.push({ label: '계획', data: plan, borderColor: '#333', backgroundColor: '#333', borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0, stepped: 'middle' });
       document.getElementById('util-legend').innerHTML =
         `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
-        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 빼고 표시' : ''}</span>`;
+        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 빼고 표시' : ''}${(() => { const i = ms.findIndex((ym, k) => partial(cs[k], ym)); return i >= 0 && cs[i].elec.usage ? ` · ${Number(ms[i].slice(5))}월 전기는 진행 중(파워플래너 어제까지 ${f0(cs[i].elec.usage)} kWh)이라 빼고 표시` : ''; })()}${U.k === 'water' ? ' · 용수 ○월 = 고지서 검침 기간(전월 12일~당월 11일)' : ''}</span>`;
       mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
         options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' ? c.raw.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : f0(c.raw)} ${unitTxt}`; return clipAxis(o, csv, psv, 'util-note'); })() });
 
