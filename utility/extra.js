@@ -353,13 +353,17 @@
         const a = cvOf(S0, rs), b = cvOf(S0.concat([f]), rs); if (!a || !b) { o.v = '계산 안 됨'; o.cls = 'hint'; return o; }
         o.cv0 = a.cv; o.cv1 = b.cv; o.coef = b.c[b.c.length - 1];
         if (!(o.coef > 0)) { o.v = '관계 없음 (계수 마이너스)'; o.cls = 'bad'; }
-        else if (ov && Math.abs(ov[1]) >= 0.8) { o.v = `「${facName(ov[0])}」와 겹침 (r ${ov[1].toFixed(2)})`; o.cls = 'warn'; }
+        else if (ov && Math.abs(ov[1]) >= 0.8) { // 같이 쓰면 같은 정보를 두 번 세는 것 → 겹치는 지표 「대신」 써 보기
+          const S1 = S0.map(g => g === ov[0] ? f : g), c2 = cvOf(S1, rs), pos = c2 && c2.c.every(v => v > 0);
+          o.rep = c2 ? c2.cv : null; o.repOf = ov[0];
+          if (pos && a.cv - c2.cv >= 0.3) { o.v = `⭐ 「${facName(ov[0])}」 대신 쓰면 오차 ±${nf1.format(a.cv)}% → ±${nf1.format(c2.cv)}% <span class="hint">(둘은 r ${ov[1].toFixed(2)}로 같이 움직여 함께는 못 씀)</span>`; o.cls = 'good'; o.star = true; o.cv1 = c2.cv; }
+          else { o.v = `「${facName(ov[0])}」와 겹침 (r ${ov[1].toFixed(2)}) — 대신 써도 ${c2 ? (pos ? `±${nf1.format(c2.cv)}%로 나아지지 않음` : '계수 마이너스') : '계산 안 됨'}`; o.cls = 'warn'; } }
         else if (a.cv - b.cv >= 0.3) { o.v = `⭐ 쓸만함 — 오차 ${nf1.format(a.cv - b.cv)}%p 줄어듦`; o.cls = 'good'; o.star = true; }
         else { o.v = '더해도 도움 적음'; o.cls = 'hint'; }
         return o; }).sort((a, b) => (b.star ? 1 : 0) - (a.star ? 1 : 0) || ((a.cv1 ?? 99) - (b.cv1 ?? 99)));
       if (!res.length) return '';
       return `<details class="explore" style="margin-top:8px"><summary><b>🧪 후보 지표 검토</b> <span class="hint">— 목록에 없는 지표 ${res.length}개를 지금 📐 기준 식(${S0.map(facName).join(' · ')})에 하나씩 더해 보고 쓸만한지 판정</span> ${Portal.tip('cand')}</summary>
-        <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">지표</th><th>자료 있는 달</th><th>r<br><span class="hint">${PICK_U[uk].part}와</span></th><th>교차검증 오차<br><span class="hint">기준 식 → 더하면</span></th><th class="l">판정</th>${ad ? '<th></th>' : ''}</tr>` +
+        <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">지표</th><th>자료 있는 달</th><th>r<br><span class="hint">${PICK_U[uk].part}와</span></th><th>교차검증 오차<br><span class="hint">기준 식 → 더하면 (겹치면 대신 쓰면)</span></th><th class="l">판정</th>${ad ? '<th></th>' : ''}</tr>` +
         res.map(o => `<tr><td class="l">${facName(o.f)}</td><td>${o.n}개</td><td>${o.r === undefined || o.r === null ? '-' : o.r.toFixed(2)}</td><td>${o.cv0 === undefined ? '-' : `±${nf1.format(o.cv0)}% → <b>±${nf1.format(o.cv1)}%</b>`}</td><td class="l ${o.cls}">${o.v}</td>${ad ? `<td>${o.extra ? `<button class="chip" onclick="facsExtraSet('${uk}','${o.f}',false)">목록에서 빼기</button>` : `<button class="chip" onclick="facsExtraSet('${uk}','${o.f}',true)">목록에 넣기</button>`}</td>` : ''}</tr>`).join('') +
         `</table></div><div class="hint" style="margin-top:4px">「목록에 넣기」를 누르면 구성별 비교·지표 고르기·자동 탐색 목록에 같이 들어갑니다 (기준 식은 바뀌지 않음). 같은 달 자료로만 비교해서 「자료 있는 달」이 적으면 참고만.</div></details>`;
     }
