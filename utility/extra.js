@@ -270,10 +270,12 @@
         ${F.length && ad ? `<button class="chip" onclick="pickClear('${uk}','${ctx}')">자동으로 되돌리기</button>` : ''}</div>`;
       const em = auto ? `자동 식 월 평균 오차 ±${nf1.format(auto.mape)}%` : '자동 식 없음';
       if (!F.length) h += `<div style="margin-top:6px">지금은 <b>자동 식</b>으로 목표를 계산합니다 → 자동으로 고른 지표: <b>${featsText(auto)}</b> <span class="hint">(${em})</span></div>
+        <div class="hint" style="margin-top:2px">📅 목표 식(자동·고른 지표 모두)은 ${ctx === 'period' ? '<b>맨 위 기간이 아니라</b> ' : ''}목표·예산 ①의 <b>기준 달</b>(${(() => { const b = baseFor(t, y, uk).filter(ym => uk !== 'elec' || ym >= HVAC_FULL_FROM); return b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')}, ${b.length}개월` : '-'; })()})로 계산합니다${ctx === 'period' ? ' — 위 기간은 그래프·상관계수 표에만 적용' : ''}.</div>
         <div class="hint" style="margin-top:2px">자동 식은 기준 달이 늘거나 고지서 값이 고쳐지면 고르는 지표·계수가 바뀔 수 있습니다. 목표를 정했으면 목표·예산 ①에서 「🔒 확정」하세요.${ad ? ` <button class="chip" onclick="pickUseAuto('${uk}','${ctx}')">자동이 고른 지표를 직접 고른 것으로 옮기기</button>` : ''}</div>`;
       else if (pm && pm.err) h += `<div class="warn" style="margin-top:6px">⚠ ${pm.err} → 지금은 자동 식으로 계산합니다 (${em})</div>`;
       else if (pm) { const better = auto ? pm.mape <= auto.mape + 0.3 : true;
         h += `<div style="margin-top:6px">${U.part} = ${pm.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${Math.abs(pm.coef[i]) >= 100 ? f0(pm.coef[i]) : Number(pm.coef[i].toPrecision(3)).toLocaleString('ko-KR')}</b>`).join(' + ')} <span class="hint">(기준 달 ${pm.n}개)</span></div>
+          <div class="hint" style="margin-top:2px">📅 목표·예산 ①의 기준 달 ${pm.n}개로 계산${ctx === 'period' ? ' (맨 위 기간과 무관 — 위 기간은 그래프·상관계수 표에만 적용)' : ''}</div>
           <div style="margin-top:2px">월 평균 오차 <b class="${pm.mape < 5 ? 'good' : pm.mape >= 10 ? 'warn' : ''}">±${nf1.format(pm.mape)}%</b> <span class="hint">vs ${em}</span> → ${pm.neg ? '<span class="warn">마이너스 계수가 있어 목표는 자동 식으로 계산 (그 지표를 빼면 적용됨)</span>' : better ? '<span class="good">이 지표로 목표 계산</span>' : '<span class="warn">자동 식보다 덜 맞음 (그래도 고른 지표로 계산)</span>'}</div>` +
           (pm.warn.length ? `<div class="warn" style="margin-top:4px">${pm.warn.map(w => '⚠ ' + w).join('<br>')}</div>` : '<div class="good" style="margin-top:4px">✔ 계수 모두 플러스 · 지표끼리 겹침 없음</div>'); }
       return h + '</div>';
