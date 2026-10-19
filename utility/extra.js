@@ -147,9 +147,9 @@
     //  가스: 보일러(= 전체 − 식당)만 고른 지표로 맞추고, 식당 가스는 실측 그대로 더함
     // =====================================================================
     const PICK_U = { elec: { name: '전기', part: '생산동', unit: 'kWh' }, gas: { name: '가스', part: '보일러(스팀)', unit: 'MJ' } };
-    const PICK_FAC = ['days', 'prod', 'pkg', 'ea', 'op', 'idle', 'warm', 'hdd', 'steamH', 'packH', 'boilH'];
-    const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1, boilH: 1 };
-    const PICK_PER_OP = { boilH: 1 }; // 계획 달 추정을 원육 비율이 아니라 생산일 1일당 평균으로 하는 지표 // 생산 대시보드 일별 실적에서 오는 지표 (계획 달은 원육 비율로 추정)
+    const PICK_FAC = ['days', 'prod', 'pkg', 'ea', 'op', 'idle', 'warm', 'hdd', 'steamH', 'packH', 'boilH', 'runH'];
+    const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1, boilH: 1, runH: 1 };
+    const PICK_PER_OP = { boilH: 1, runH: 1 }; // 계획 달 추정을 원육 비율이 아니라 생산일 1일당 평균으로 하는 지표 // 생산 대시보드 일별 실적에서 오는 지표 (계획 달은 원육 비율로 추정)
     const pickOf = (t, uk) => { const p = (t.pick || {})[uk]; return Array.isArray(p) && p.length ? p : null; };
     const facName = f => { if (/^warmT:/.test(f)) return `더운 정도(${f.slice(6)}℃ 넘는 합)`; if (/^coldT:/.test(f)) return `추운 정도(${f.slice(6)}℃ 아래 합)`; const x = PE_FAC.find(z => z[0] === f); return x ? x[1].replace(/ \(.*\)/, '') : f; };
     const facUnit = f => { if (/^(warm|cold)T:/.test(f)) return '℃·일'; const x = PE_FAC.find(z => z[0] === f); return x ? x[2] : ''; };
@@ -1699,37 +1699,43 @@
     // =====================================================================
     let PRODD = null, pdUtil = 'elec', pdOnlyHigh = true, pdFocus = null;
     let PRODD_P = null;
-    // ---- 보일러 켠 시간 (추정): 켠 시각 = 전처리 시작 (외국인 직원 출근하며 켬 · 5~10분 빠르지만 무시)
-    //      끈 시각 = 포장 종료 + 1시간 (FC 3kg 장조림 만든 날은 + 2시간 — 레토르트 도는 시간)
-    const PROD_KEYS = new Set(); // 생산 대시보드 공정에 있는 항목 이름 (시각 항목을 못 찾을 때 보여 줌)
-    function tMin(v) { // 시각 값 → 0시부터 분
-      if (v === null || v === undefined || v === '') return null;
-      if (typeof v === 'number') return v >= 0 && v <= 24 ? Math.round(v * 60) : v > 24 && v < 1440 ? Math.round(v) : null;
-      const s = String(v).trim();
-      let m = s.match(/^\d{4}-\d{2}-\d{2}[T ](\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/);
-      if (m) { if (m[3]) { const t = new Date(s.replace(' ', 'T')); if (isNaN(t)) return null; return ((t.getUTCHours() + 9) % 24) * 60 + t.getUTCMinutes(); } return Number(m[1]) * 60 + Number(m[2]); }
-      m = s.match(/(오후|PM|pm)?\s*(\d{1,2})\s*(?::|시)\s*(\d{1,2})?/); if (m) { let h = Number(m[2]); const mi = Number(m[3] || 0); if (m[1] && h < 12) h += 12; return h < 48 && mi < 60 ? h * 60 + mi : null; }
-      return null;
+    // ---- 보일러 켠 시간: 생산 대시보드 공정 원본 기록 (읽기만)
+    //      자숙 cooking: date, start, end  ·  레토르트 retort: date, t1(가동 시작) ~ t3(가열 종료) — t3 뒤 냉각·배출은 스팀 안 씀
+    //      그날 구간을 모두 모아 겹치는 건 합침 → 켠 시간 = 가장 이른 시작 ~ 가장 늦은 끝, 실제 가동 = 합친 구간 길이 합 (쉬는 틈 뺌)
+    let BT = null, BT_ERR = '', RET_FROM = null, COOK_FROM = null;
+    function tMin(v) { const m = String(v || '').trim().match(/^(\d{1,2}):(\d{2})/); if (!m) return null; const h = Number(m[1]), mi = Number(m[2]); return h < 48 && mi < 60 ? h * 60 + mi : null; }
+    async function fsList(col, fields) {
+      const base = `https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/${col}`, mask = fields.map(f => 'mask.fieldPaths=' + f).join('&'), out = []; let tok = '';
+      for (let i = 0; i < 60; i++) {
+        const r = await fetch(`${base}?pageSize=300&${mask}${tok ? '&pageToken=' + encodeURIComponent(tok) : ''}`, { method: 'GET', cache: 'no-store' });
+        if (!r.ok) throw new Error(col + ' HTTP ' + r.status);
+        const j = await r.json(); (j.documents || []).forEach(doc => out.push(Object.fromEntries(Object.entries(doc.fields || {}).map(([k, v]) => [k, fsVal(v)]))));
+        tok = j.nextPageToken; if (!tok) break;
+      }
+      return out;
     }
-    const isStartK = k => /start|begin|시작/i.test(k) && !/end|종료/i.test(k);
-    const isEndK = k => /end|finish|stop|종료|마감/i.test(k) && !/start|시작/i.test(k);
-    function procT(p, w) { for (const [k, v] of Object.entries(p)) if ((w === 's' ? isStartK : isEndK)(k)) { const t = tMin(v); if (t !== null) return t; } return null; }
-    const isFC3 = n => /FC/i.test(n) && /3\s*kg/i.test(n);
-    function boilerTime(o, procs) {
-      const pre = procs.filter(p => String(p.process).includes('전처리')), pk = procs.filter(p => String(p.process).includes('포장'));
-      o.fc3 = (o.packItems || []).some(x => isFC3(x.name)) || pk.some(p => isFC3(String(p.part || '')));
-      const ss = pre.map(p => procT(p, 's')).filter(x => x !== null); if (!ss.length) return;
-      o.bOn = Math.min(...ss);
-      const es = pk.map(p => { const e = procT(p, 'e'); if (e !== null) return e; const s = procT(p, 's'), h = Number(p.workHours); return s !== null && h > 0 ? s + h * 60 : null; }).filter(x => x !== null);
-      if (!es.length) return;
-      let e = Math.max(...es); if (e < o.bOn) e += 1440; o.packEnd = e;
-      const off = e + (o.fc3 ? 120 : 60), h = (off - o.bOn) / 60; if (h > 0 && h <= 24) { o.bOff = off; o.boilH = Math.round(h * 10) / 10; }
+    async function loadBoilerTimes() {
+      const [ck, rt] = await Promise.all([fsList('cooking', ['date', 'start', 'end']), fsList('retort', ['date', 't1', 't3'])]);
+      const iv = {}, add = (d, a, b, k) => { if (!d || a === null || b === null) return; if (b < a) b += 1440; if (b - a <= 0 || b - a > 1440) return; (iv[d] = iv[d] || { c: [], r: [] })[k].push([a, b]); };
+      ck.forEach(x => { const d = String(x.date || '').slice(0, 10); add(d, tMin(x.start), tMin(x.end), 'c'); if (d && (!COOK_FROM || d < COOK_FROM)) COOK_FROM = d; });
+      rt.forEach(x => { const d = String(x.date || '').slice(0, 10); add(d, tMin(x.t1), tMin(x.t3), 'r'); if (d && (!RET_FROM || d < RET_FROM)) RET_FROM = d; });
+      return iv;
+    }
+    function boilerTime(o, d) {
+      const x = BT && BT[d]; if (!x) return;
+      const all = x.c.concat(x.r).sort((p, q) => p[0] - q[0]), mg = [];
+      all.forEach(([a, b]) => { const l = mg[mg.length - 1]; if (l && a <= l[1]) l[1] = Math.max(l[1], b); else mg.push([a, b]); });
+      o.bOn = mg[0][0]; o.bOff = Math.max(...mg.map(m => m[1])); o.bSeg = mg; o.nCook = x.c.length; o.nRet = x.r.length;
+      const span = Math.round((o.bOff - o.bOn) / 6) / 10, run = Math.round(mg.reduce((t, m) => t + m[1] - m[0], 0) / 6) / 10;
+      o.retOk = !!(RET_FROM && d >= RET_FROM); // 레토르트 기록이 시작되기 전 날은 자숙만 → 지표 계산에는 안 씀
+      if (o.retOk) { o.boilH = span; o.runH = run; } else { o.boilHc = span; o.runHc = run; }
     }
     const hhmm = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
     function loadProdDaily() { if (PRODD) return Promise.resolve(PRODD); if (!PRODD_P) PRODD_P = loadProdDaily0().catch(e => { PRODD_P = null; throw e; }); return PRODD_P; }
     async function loadProdDaily0() {
       const base = 'https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/daily_summary';
       const out = {}; let tok = '';
+      const btP = loadBoilerTimes().then(v => { BT = v; }).catch(e => { BT_ERR = errMsg(e); });
       for (let i = 0; i < 20; i++) {
         const r = await fetch(`${base}?pageSize=300${tok ? '&pageToken=' + encodeURIComponent(tok) : ''}`, { method: 'GET', cache: 'no-store' });
         if (!r.ok) throw new Error('생산 대시보드 HTTP ' + r.status);
@@ -1746,10 +1752,10 @@
           const o0 = out[d]; o0.rmParts = {}; P('전처리').forEach(p => { const k = String(p.part || '기타').trim() || '기타'; o0.rmParts[k] = (o0.rmParts[k] || 0) + (Number(p.inputKg) || 0); });
           o0.packItems = P('포장').map(p => ({ name: String(p.part || '').trim(), ea: Number(p.ea) || 0 })).filter(x => x.ea > 0);
           const o = out[d]; o.sumH = o.prepH + o.steamH + o.crushH + o.packH; o.maxH = Math.max(o.prepH, o.steamH, o.crushH, o.packH);
-          all.forEach(p => Object.keys(p).forEach(k => PROD_KEYS.add(k))); boilerTime(o, all);
         });
         tok = j.nextPageToken; if (!tok) break;
       }
+      await btP; Object.keys(out).forEach(d => boilerTime(out[d], d));
       return (PRODD = out);
     }
     const PD_UTIL = {
@@ -1953,7 +1959,7 @@
       if (sxx < 1e-9 || syy < 1e-9) return null; return { r: sxy / Math.sqrt(sxx * syy), b: sxy / sxx, a: my - sxy / sxx * mx, n }; }
     const DC_U = [['elec', '전기', 'kWh', '#2a78d6', ds => (UT.dailyUsage(DAILY, ds) || {}).elec], ['gas', '보일러 가스', '㎥', '#eb6834', ds => UT.diffReading(DAILY, ds, ['gas_boiler'])],
       ['water', '용수', '㎥', '#1baf7a', ds => (UT.dailyUsage(DAILY, ds) || {}).water], ['ww', '폐수', '㎥', '#eda100', ds => (UT.dailyUsage(DAILY, ds) || {}).ww]];
-    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['pkg', '완제품 kg'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h'], ['boilH', '보일러 켠 시간']];
+    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['pkg', '완제품 kg'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h'], ['boilH', '보일러 켠 시간'], ['runH', '보일러 실가동']];
     // ---------------- 완제품 중량 = 포장 EA × 제품 1개 중량 ----------------
     //  1개 중량: ① 특이사항 탭에서 직접 넣은 g (ut_monthly '9999-00' data.prodG) ② 제품명에 적힌 중량 (130g, 1kg, 70g×3 …)
     const prodGMap = () => ((YEARDATA[9999] || {}).prodG) || {};
@@ -1973,7 +1979,7 @@
       return { kg, known, all };
     }
     const pkgDay = p => { const k = pkgOf(p); return k.all && k.known / k.all >= 0.9 ? k.kg : (k.all ? null : 0); };
-    const pval = (p, k) => k === 'pkg' ? pkgDay(p) : k === 'boilH' ? (p.boilH === undefined ? null : p.boilH) : (p[k] || 0);
+    const pval = (p, k) => k === 'pkg' ? pkgDay(p) : k === 'boilH' || k === 'runH' ? (p[k] === undefined ? null : p[k]) : (p[k] || 0);
     let pgOpen = false;
     function prodGHtml() {
       const all = {}; Object.values(PRODD || {}).forEach(p => (p.packItems || []).forEach(x => { const k = dcProdName(x.name); const a = all[k] = all[k] || { ea: 0, last: '', raw: x.name }; a.ea += x.ea; if (p.d > a.last) a.last = p.d; }));
@@ -2011,7 +2017,7 @@
         <span class="hint">그래프: </span><span class="chips">${DC_U.map(u => `<button class="chip ${dcU === u[0] ? 'on' : ''}" onclick="dcU='${u[0]}';renderDayCmp()">${u[1]}</button>`).join('')}</span>
         <span class="hint">와 </span><span class="chips">${DC_P.map(x => `<button class="chip ${dcP === x[0] ? 'on' : ''}" onclick="dcP='${x[0]}';renderDayCmp()">${x[1]}</button>`).join('')}</span></div>
         <div class="chart-box" style="height:260px"><canvas id="dc-chart"></canvas></div>
-        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2" class="l">포장 제품 · EA</th><th rowspan="2">완제품<br><span class="hint">kg</span></th><th colspan="4">공정별 작업시간 (h)</th><th rowspan="2">보일러 켠 시간<br><span class="hint">추정 ${Portal.tip('boilh')}</span></th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
+        <div class="tbl-wrap" style="margin-top:10px"><table class="t dc-t"><tr><th rowspan="2">날짜</th><th colspan="2">전처리 원육 투입</th><th rowspan="2" class="l">포장 제품 · EA</th><th rowspan="2">완제품<br><span class="hint">kg</span></th><th colspan="4">공정별 작업시간 (h)</th><th rowspan="2">보일러 켠 시간<br><span class="hint">자숙·레토르트 ${Portal.tip('boilh')}</span></th><th colspan="4">유틸리티 사용량</th><th rowspan="2" class="l">특이사항</th></tr>
         <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>파쇄</th><th>포장</th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
         rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
           const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
@@ -2020,7 +2026,7 @@
             <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
               return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
             <td>${p && (p.ea || (p.packItems || []).length) ? (() => { const k = pkgOf(p); return k.known ? `${f0(k.kg)}${k.known < k.all ? `<div class="hint" title="중량 모르는 제품 EA가 있음">${Math.round(k.known / k.all * 100)}%만</div>` : ''}` : '<span class="hint">?</span>'; })() : ''}</td>
-            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b><div class="hint">${hhmm(p.bOn)}~${hhmm(p.bOff)}${p.fc3 ? ' · FC3kg' : ''}</div>` : `<span class="hint" title="${p.bOn === undefined ? '전처리 시작 시각' : '포장 종료 시각'}을 생산 대시보드에서 못 찾음">?</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
+            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b><div class="hint">${hhmm(p.bOn)}~${hhmm(p.bOff)}</div>${p.runH < p.boilH ? `<div class="hint" title="합친 구간 사이 쉬는 틈을 뺀 시간">실가동 ${nf1.format(p.runH)}h</div>` : ''}` : p.boilHc !== undefined ? `<span class="hint" title="레토르트 기록(${RET_FROM || '-'}부터) 전이라 자숙만 — 지표 계산에는 안 씀">자숙만 ${nf1.format(p.boilHc)}h<br>${hhmm(p.bOn)}~${hhmm(p.bOff)}</span>` : `<span class="hint" title="자숙·레토르트 기록 없음">-</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
@@ -2030,7 +2036,7 @@
           const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td><td>${np ? f0(sum(r => r.p ? pkgOf(r.p).kg : 0) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}<td>${(() => { const b = pd.filter(r => r.p.boilH !== undefined); return b.length ? nf1.format(b.reduce((t, r) => t + r.p.boilH, 0) / b.length) : ''; })()}</td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
           const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="9"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간(추정)</b> = 전처리 시작 → 포장 종료 + 1시간 (FC 3kg 장조림 만든 날은 + 2시간).</div>` + (rows.some(r => r.p && r.p.rm > 0) && !rows.some(r => r.p && r.p.bOn !== undefined) ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 생산 대시보드 일별 요약에서 전처리 시작 시각을 찾지 못해 보일러 켠 시간을 계산하지 못했습니다. 공정에 있는 항목 이름: ${esc([...PROD_KEYS].join(', ') || '없음')} — 이 문구를 알려 주시면 맞춰 드립니다.</div>` : rows.some(r => r.p && r.p.bOn !== undefined && r.p.boilH === undefined) ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 포장 종료 시각을 못 찾은 날이 있습니다 (「?」 표시). 공정 항목: ${esc([...PROD_KEYS].join(', '))}</div>` : '');
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품명은 생산 대시보드 포장 공정에 적힌 이름(부위 뒤 제품명)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 그날 자숙(시작~종료)·레토르트(가동 시작~가열 종료) 기록 중 가장 이른 시작 ~ 가장 늦은 끝, <b>실가동</b> = 겹치는 구간을 합치고 사이 쉬는 틈을 뺀 시간.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
       h += prodGHtml() + dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
@@ -2050,7 +2056,7 @@
       const M = DC_U.map((u, ui) => cols.map(([k]) => { const v = days.filter(d => d.u[ui] !== null && d.u[ui] !== undefined && !isNaN(d.u[ui]) && xv(d, k) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => d.u[ui])); }));
       const lvl = r => { const a = Math.abs(r); return a >= 0.7 ? '강함' : a >= 0.4 ? '보통' : a >= 0.2 ? '약함' : '거의 없음'; };
       const bg = r => { const a = Math.min(1, Math.abs(r)); return r >= 0 ? `rgba(42,120,214,${(a * 0.75).toFixed(2)})` : `rgba(217,48,37,${(a * 0.6).toFixed(2)})`; };
-      const unitX = { rm: 'kg', pkg: 'kg', ea: 'EA', prepH: 'h', steamH: 'h', crushH: 'h', packH: 'h', boilH: 'h', temp: '℃' }, per = { rm: 1000, pkg: 1000, ea: 10000, temp: 1 };
+      const unitX = { rm: 'kg', pkg: 'kg', ea: 'EA', prepH: 'h', steamH: 'h', crushH: 'h', packH: 'h', boilH: 'h', runH: 'h', temp: '℃' }, per = { rm: 1000, pkg: 1000, ea: 10000, temp: 1 };
       const slope = (c, k, u) => { const m = per[k] || 1, v = c.b * m; return `${unitX[k] === 'h' ? '1h' : k === 'temp' ? '1℃' : (m === 1000 ? '1,000' : '10,000') + unitX[k]}당 ${v >= 0 ? '+' : ''}${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${u[2]}`; };
       // 생산 항목끼리의 연관 (서로 같이 움직이면 어느 게 진짜 원인인지 구분 어려움)
       const PX = cols.map(([k]) => cols.map(([k2]) => { const v = days.filter(d => xv(d, k) !== null && xv(d, k2) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => xv(d, k2))); }));
@@ -2084,7 +2090,7 @@
         facs: ['prod', 'ea', 'pkg', 'tmean', 'warm', 'op', 'days', 'idle', 'steamH', 'packH', 'flow', 'sludge', 'gas'],
         note: '공조냉동·폐수동 계량이 나뉜 26년 3월부터 구성별 값이 나옵니다 · 생산동 = 전체 − 폐수동 − 공조냉동' },
       gas: { name: '가스', unit: 'MJ', comps: [['gb', '보일러 (스팀)', '#eb6834'], ['gr', '식당 (기숙사)', '#c9a227'], ['gall', '가스 전체', '#555']], stack: ['gb', 'gr'],
-        facs: ['prod', 'ea', 'pkg', 'steamH', 'packH', 'boilH', 'op', 'idle', 'tmean', 'hdd', 'days'],
+        facs: ['prod', 'ea', 'pkg', 'steamH', 'packH', 'boilH', 'runH', 'op', 'idle', 'tmean', 'hdd', 'days'],
         note: '보일러 스팀 = 자숙탱크·레토르트 · 보일러·식당은 고지서(없으면 검침) 계량 지침으로 나눈 열량(MJ) · 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합 (난방용 가스는 없지만 급수 온도·배관 열손실 영향 확인용)' },
       water: { name: '용수', unit: '㎥', comps: [['wall', '용수 (40A+50A)', '#1baf7a']], stack: null,
         facs: ['prod', 'ea', 'pkg', 'op', 'idle', 'tmean', 'steamH', 'flow', 'days'],
@@ -2096,8 +2102,8 @@
     const PE_FAC = [
       ['prod', '원육 투입량', 'kg', 0], ['ea', '포장 생산량', 'EA', 0], ['pkg', '완제품 중량', 'kg', 0], ['tmean', '평균기온', '℃', 1], ['warm', '더운 정도 (5℃ 넘는 기온 합)', '℃·일', 0],
       ['op', '생산일수', '일', 0], ['days', '달력 날수', '일', 0], ['idle', '쉬는 날 수', '일', 0],
-      ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0], ['boilH', '보일러 켠 시간 (추정)', 'h', 0]];
-    const PE_PERDAY_FAC = { prod: 1, ea: 1, pkg: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1, boilH: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
+      ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0], ['boilH', '보일러 켠 시간', 'h', 0], ['runH', '보일러 실가동 시간', 'h', 0]];
+    const PE_PERDAY_FAC = { prod: 1, ea: 1, pkg: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1, boilH: 1, runH: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
     // 맨 위 기간비교에서 고른 기간을 월 단위로 바꿔서 씀 (일·주는 그 날짜가 속한 달, 분기는 그 분기의 달) — 아직 안 끝난 달은 뺌
     function peMonths() {
       const { from, to } = perRange(), last = lastCompleteYm();
@@ -2108,14 +2114,14 @@
     function peRow(ym) {
       const s = S(ym), all = s.elec.usage, ww = wwKwh(ym), hv = meterKwh(ym, 'elec_hvac_kwh'), days = UT.daysIn(ym), op = UT.opDays(DAILY, ym, MONTHLY);
       const hall = all !== null && ww !== null && hv !== null && ym >= HVAC_FULL_FROM ? all - ww - hv : null;
-      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0, pk = 0, pkKn = 0, pkAll = 0, bh = 0, bhN = 0, rmN = 0;
-      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; if (p.rm > 0) { rmN++; if (p.boilH !== undefined) { bh += p.boilH; bhN++; } } const k = pkgOf(p); pk += k.kg; pkKn += k.known; pkAll += k.all; }
+      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0, pk = 0, pkKn = 0, pkAll = 0, bh = 0, bhN = 0, rh = 0, rmN = 0;
+      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; if (p.rm > 0) { rmN++; if (p.boilH !== undefined) { bh += p.boilH; rh += p.runH; bhN++; } } const k = pkgOf(p); pk += k.kg; pkKn += k.known; pkAll += k.all; }
         const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g !== null && g >= 0) { gas += g; gn++; } }
       const w = wwRow(ym), tm = UT.monthWeather(ym, TEMPS || {}).tmean;
       const gc = s.gas.calc, wt = UT.monthWeather(ym, TEMPS || {});
       return { ym, c: { hall, ww: ym >= HVAC_FULL_FROM ? ww : null, hv: ym >= HVAC_FULL_FROM ? hv : null, all,
           gb: gc && gc.boiler ? gc.boiler.mj : null, gr: gc ? (gc.rest ? gc.rest.mj : 0) : null, gall: s.gas.usage, wall: s.water.usage, wwall: s.ww.usage },
-        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, pkg: pn && pkAll && pkKn / pkAll >= 0.9 ? pk : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null, boilH: rmN && bhN >= rmN * 0.9 ? bh : null } };
+        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, pkg: pn && pkAll && pkKn / pkAll >= 0.9 ? pk : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null, boilH: rmN && bhN >= rmN * 0.9 ? bh : null, runH: rmN && bhN >= rmN * 0.9 ? rh : null } };
     }
     async function renderPerElec() {
       const el = document.getElementById('per-elec'); if (!el || !window.Chart) return;
