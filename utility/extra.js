@@ -1108,18 +1108,21 @@
     // =====================================================================
     // 이상 사용 감지
     // =====================================================================
-    let anomDays = 60, anomRatio = 1.4, anomUtil = 'all', anomList = [], anomMonth = null;
+    let anomDays = 60, anomSpan = 1, anomTblU = 'all', anomRatio = 1.4, anomUtil = 'all', anomList = [], anomMonth = null;
     function renderAnomaly() {
       setTimeout(renderProdCompare, 0);
-      const to = UT.addDays(todayStr, -1), from = UT.addDays(to, -anomDays + 1);
+      // 기간 = 원인 찾기 맨 위에서 고른 달 (또는 그 달까지 3개월) — 진행 중인 달은 어제까지
+      const am = anomMonth || causeYm || lastCompleteYm(), yst = UT.addDays(todayStr, -1), mEnd = UT.dateStr(am, UT.daysIn(am));
+      let fm = am; for (let i = 1; i < anomSpan; i++) fm = UT.prevYm(fm);
+      const to = mEnd > yst ? yst : mEnd, from = UT.dateStr(fm, 1);
       anomList = UT.anomalies(DAILY, from, to, { ratio: anomRatio }).reverse();
       document.getElementById('anom-chips').innerHTML =
-        [['all', '전체'], ...UT.DAILY_UTILS.map(u => [u.k, u.name])].map(([k, n]) => `<button class="chip ${anomUtil === k ? 'on' : ''}" onclick="anomUtil='${k}';renderAnomaly()">${n} ${k === 'all' ? anomList.length : anomList.filter(a => a.u === k).length}</button>`).join('') +
-        ' &nbsp; ' + [30, 60, 90].map(n => `<button class="chip ${anomDays === n ? 'on' : ''}" onclick="anomDays=${n};renderAnomaly()">${n}일</button>`).join('') +
+        [['all', '전체'], ...UT.DAILY_UTILS.map(u => [u.k, u.name])].map(([k, n]) => `<button class="chip ${anomTblU === k ? 'on' : ''}" onclick="anomTblU='${k}';renderAnomaly()">${n} ${k === 'all' ? anomList.length : anomList.filter(a => a.u === k).length}</button>`).join('') +
+        ' &nbsp; ' + [[1, ymLabel(am)], [3, `${Number(UT.prevYm(UT.prevYm(am)).slice(5))}~${Number(am.slice(5))}월 (3개월)`]].map(([n, l]) => `<button class="chip ${anomSpan === n ? 'on' : ''}" onclick="anomSpan=${n};renderAnomaly()">${l}</button>`).join('') +
         ' &nbsp; 민감도 ' + [[1.3, '높음'], [1.4, '보통'], [1.5, '낮음']].map(([r, n]) => `<button class="chip ${anomRatio === r ? 'on' : ''}" onclick="anomRatio=${r};renderAnomaly()">${n}</button>`).join('');
-      const list = anomList.filter(a => anomUtil === 'all' || a.u === anomUtil);
+      const list = anomList.filter(a => anomTblU === 'all' || a.u === anomTblU);
       const W = ['일', '월', '화', '수', '목', '금', '토'];
-      document.getElementById('anom-table').innerHTML = !list.length ? '<div class="empty">이 기간에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>' :
+      document.getElementById('anom-table').innerHTML = !list.length ? `<div class="empty">${from.slice(5).replace('-', '/')} ~ ${to.slice(5).replace('-', '/')}에 평소보다 크게 많이 쓴 날이 없습니다 👍</div>` :
         `<table class="t"><tr><th>날짜</th><th>항목</th><th>그날 사용량</th><th>평소<br><span class="hint">최근 4주 같은 종류 날 중앙값</span></th><th>차이</th><th class="l">구분</th><th class="l" style="min-width:220px">원인·조치 메모${isAdmin() ? ' <span class="hint">(입력하면 자동 저장)</span>' : ''}</th><th></th></tr>` +
         list.map(a => { const u = UT.DAILY_UTILS.find(x => x.k === a.u); const wd = new Date(a.d + 'T00:00:00').getDay();
           return `<tr class="anom-row" onclick="anomFocus='${a.d}';goCause('${a.d}','${a.u}')" title="이 날이 있는 달로 위 그래프·원인을 바꿉니다"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
@@ -1158,7 +1161,6 @@
       if (anomMonth) { for (let d = 1; d <= UT.daysIn(anomMonth); d++) { const ds = UT.dateStr(anomMonth, d); if (ds <= to) days.push(ds); } }
       else for (let i = anomDays - 1; i >= 0; i--) days.push(UT.addDays(to, -i));
       document.getElementById('anom-chart-title').textContent = `${U.name} 일 사용량 (${U.unit})${anomMonth ? ' · ' + ymLabel(anomMonth) : ''}`;
-      if (anomMonth && days.length && days[0] < UT.addDays(to, -anomDays + 1)) { const extra = UT.anomalies(DAILY, days[0], days[days.length - 1], { ratio: anomRatio }); extra.forEach(a => { if (!anomList.some(b => b.d === a.d && b.u === a.u)) anomList.push(a); }); }
       const vals = days.map(d => UT.dailyUsage(DAILY, d)[uk]);
       const base = days.map(d => UT.baseline(DAILY, d, uk));
       const flagged = new Set(anomList.filter(a => a.u === uk).map(a => a.d));
