@@ -823,7 +823,7 @@
       }
       if ('공조냉동 (실측)' in P) rows.push(['공조냉동 (실측)', `냉동·냉장·공조 계량기 12개 합 ${f0(r0.hvk)} → ${f0(r.hvk)} ${un} (하루 ${perDay(r0.hvk, r0)} → ${perDay(r.hvk, r)})${mnote('elec_hvac_kwh')}${evs('공조냉동')}`, P['공조냉동 (실측)']]);
       if ('식당 가스 (실측)' in P) rows.push(['식당 가스 (실측)', `식당(기숙사) 가스 ${f0(r0.grest)} → ${f0(r.grest)} ${un} · 보일러와 따로 계량 — 생산과 관계없어 실측 그대로`, P['식당 가스 (실측)']]);
-      if ('부하 변동 (생산동·기타)' in P) rows.push(['부하 변동 (생산동·기타)', `부하 변동 사항에 적은 생산동·기타 부하 ${f0(r0.eq)} → ${f0(r.eq)} ${un}${evs('생산동')}`, P['부하 변동 (생산동·기타)']]);
+      if ('부하 변동 (생산동·기타)' in P) rows.push(['부하 변동 (생산동·기타)', `특이사항 탭에 ⚡ 부하 변동으로 적은 생산동·기타 부하 ${f0(r0.eq)} → ${f0(r.eq)} ${un}${evs('생산동')}`, P['부하 변동 (생산동·기타)']]);
       if ('생산일' in P) rows.push(['생산일', `${opInfo} · ${srcTxt}${calc('op', r.op - r0.op, '일')}`, P['생산일']]);
       if ('달력 날수' in P) rows.push(['달력 날수', `${r0.days}일 → ${r.days}일 · ${(D.mdl.idle || D.mdl.hall) && uk === 'elec' ? '원육 양과 관계없는 생산동 고정분의 하루 평균 (쉬는 날 대기전력 + 생산일 기본 부하)' : '냉동·공조처럼 매일 도는 몫'}${calc('days', r.days - r0.days, '일', D.mdl.idle ? '일 (휴무일 기본)' : '')}`, P['달력 날수']]);
       rows.push(['원육 투입량', `${f0(r0.prod)} → ${f0(r.prod)} kg (${r.prod - r0.prod >= 0 ? '+' : '−'}${f0(Math.abs(r.prod - r0.prod))})${calc('prod', r.prod - r0.prod, 'kg')}`, P['원육 투입량'] || 0]);
@@ -1806,34 +1806,67 @@
       const nd = { ...cur, notes }; const r = await sb.from('ut_monthly').upsert({ ym: '9999-00', data: nd }, { onConflict: 'ym' }); if (r.error) throw r.error;
       YEARDATA[9999] = nd;
     }
+    // ---- 기록 적기 (특이사항 + 부하 변동 한 곳에서) ----
+    //  특이사항: ut_monthly 9999-00 notes · 부하 변동(그 날부터 계속되는 운전 변화): 9999-00 equip (원인 찾기·목표 식 계산에 들어감)
+    const EQ_AREAS = ['생산동', '폐수동', '공조냉동', '기타'];
+    const eqKey = (x, i) => x.id || `eqi${i}|${x.d}|${x.area}|${x.name}`;
+    const eqAll = () => equipList().map((x, i) => ({ ...x, _k: eqKey(x, i) }));
+    const eqLine = x => `<span class="un-cat eq">⚡ 부하 변동</span> <b>${Number(x.d.slice(5, 7))}/${Number(x.d.slice(8))}</b> [${esc(x.area)}${x.name ? ' · ' + esc(x.name) : ''}] ${esc(x.note || '')} <span class="hint">→ 그날부터 ${nf1.format(Number(x.kw) || 0)}kW × 하루 ${nf1.format(Number(x.hours) || 0)}h = ${f0((Number(x.kw) || 0) * (Number(x.hours) || 0))} kWh/일</span>`;
     function renderNotes() {
-      if (!unYm) unYm = thisYm;
-      const E = unEditId ? utNotes().find(n => n.id === unEditId) : null, ro = !isAdmin();
+      if (!unYm && unYm !== '') unYm = thisYm;
+      const ro = !isAdmin(), isEq = typeof unEditId === 'string' && unEditId.startsWith('EQ:');
+      const E = unEditId && !isEq ? utNotes().find(n => n.id === unEditId) : null, X = isEq ? eqAll().find(x => x._k === unEditId.slice(3)) : null;
       const utilBox = (n) => UT.UTILS.map(u => `<label class="un-u"><input type="checkbox" class="un-ut" value="${u.k}" ${(n ? (n.utils || []) : UN_UTIL_DEF['전기']).includes(u.k) ? 'checked' : ''}> ${u.name}</label>`).join('');
-      let h = ro ? '' : `<div class="card"><h3>${E ? '특이사항 고치기' : '특이사항 적기'} <span class="sub">유틸리티·생산설비 — 원인 찾기 ③에 그 기간 기록이 같이 나옵니다</span></h3>
+      const load = !!X || unLoadOn;
+      let h = ro ? '' : `<div class="card"><h3>${E || X ? '기록 고치기' : '기록 적기'} <span class="sub">설비·운전에 있었던 일 — 원인 찾기 ③에 그 기간 기록이 나옵니다</span></h3>
         <div class="un-form">
-          <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : todayStr)}"></label>
-          <label>분류 <select id="un-cat" onchange="unCatChange(this.value)">${UN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-          <label>설비·장소 <input id="un-eq" value="${esc(E ? E.eq || '' : '')}" placeholder="예: 레토르트 2호기, 1번 공기압축기"></label>
-          <label class="wide">내용 <textarea id="un-text" rows="2" placeholder="예: 레토르트 2호기 스팀 트랩 누설, 야간 냉동기 수동 운전, 생산 연장(22시까지)">${esc(E ? E.text : '')}</textarea></label>
-          <label class="wide">조치 <input id="un-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 트랩 교체, 타이머 재설정"></label>
-          <div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 찾기에 나옵니다</span></div>
-          <div><button class="btn" onclick="unSave()">${E ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E ? ` <button class="btn secondary" onclick="unEditId=null;renderNotes()">취소</button>` : ''}</div>
+          <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : X ? X.d : todayStr)}"></label>
+          <label>분류 <select id="un-cat" onchange="unCatChange(this.value)" ${load ? 'disabled' : ''}>${UN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+          <label>설비·장소 <input id="un-eq" value="${esc(E ? E.eq || '' : X ? X.name || '' : '')}" placeholder="예: 레토르트 2호기, 터보블로워, 보일러"></label>
+          <label class="wide">내용 <textarea id="un-text" rows="2" placeholder="예: 레토르트 2호기 스팀 트랩 누설 / 보일러 2대 → 1대 운전으로 변경">${esc(E ? E.text : X ? X.note || '' : '')}</textarea></label>
+          <label class="wide ${load ? 'hidden-f' : ''}">조치 <input id="un-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 트랩 교체, 타이머 재설정"></label>
+          <div class="wide un-loadsw"><label><input type="checkbox" id="un-load" ${load ? 'checked' : ''} ${E || X ? 'disabled' : ''} onchange="unLoadOn=this.checked;unKeepDraft();renderNotes()"> <b>⚡ 이 날부터 설비 운전·부하가 계속 바뀜</b></label>
+            <span class="hint">— 한 번 있었던 일(고장·누설·생산 연장)은 체크 안 함 · 그 날부터 쭉 이어지는 변화(설비 추가·운전 대수·가동시간 변경)만 체크</span></div>
+          ${load ? `<div class="wide un-loadbox">
+            <label>구역 <select id="un-area">${EQ_AREAS.map(a => `<option ${X && X.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+            <label>대당 kW <input id="un-kw" type="number" step="0.1" style="width:80px" value="${X ? X.kw ?? '' : ''}"></label>
+            <label>하루 가동시간 합 (h) <input id="un-hours" type="number" step="0.5" style="width:80px" value="${X ? X.hours ?? '' : ''}"></label>
+            <label class="hint">kW 계산 도우미: 전류 <input id="un-amp" type="number" step="0.1" style="width:64px" oninput="const a=Number(this.value);if(a)document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1)"> A → 3상 380V × 1.732 × 역률 0.85</label>
+            <div class="hint" style="flex-basis:100%">· 생산동·기타(계량기 없는 곳)는 kW × 하루 시간이 그날부터 매일 전기 계산(원인 찾기 ①·목표 식)에 더해짐 · 폐수동·공조냉동은 계량기로 재므로 설명으로만 붙음 · 같은 구역·설비는 가장 최근 시작일 기록이 적용 (예: 터보블로워 16h → 24h로 바뀌면 새 날짜로 하나 더 적기) · 가스 쪽 변화(보일러 대수 등)는 kW를 0으로 두고 내용만 적으면 됨</div></div>` : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 찾기에 나옵니다</span></div>`}
+          <div><button class="btn" onclick="unSave()">${E || X ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E || X ? ` <button class="btn secondary" onclick="unEditId=null;unLoadOn=false;renderNotes()">취소</button>` : ''}</div>
         </div></div>`;
-      const list = utNotes().filter(n => (!unYm || n.d.slice(0, 7) === unYm) && (!unCat || n.cat === unCat));
+      const inM = d => !unYm || (d || '').slice(0, 7) === unYm;
+      const showEq = !unCat || unCat === '⚡';
+      const list = (unCat === '⚡' ? [] : utNotes().filter(n => inM(n.d) && (!unCat || n.cat === unCat)).map(n => ({ k: 'n', d: n.d, n })))
+        .concat(showEq ? eqAll().filter(x => inM(x.d)).map(x => ({ k: 'e', d: x.d, x })) : [])
+        .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0);
       h += `<div class="card"><div class="toolbar">
           <div class="month-nav"><button onclick="unShift(-1)">◀</button><span>${unYm ? ymLabel(unYm) : '전체'}</span><button onclick="unShift(1)">▶</button></div>
           <button class="chip ${unYm ? '' : 'on'}" onclick="unYm=unYm?'':thisYm;renderNotes()">전체 기간</button>
-          <span class="chips"><button class="chip ${unCat ? '' : 'on'}" onclick="unCat='';renderNotes()">전체</button>${UN_CATS.map(c => `<button class="chip ${unCat === c ? 'on' : ''}" onclick="unCat='${c}';renderNotes()">${c}</button>`).join('')}</span>
+          <span class="chips"><button class="chip ${unCat ? '' : 'on'}" onclick="unCat='';renderNotes()">전체</button>${UN_CATS.map(c => `<button class="chip ${unCat === c ? 'on' : ''}" onclick="unCat='${c}';renderNotes()">${c}</button>`).join('')}<button class="chip ${unCat === '⚡' ? 'on' : ''}" onclick="unCat='⚡';renderNotes()">⚡ 부하 변동</button></span>
           <span class="hint">${list.length}건</span></div>` +
-        (list.length ? `<div class="tbl-wrap"><table class="t"><tr><th>날짜</th><th>분류</th><th class="l">설비·장소</th><th class="l">내용</th><th class="l">조치</th><th>관련</th><th>적은 사람</th>${ro ? '' : '<th></th>'}</tr>` +
-          list.map(n => `<tr><td>${n.d}</td><td><span class="un-cat">${esc(n.cat)}</span></td><td class="l">${esc(n.eq || '')}</td><td class="l un-txt">${esc(n.text)}</td><td class="l un-txt">${esc(n.act || '')}</td>
+        (list.length ? `<div class="tbl-wrap"><table class="t"><tr><th>날짜</th><th>분류</th><th class="l">설비·장소</th><th class="l">내용</th><th class="l">조치 / 부하</th><th>관련</th><th>작성</th>${ro ? '' : '<th></th>'}</tr>` +
+          list.map(o => o.k === 'n' ? (n => `<tr><td>${n.d}</td><td><span class="un-cat">${esc(n.cat)}</span></td><td class="l">${esc(n.eq || '')}</td><td class="l un-txt">${esc(n.text)}</td><td class="l un-txt">${esc(n.act || '')}</td>
             <td>${(n.utils || []).map(k => (UT.UTILS.find(u => u.k === k) || {}).name).filter(Boolean).join('·')}</td><td>${esc(n.by || '')}</td>
-            ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='${n.id}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button></td>`}</tr>`).join('') + '</table></div>'
-          : `<div class="empty">${unYm ? '이 달에 적은 특이사항이 없습니다.' : '적은 특이사항이 없습니다.'}</div>`) + '</div>';
+            ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='${n.id}';unLoadOn=false;renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button></td>`}</tr>`)(o.n)
+            : (x => `<tr class="eq-row"><td>${x.d}</td><td><span class="un-cat eq">⚡ 부하 변동</span><div class="hint">${esc(x.area)}</div></td><td class="l">${esc(x.name || '')}</td><td class="l un-txt">${esc(x.note || '')}</td>
+            <td class="l">그날부터 ${nf1.format(Number(x.kw) || 0)}kW × ${nf1.format(Number(x.hours) || 0)}h<br><b>${f0((Number(x.kw) || 0) * (Number(x.hours) || 0))} kWh/일</b></td><td>전기</td><td>${esc(x.by || '')}</td>
+            ${ro ? '' : `<td><button class="btn secondary small" onclick="unEditId='EQ:${esc(x._k)}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="eqDel2('${esc(x._k)}')">삭제</button></td>`}</tr>`)(o.x)).join('') + '</table></div>'
+          : `<div class="empty">${unYm ? '이 달에 적은 기록이 없습니다.' : '적은 기록이 없습니다.'}</div>`) + '</div>';
       document.getElementById('notes-body').innerHTML = h;
-      if (unYm) causeYm = unYm; else if (!causeYm) causeYm = lastCompleteYm(); // 부하 변동 「이 달만」도 같은 달
-      renderEquip();
+      if (unYm) causeYm = unYm; else if (!causeYm) causeYm = lastCompleteYm();
+    }
+    let unLoadOn = false, unDraft = null;
+    function unKeepDraft() { const g = id => { const e = document.getElementById(id); return e ? e.value : ''; }; unDraft = { d: g('un-d'), eq: g('un-eq'), text: g('un-text') }; setTimeout(() => { if (!unDraft) return; ['d', 'eq', 'text'].forEach(k => { const e = document.getElementById('un-' + k); if (e && unDraft[k]) e.value = unDraft[k]; }); unDraft = null; }, 0); }
+    async function eqPut(fn) { // 부하 변동: 저장 직전 최신 목록을 다시 읽어서 고침
+      const cur = await freshYear(9999); const list = (Array.isArray(cur.equip) ? cur.equip : EQ_DEFAULT).map((x, i) => ({ ...x, _k: eqKey(x, i) }));
+      const out = fn(list).map(({ _k, _new, ...x }) => x);
+      await saveYear(9999, { equip: out }); EQ_EDIT = null; resetCache && resetCache(); resetPickCache();
+    }
+    async function eqDel2(k) {
+      const x = eqAll().find(z => z._k === k); if (!x || !confirm(`${x.d} 부하 변동 「${x.area} ${x.name || ''}」 기록을 지울까요?\n\n지우면 원인 찾기·목표 식 계산에서도 빠집니다.`)) return;
+      try { await eqPut(L => L.filter(z => z._k !== k)); } catch (e) { alert('삭제 실패: ' + errMsg(e)); return; }
+      renderNotes();
     }
     function unWriteFor(ds) { // 비교표에서 [+ 적기] → 기록 탭 입력칸에 날짜 넣고 내용으로 이동
       unEditId = null; unYm = ds.slice(0, 7); switchTab('notes');
@@ -1843,10 +1876,20 @@
     function unCatChange(c) { const set = UN_UTIL_DEF[c] || []; document.querySelectorAll('.un-ut').forEach(x => { x.checked = set.includes(x.value); }); }
     function unShift(n) { unYm = n > 0 ? UT.nextYm(unYm || thisYm) : UT.prevYm(unYm || thisYm); renderNotes(); }
     async function unSave() {
-      const d = document.getElementById('un-d').value, cat = document.getElementById('un-cat').value, eq = document.getElementById('un-eq').value.trim(),
-        text = document.getElementById('un-text').value.trim(), act = document.getElementById('un-act').value.trim(), utils = [...document.querySelectorAll('.un-ut:checked')].map(x => x.value);
+      const g = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+      const d = g('un-d'), eq = g('un-eq'), text = g('un-text'), id = unEditId, now = new Date().toISOString();
+      const isEq = typeof id === 'string' && id.startsWith('EQ:'), load = isEq || (document.getElementById('un-load') || {}).checked;
+      if (load) {
+        const area = g('un-area'), kw = Number(g('un-kw')) || 0, hours = Number(g('un-hours')) || 0;
+        if (!d || !(eq || text)) { alert('날짜와 설비·장소(또는 내용)를 넣어 주세요.'); return; }
+        const rec = { d, area, name: eq, kw, hours, note: text };
+        try { await eqPut(L => { if (isEq) { const x = L.find(z => z._k === id.slice(3)); if (x) Object.assign(x, rec, { edited: now }); return L; }
+          return L.concat([{ id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec, by: (me && (me.name || me.username)) || '', at: now }]); }); }
+        catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
+        unEditId = null; unLoadOn = false; unYm = d.slice(0, 7); renderNotes(); return;
+      }
+      const cat = document.getElementById('un-cat').value, act = g('un-act'), utils = [...document.querySelectorAll('.un-ut:checked')].map(x => x.value);
       if (!d || !text) { alert('날짜와 내용을 넣어 주세요.'); return; }
-      const id = unEditId, now = new Date().toISOString();
       try {
         await unPut(L => { if (id) { const x = L.find(n => n.id === id); if (x) Object.assign(x, { d, cat, eq, text, act, utils, edited: now }); return L; }
           return L.concat([{ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), d, cat, eq, text, act, utils, by: (me && (me.name || me.username)) || '', at: now }]); });
@@ -1862,9 +1905,11 @@
     function causeNotesHtml(ym, ym0, uk) {
       const a = ym0 < ym ? ym0 : ym, b = ym0 < ym ? ym : ym0;
       const L = notesIn(UT.dateStr(a, 1), UT.dateStr(b, UT.daysIn(b)), uk);
-      const U = UT.UTILS.find(u => u.k === uk);
+      const U = UT.UTILS.find(u => u.k === uk), from = UT.dateStr(a, 1), to = UT.dateStr(b, UT.daysIn(b));
+      const EQ = uk === 'elec' || uk === 'gas' ? eqAll().filter(x => x.d >= from && x.d <= to && (uk === 'elec' ? Number(x.kw) > 0 || x.area !== '기타' : /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))) : [];
+      L.push(...EQ.map(x => ({ d: x.d, _eq: x }))); L.sort((p, q) => p.d < q.d ? -1 : 1);
       return `<h3>③ 그 기간에 무슨 일이 있었나 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
-        (L.length ? `<ul class="un-list">${L.map(n => `<li>${unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
+        (L.length ? `<ul class="un-list">${L.map(n => `<li>${n._eq ? eqLine(n._eq) : unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
     }
     function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
 
