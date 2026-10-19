@@ -135,7 +135,9 @@
       // 고른 지표가 있으면 그 식으로 (전기·가스만)
       Object.defineProperty(out, '_auto', { value: { elec: out.elec, gas: out.gas }, enumerable: false });
       Object.defineProperty(out, '_pick', { value: {}, enumerable: false });
-      ['elec', 'gas'].forEach(uk => { const pm = fitPick(t, y, uk); if (!pm) return; out._pick[uk] = pm; pm.autoMape = out[uk] ? out[uk].mape : null; if (!pm.err && !pm.neg) out[uk] = pm; });
+      ['elec', 'gas'].forEach(uk => {
+        const L = lockOf(t, uk); if (L) { const lm = lockedModel(t, y, uk, L); if (lm) { lm.autoMape = out[uk] ? out[uk].mape : null; out[uk] = lm; return; } }
+        const pm = fitPick(t, y, uk); if (!pm) return; out._pick[uk] = pm; pm.autoMape = out[uk] ? out[uk].mape : null; if (!pm.err && !pm.neg) out[uk] = pm; });
       return out;
     }
 
@@ -148,8 +150,8 @@
     const PICK_FAC = ['days', 'prod', 'pkg', 'ea', 'op', 'idle', 'warm', 'hdd', 'steamH', 'packH'];
     const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1 }; // 생산 대시보드 일별 실적에서 오는 지표 (계획 달은 원육 비율로 추정)
     const pickOf = (t, uk) => { const p = (t.pick || {})[uk]; return Array.isArray(p) && p.length ? p : null; };
-    const facName = f => { const x = PE_FAC.find(z => z[0] === f); return x ? x[1].replace(/ \(.*\)/, '') : f; };
-    const facUnit = f => { const x = PE_FAC.find(z => z[0] === f); return x ? x[2] : ''; };
+    const facName = f => { if (/^warmT:/.test(f)) return `더운 정도(${f.slice(6)}℃ 넘는 합)`; if (/^coldT:/.test(f)) return `추운 정도(${f.slice(6)}℃ 아래 합)`; const x = PE_FAC.find(z => z[0] === f); return x ? x[1].replace(/ \(.*\)/, '') : f; };
+    const facUnit = f => { if (/^(warm|cold)T:/.test(f)) return '℃·일'; const x = PE_FAC.find(z => z[0] === f); return x ? x[2] : ''; };
     function pickYear() { return targetY || (Number(thisYm.slice(5)) >= 10 ? Number(thisYm.slice(0, 4)) + 1 : Number(thisYm.slice(0, 4))); }
     function resetPickCache() { Object.values(YEARDATA).forEach(d => { if (d && d.targets && d.targets._models) d.targets._models = undefined; }); }
     function pickPart(ym, uk) { // { y: 식으로 맞출 몫, fixed: 그대로 더할 실측, all: 전체 }
@@ -165,6 +167,8 @@
       if (f === 'days') return days;
       if (plan) { if (f === 'prod') return plan.prod; if (f === 'op') return plan.op; if (f === 'idle') return plan.op === null ? null : days - plan.op; }
       if (f === 'warm') return warmSum(ym, 5);
+      if (/^warmT:/.test(f)) return warmSum(ym, Number(f.slice(6)));
+      if (/^coldT:/.test(f)) return coldSum(ym, Number(f.slice(6)));
       if (f === 'hdd') { const w = UT.monthWeather(ym, TEMPS || {}); if (!plan && w.hdd !== null && w.hdd !== undefined) return w.hdd; const nm = normals()[Number(ym.slice(5))]; return nm ? nm.hdd : null; }
       if (plan) return null;
       const k = ym + '|' + (PRODD ? 1 : 0); const r = peCache[k] || (peCache[k] = peRow(ym)); const v = r.f[f]; return v === undefined ? null : v;
@@ -183,37 +187,103 @@
       for (let i = 0; i < F.length; i++) for (let j = i + 1; j < F.length; j++) { const pr = pearson(rows.map(r => r.x[i]), rows.map(r => r.x[j])); if (pr && Math.abs(pr.r) >= 0.8) warn.push(`<b>${facName(F[i])}</b>·<b>${facName(F[j])}</b>가 서로 r ${pr.r.toFixed(2)} — 같이 움직여서 어느 쪽 몫인지 갈리지 않음 (하나만 권장)`); }
       const ratio = {}; F.filter(f => PICK_PROD[f]).forEach(f => { const i = F.indexOf(f), sp = rows.reduce((a, r) => a + (S(r.ym).production || 0), 0); ratio[f] = sp ? rows.reduce((a, r) => a + r.x[i], 0) / sp : null; });
       const avgRest = uk === 'gas' ? rows.reduce((a, r) => a + r.fixed, 0) / Math.max(1, rows.reduce((a, r) => a + UT.daysIn(r.ym), 0)) : null;
+      return Object.assign(pickModel(uk, F, c, ratio, avgRest, rows), { neg, warn });
+    }
+    // 지표·계수가 정해진 식 (고른 지표 / 확정한 식 공용): 기준 달에 맞춰 본 오차 + 앞으로의 달 예상
+    function pickModel(uk, F, c, ratio, avgRest, rows) {
+      ratio = ratio || {};
       const part = x => x.reduce((a, v, i) => a + c[i] * v, 0);
       rows.forEach(r => { r.pp = part(r.x); r.pred = r.pp + r.fixed; });
       const mean = rows.reduce((a, r) => a + r.all, 0) / rows.length, ssr = rows.reduce((a, r) => a + (r.all - r.pred) ** 2, 0), sst = rows.reduce((a, r) => a + (r.all - mean) ** 2, 0);
-      return { pick: true, neg, feats: F, coef: c, n: rows.length, rows, warn, ratio, avgRest, r2: sst ? 1 - ssr / sst : null,
+      return { pick: true, neg: false, warn: [], feats: F, coef: c, n: rows.length, rows, ratio, avgRest, r2: sst ? 1 - ssr / sst : null,
         mape: rows.reduce((a, r) => a + Math.abs(r.pred - r.all) / r.all, 0) / rows.length * 100,
         partMape: rows.reduce((a, r) => a + Math.abs(r.pp - r.y) / r.y, 0) / rows.length * 100,
         predict: r => {
           const plan = r.plan ? { prod: r.prod, op: r.op } : null;
           const x = F.map(f => { let v = facOf(r.ym, f, plan); if ((v === null || v === undefined) && plan && PICK_PROD[f] && ratio[f] !== null && r.prod) v = ratio[f] * r.prod; return v; });
           if (x.some(v => v === null || v === undefined || isNaN(v))) return null;
-          let fixed; if (plan) fixed = uk === 'elec' ? (wwKwh(r.ym) || 0) + (meterKwh(r.ym, 'elec_hvac_kwh') || 0) + equipKwh(r.ym, ['생산동', '기타']) : avgRest * UT.daysIn(r.ym);
+          let fixed; if (plan) fixed = uk === 'elec' ? (wwKwh(r.ym) || 0) + (meterKwh(r.ym, 'elec_hvac_kwh') || 0) + equipKwh(r.ym, ['생산동', '기타']) : (avgRest || 0) * UT.daysIn(r.ym);
           else { const p = pickPart(r.ym, uk); if (!p) return null; fixed = p.fixed; }
           return Math.max(0, part(x) + fixed);
         } };
     }
+    // ---- 목표 확정 (잠금): 확정한 순간의 지표·계수·기준 달을 저장해, 데이터가 쌓여도 목표 식이 바뀌지 않게 ----
+    const lockOf = (t, uk) => t && t.lock && t.lock[uk] ? t.lock[uk] : null;
+    const isLocked = t => !!(t && t.lock && (t.lock.elec || t.lock.gas));
+    function lockedModel(t, y, uk, L) {
+      const rows = baseFor(t, y, uk).map(ym => { const p = pickPart(ym, uk); return p ? { ym, ...p, x: L.feats.map(f => facOf(ym, f)) } : null; })
+        .filter(r => r && r.y > 0 && r.x.every(v => v !== null && v !== undefined && !isNaN(v)));
+      if (!rows.length) return null;
+      return Object.assign(pickModel(uk, L.feats, L.coef, L.ratio, L.avgRest, rows), { locked: true, lock: L });
+    }
+    // 지금 쓰는 식(자동/고른 지표) → 확정용 { feats, coef, ... }
+    function lockSpec(m, uk, t, y) {
+      if (!m) return null;
+      let feats, coef;
+      if (m.pick && !m.err) { feats = m.feats.slice(); coef = m.coef.slice(); }
+      else if (m.hall) { feats = ['days', 'prod']; coef = [m.coef[0], m.coef[1]]; if (m.Tb !== null) { feats.push('warmT:' + m.Tb); coef.push(m.coef[2]); } if (m.Tc !== null) { feats.push('coldT:' + m.Tc); coef.push(m.coef[3]); } }
+      else if (m.gasBoiler) { feats = m.feats.filter(f => f !== 'grest'); coef = feats.map(f => m.coef[m.feats.indexOf(f)]); }
+      else return null; // 예비 식(휴무일 기준)은 확정 대상 아님
+      const months = baseFor(t, y, uk), parts = months.map(ym => pickPart(ym, uk)).filter(Boolean);
+      const avgRest = uk === 'gas' ? parts.reduce((a, p) => a + p.fixed, 0) / Math.max(1, months.filter(ym => pickPart(ym, uk)).reduce((a, ym) => a + UT.daysIn(ym), 0)) : null;
+      const L = { feats, coef, ratio: m.ratio || {}, avgRest, src: m.pick ? 'pick' : 'auto' };
+      const chk = lockedModel(t, y, uk, L); if (!chk) return null;
+      return Object.assign(L, { mape: chk.mape, n: chk.n, months: chk.rows.map(r => r.ym) });
+    }
+    const featsText = m => !m ? '-' : m.err ? '계산 안 됨' : m.pick ? m.feats.map(facName).join(' · ')
+      : m.hall ? ['달력 날수', '원육 투입량'].concat(m.Tb !== null ? [`더운 정도(${m.Tb}℃ 넘는 합)`] : [], m.Tc !== null ? [`추운 정도(${m.Tc}℃ 아래 합)`] : []).join(' · ')
+      : m.gasBoiler ? m.feats.filter(f => f !== 'grest').map(f => f === 'op' ? '생산일수' : f === 'prod' ? '원육 투입량' : f === 'hdd' ? '추운 정도(난방도일)' : f).join(' · ')
+      : m.idle ? '휴무일 기준·생산일·원육 (예비 식)' : '-';
+    async function lockTargets() {
+      if (!isAdmin()) return;
+      if (targetDirty) { if (!confirm('저장하지 않은 변경이 있습니다. 먼저 저장하고 확정할까요?')) return; await saveTargets(); }
+      const y = targetY; try { await freshYear(y); } catch (e) { alert('불러오기 실패: ' + errMsg(e)); return; }
+      if (!PRODD) { try { await loadProdDaily(); } catch (e) { } }
+      const t = JSON.parse(JSON.stringify(tgt(y))), models = fitModels(t, y);
+      const L = { at: todayStr, by: (me && (me.name || me.username)) || '', base: baseMonths(t, y), baseAuto: !(Array.isArray(t.base) && t.base.length) };
+      for (const uk of ['elec', 'gas']) { const sp = lockSpec(models[uk], uk, t, y); if (!sp) { alert(`${PICK_U[uk].name} 식을 확정할 수 없습니다 — 기준 달이 부족하거나 예비 식입니다.`); return; } L[uk] = sp; }
+      const line = uk => `${PICK_U[uk].name}: ${L[uk].feats.map(facName).join(' · ')} (기준 달 ${L[uk].n}개 · 오차 ±${nf1.format(L[uk].mape)}%)`;
+      if (!confirm(`${y}년 목표 식을 이대로 확정할까요?\n\n${line('elec')}\n${line('gas')}\n기준 달: ${L.base[0]} ~ ${L.base[L.base.length - 1]} (${L.base.length}개)\n\n확정하면 데이터가 쌓이거나 고쳐져도 지표·계수가 바뀌지 않습니다. 바꾸려면 「확정 풀기」를 해야 합니다.`)) return;
+      t.base = L.base; t.lock = L;
+      try { await saveYear(y, { targets: t }); } catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
+      resetPickCache(); targetOrig = null; targetDirty = false; renderTargets();
+    }
+    async function unlockTargets() {
+      if (!isAdmin() || !confirm('목표 식 확정을 풀까요?\n\n풀면 지금 데이터로 지표·계수를 다시 계산합니다 (목표 숫자가 바뀔 수 있음).')) return;
+      const y = targetY; try { await freshYear(y); } catch (e) { alert('불러오기 실패: ' + errMsg(e)); return; }
+      const t = JSON.parse(JSON.stringify(tgt(y))); if (t.lock && t.lock.baseAuto) delete t.base; delete t.lock;
+      try { await saveYear(y, { targets: t }); } catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
+      resetPickCache(); targetOrig = null; targetDirty = false; renderTargets();
+    }
     // 지표 고르기 칸 (기간비교 구성별 비교 · 목표 ①에서 같이 씀)
     function pickBoxHtml(uk, ctx, facs) {
       const y = ctx === 'target' ? targetY : pickYear(), t = ctx === 'target' ? targetDraft : tgt(y), F = pickOf(t, uk) || [], ad = isAdmin(), U = PICK_U[uk];
-      const list = PICK_FAC.filter(f => !facs || facs.includes(f) || F.includes(f));
-      const auto = fitModels(t, y, true)[uk], pm = F.length ? fitPick(t, y, uk) : null;
+      const list = PICK_FAC.filter(f => !facs || facs.includes(f) || F.includes(f)).concat(F.filter(f => !PICK_FAC.includes(f)));
+      const auto = fitModels(t, y, true)[uk], pm = F.length ? fitPick(t, y, uk) : null, L = lockOf(t, uk);
+      if (L) { const lm = lockedModel(t, y, uk, L), U2 = PICK_U[uk];
+        return `<div class="pick-box"><div><b>🎯 ${y}년 ${U2.name} 목표 지표</b> ${Portal.tip('pick')} <span class="lock-b">🔒 확정 ${esc(t.lock.at || '')}</span></div>
+          <div style="margin-top:6px">${U2.part} = ${L.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${Math.abs(L.coef[i]) >= 100 ? f0(L.coef[i]) : Number(L.coef[i].toPrecision(3)).toLocaleString('ko-KR')}</b>`).join(' + ')} <span class="hint">(${L.src === 'pick' ? '직접 고른 지표' : '자동 식'} · 기준 달 ${L.n}개)</span></div>
+          <div class="hint" style="margin-top:2px">확정할 때 오차 ±${nf1.format(L.mape)}%${lm ? ` · 지금 데이터로 보면 ±${nf1.format(lm.mape)}%` : ''}${auto ? ` · 지금 다시 자동으로 고르면 「${featsText(auto)}」 ±${nf1.format(auto.mape)}%` : ''}</div>
+          <div class="hint" style="margin-top:2px">확정된 식은 데이터가 쌓여도 바뀌지 않습니다. 바꾸려면 ${ctx === 'target' ? '위' : '<a href="#" onclick="switchTab(\'target\');return false">목표·예산</a> ①'}의 「확정 풀기」.</div></div>`; }
       let h = `<div class="pick-box"><div><b>🎯 ${y}년 ${U.name} 목표에 쓸 지표</b> ${Portal.tip('pick')} <span class="hint">${U.part}만 이 지표로 맞추고 ${uk === 'elec' ? '폐수동·공조냉동은 계량기 그대로' : '식당 가스는 실측 그대로'} 더함${ad ? ' · 눌러서 넣기/빼기' : ' (관리자만 바꿀 수 있음)'}</span></div>
         <div class="chips" style="margin-top:6px">${list.map(f => `<button class="chip ${F.includes(f) ? 'on' : ''}" ${ad ? `onclick="pickToggle('${uk}','${f}','${ctx}')"` : 'disabled'}>${F.includes(f) ? '✓ ' : ''}${facName(f)}</button>`).join('')}
         ${F.length && ad ? `<button class="chip" onclick="pickClear('${uk}','${ctx}')">자동으로 되돌리기</button>` : ''}</div>`;
       const em = auto ? `자동 식 월 평균 오차 ±${nf1.format(auto.mape)}%` : '자동 식 없음';
-      if (!F.length) h += `<div class="hint" style="margin-top:6px">아직 고른 지표가 없어 <b>자동 식</b>(전기: 날수·원육·기온 / 가스: 생산일·원육 중 가장 잘 맞는 것)으로 목표를 계산합니다 · ${em}</div>`;
+      if (!F.length) h += `<div style="margin-top:6px">지금은 <b>자동 식</b>으로 목표를 계산합니다 → 자동으로 고른 지표: <b>${featsText(auto)}</b> <span class="hint">(${em})</span></div>
+        <div class="hint" style="margin-top:2px">자동 식은 기준 달이 늘거나 고지서 값이 고쳐지면 고르는 지표·계수가 바뀔 수 있습니다. 목표를 정했으면 목표·예산 ①에서 「🔒 확정」하세요.${ad ? ` <button class="chip" onclick="pickUseAuto('${uk}','${ctx}')">자동이 고른 지표를 직접 고른 것으로 옮기기</button>` : ''}</div>`;
       else if (pm && pm.err) h += `<div class="warn" style="margin-top:6px">⚠ ${pm.err} → 지금은 자동 식으로 계산합니다 (${em})</div>`;
       else if (pm) { const better = auto ? pm.mape <= auto.mape + 0.3 : true;
         h += `<div style="margin-top:6px">${U.part} = ${pm.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${Math.abs(pm.coef[i]) >= 100 ? f0(pm.coef[i]) : Number(pm.coef[i].toPrecision(3)).toLocaleString('ko-KR')}</b>`).join(' + ')} <span class="hint">(기준 달 ${pm.n}개)</span></div>
           <div style="margin-top:2px">월 평균 오차 <b class="${pm.mape < 5 ? 'good' : pm.mape >= 10 ? 'warn' : ''}">±${nf1.format(pm.mape)}%</b> <span class="hint">vs ${em}</span> → ${pm.neg ? '<span class="warn">마이너스 계수가 있어 목표는 자동 식으로 계산 (그 지표를 빼면 적용됨)</span>' : better ? '<span class="good">이 지표로 목표 계산</span>' : '<span class="warn">자동 식보다 덜 맞음 (그래도 고른 지표로 계산)</span>'}</div>` +
           (pm.warn.length ? `<div class="warn" style="margin-top:4px">${pm.warn.map(w => '⚠ ' + w).join('<br>')}</div>` : '<div class="good" style="margin-top:4px">✔ 계수 모두 플러스 · 지표끼리 겹침 없음</div>'); }
       return h + '</div>';
+    }
+    // 자동이 고른 지표 → 직접 고른 지표로 (온도 기준이 5℃가 아니면 그 온도 그대로)
+    async function pickUseAuto(uk, ctx) {
+      const y = ctx === 'target' ? targetY : pickYear(), t = ctx === 'target' ? targetDraft : tgt(y), m = fitModels(t, y, true)[uk], sp = lockSpec(m, uk, t, y);
+      if (!sp) { alert('자동 식을 옮길 수 없습니다 (기준 달 부족 또는 예비 식).'); return; }
+      if (ctx === 'target') { targetDraft.pick = Object.assign({}, targetDraft.pick || {}); targetDraft.pick[uk] = sp.feats; targetDirty = true; renderTargets(targetDraft); return; }
+      try { await freshYear(y); const t2 = JSON.parse(JSON.stringify(tgt(y))); t2.pick = Object.assign({}, t2.pick || {}); t2.pick[uk] = sp.feats; await saveYear(y, { targets: t2 }); resetPickCache(); renderPerElec(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     async function pickToggle(uk, f, ctx) {
       if (ctx === 'target') { const cur = pickOf(targetDraft, uk) || []; targetDraft.pick = Object.assign({}, targetDraft.pick || {}); targetDraft.pick[uk] = cur.includes(f) ? cur.filter(x => x !== f) : [...cur, f]; targetDirty = true; renderTargets(targetDraft); return; }
@@ -503,19 +573,22 @@
 
       // 1) 기준선
       const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
-      let h = `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
-        cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
+      const lk = isLocked(t), roB = ro || lk;
+      let h = lk ? `<div class="lockbar on">🔒 <b>${y}년 목표 식 확정</b> ${Portal.tip('lock')} · ${esc(t.lock.at || '')} ${esc(t.lock.by || '')} · 기준 달 ${base[0].slice(2).replace('-', '.')} ~ ${base[base.length - 1].slice(2).replace('-', '.')} (${base.length}개) — 전기·가스 지표와 계수가 고정되어 데이터가 쌓이거나 고쳐져도 목표가 바뀌지 않습니다.${ad0() ? ' <button class="btn secondary small" onclick="unlockTargets()">확정 풀기</button>' : ''}</div>`
+        : `<div class="lockbar">⚠ <b>아직 확정 전</b> ${Portal.tip('lock')} — 지금은 기준 달이 늘거나(전년 달이 마감될 때마다) 고지서 값이 고쳐지면 지표·계수가 다시 계산됩니다. 지표를 정했으면 확정해 두세요.${ad0() ? ' <button class="btn small" onclick="lockTargets()">🔒 이 식으로 목표 확정</button>' : ''}</div>`;
+      h += `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (${lk ? '확정되어 바꿀 수 없음' : `눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}`}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
+        cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${roB ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
       const MAIN = ['elec', 'gas'], tgHead = `<table class="t tg" style="margin-top:10px;width:100%"><colgroup><col style="width:90px"><col><col style="width:80px"><col style="width:90px"></colgroup><tr><th class="l">항목</th><th class="l">예상 사용량 식 (기준 달 ${base.length}개로 계산)</th><th>맞는 정도</th><th>월 평균 오차</th></tr>`;
       const tgRow = u => { const m = models[u.k]; if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달이 부족해 계산할 수 없습니다</td></tr>`;
           const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(v.toPrecision(3)).toLocaleString('ko-KR');
           const note = (f, v) => f === 'hdd' ? (v < 0 ? ' <span class="hint">(추울수록 덜 씀)</span>' : ' <span class="hint">(추울수록 더 씀)</span>') : f === 'cdd' ? (v < 0 ? ' <span class="hint">(더울수록 덜 씀)</span>' : ' <span class="hint">(더울수록 더 씀)</span>') : '';
-          const parts = m.pick ? `<b>${PICK_U[u.k].part}</b> (고른 지표) = ${m.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${fc(m.coef[i])}</b>`).join(' &nbsp;+&nbsp; ')} &nbsp;+&nbsp; ${u.k === 'elec' ? '폐수동·공조냉동 계량기 실측 &nbsp;+&nbsp; 부하 변동' : '식당 가스 실측'} <span class="hint">(${PICK_U[u.k].part}만 따로 맞춘 오차 ±${nf1.format(m.partMape)}% · 자동 식이었으면 ±${m.autoMape === null || m.autoMape === undefined ? '-' : nf1.format(m.autoMape)}%)</span>`
+          const parts = m.pick ? `<b>${PICK_U[u.k].part}</b> (${m.locked ? '🔒 확정한 식' : '고른 지표'}) = ${m.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${fc(m.coef[i])}</b>`).join(' &nbsp;+&nbsp; ')} &nbsp;+&nbsp; ${u.k === 'elec' ? '폐수동·공조냉동 계량기 실측 &nbsp;+&nbsp; 부하 변동' : '식당 가스 실측'} <span class="hint">(${PICK_U[u.k].part}만 따로 맞춘 오차 ±${nf1.format(m.partMape)}% · 자동 식이었으면 ±${m.autoMape === null || m.autoMape === undefined ? '-' : nf1.format(m.autoMape)}%)</span>`
             : m.hall ? `생산동 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; ${m.Tb !== null ? `더운 몫 <span class="hint">(하루 평균기온 ${m.Tb}℃ 넘는 1℃마다 <b>${fc(m.coef[2])}</b> — 계량기 없는 칠러·실외기 등)</span> &nbsp;+&nbsp; ` : ''}${m.Tc !== null ? `추운 몫 <span class="hint">(하루 평균기온 ${m.Tc}℃ 아래 1℃마다 <b>${fc(m.coef[3])}</b> — 현장 온수 전기보일러)</span> &nbsp;+&nbsp; ` : `<span class="hint">추운 몫(전기보일러): 기준 달에 추운 달이 ${m.coldMonths}개뿐이라 아직 계산 안 함 — 겨울 달이 2개 이상 들어오면 자동으로 들어감</span> &nbsp;+&nbsp; `}폐수동·공조냉동 계량기 실측 &nbsp;+&nbsp; 부하 변동 <span class="hint">(${m.months[0].slice(2).replace('-', '.')}~${m.months[m.months.length - 1].slice(2).replace('-', '.')} ${m.n}개월 · 생산동만 따로 맞춘 오차 ±${nf1.format(m.hallMape)}%)</span>`
             : m.gasBoiler ? `<b>보일러</b>(스팀 → 자숙탱크·레토르트) = ${m.feats.filter(f => f !== 'grest').map(f => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[m.feats.indexOf(f)])}</b>`).join(' &nbsp;+&nbsp; ')} &nbsp;+&nbsp; 식당 가스 실측 <span class="hint">(기숙사 — 통제 밖이라 그대로 더함 · 보일러만 따로 맞춘 오차 ±${nf1.format(m.boilerMape)}%${m.hdd ? '' : ' · 난방도일은 넣어도 오차가 줄지 않아 뺌 (난방용 가스 없음)'})</span>`
             : m.idle ? `휴무일 하루 기본 <b>${fc(m.coef[0])}</b> × 달력 날수 &nbsp;+&nbsp; 생산일 1일당 <b>${fc(m.coef[1])}</b> &nbsp;+&nbsp; 원육 1kg당 <b>${fc(m.coef[2])}</b> &nbsp;+&nbsp; ${m.idle.b || m.idle.c ? `기온 영향 <span class="hint">(평균기온 ${m.idle.Tb}℃ 넘는 1℃마다 하루 <b>${fc(m.idle.b)}</b>${m.idle.c ? `, ${m.idle.Tc}℃ 아래 1℃마다 하루 <b>${fc(m.idle.c)}</b>` : ''})</span> &nbsp;+&nbsp;` : ''} 폐수동·공조냉동 (계량기 실측) &nbsp;+&nbsp; 부하 변동 (생산동·기타)`
             : m.feats.map((f, i) => `${UT.FEAT_LABEL[f]} <b>${fc(m.coef[i])}</b>${note(f, m.coef[i])}`).join(' &nbsp;+&nbsp; ');
           const ex = exclOf(t, u.k), exHtml = `<div class="tg-excl">이 항목 기준 달 <span class="hint">(빨간 줄 = 뺌 · 눌러서 바꾸기)</span>: ${base.map(ym => { const auto = u.k === 'elec' && (m.hall || m.pick) && ym < HVAC_FULL_FROM;
-            return `<button class="chip mini ${ex.includes(ym) || auto ? 'off' : ''}" ${ro || auto ? 'disabled' : `onclick="toggleExcl('${u.k}','${ym}')"`} title="${auto ? '공조냉동·폐수동 검침이 나뉘기 전이라 자동으로 뺌' : ex.includes(ym) ? '빠짐 — 눌러서 다시 넣기' : '들어감 — 눌러서 빼기'}">${ym.slice(2).replace('-', '.')}</button>`; }).join('')}${u.k === 'elec' && (m.hall || m.pick) && base.some(ym => ym < HVAC_FULL_FROM) ? ' <span class="hint">← 26.1~2월: 공조·폐수 검침 분리 전이라 자동 제외</span>' : ''}${ex.length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? ` <span class="hint">← 기본: ${EXCL_WHY[u.k]}</span>` : ''}${m.hddDropped ? ' <span class="hint">· 난방도일은 오차가 줄지 않아 뺌</span>' : ''}</div>`;
+            return `<button class="chip mini ${ex.includes(ym) || auto ? 'off' : ''}" ${ro || auto || (lk && MAIN.includes(u.k)) ? 'disabled' : `onclick="toggleExcl('${u.k}','${ym}')"`} title="${auto ? '공조냉동·폐수동 검침이 나뉘기 전이라 자동으로 뺌' : ex.includes(ym) ? '빠짐 — 눌러서 다시 넣기' : '들어감 — 눌러서 빼기'}">${ym.slice(2).replace('-', '.')}</button>`; }).join('')}${u.k === 'elec' && (m.hall || m.pick) && base.some(ym => ym < HVAC_FULL_FROM) ? ' <span class="hint">← 26.1~2월: 공조·폐수 검침 분리 전이라 자동 제외</span>' : ''}${ex.length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? ` <span class="hint">← 기본: ${EXCL_WHY[u.k]}</span>` : ''}${m.hddDropped ? ' <span class="hint">· 난방도일은 오차가 줄지 않아 뺌</span>' : ''}</div>`;
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${parts.split(' &nbsp;+&nbsp; ').map((x, i) => (i ? '<span class="plus">+</span> ' : '') + x).join('<br>')}${exHtml}</td><td>${m.r2 === null ? '-' : nf0.format(m.r2 * 100) + '%'}</td><td>${m.mape < 8 ? '<span class="ok">' : m.mape < 15 ? '<span>' : '<span class="ng">'}±${nf1.format(m.mape)}%</span></td></tr>`; };
       h += tgHead + UT.UTILS.filter(u => MAIN.includes(u.k)).map(tgRow).join('') + '</table>';
       h += `<div class="story" style="margin-top:10px">아래에서 고른 지표로 ①의 식이 바뀌고, ②③④ 목표·평가·계획이 모두 그 식으로 계산됩니다. 지표는 <a href="#" onclick="switchTab('period');return false">지표 분석 → 구성별 비교</a>에서 상관계수를 보면서 고를 수도 있습니다.</div>` + pickBoxHtml('elec', 'target') + pickBoxHtml('gas', 'target');
@@ -583,7 +656,8 @@
       // 4) 연간 계획표
       renderPlan(models);
     }
-    function toggleBase(ym) {
+    const ad0 = () => isAdmin();
+    function toggleBase(ym) { if (isLocked(targetDraft)) return;
       const y = targetY, cur = baseMonths(targetDraft, y);
       targetDraft.base = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort();
       targetDirty = true; renderTargets(targetDraft);
