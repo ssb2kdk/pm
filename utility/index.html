@@ -1366,12 +1366,16 @@
     // =====================================================================
     const PICK_U = { elec: { name: '전기', part: '생산동', unit: 'kWh' }, gas: { name: '가스', part: '보일러(스팀)', unit: 'MJ' } };
     // ★ 전기·가스 지표 목록 하나 — 구성별 비교(그래프·r 표) · 목표에 쓸 지표 고르기 · 🔍 자동 탐색이 모두 이 목록을 씀
-    const FACS_U = {
+    const FACS_BASE = {
       elec: ['days', 'op', 'idle', 'prod', 'pkg', 'ea', 'steamH', 'packH', 'warm', 'hdd'],
-      gas: ['days', 'op', 'idle', 'prod', 'pkg', 'ea', 'steamH', 'packH', 'boilH', 'runH', 'hdd', 'hddOn']
+      gas: ['days', 'op', 'idle', 'prod', 'pkg', 'ea', 'steamH', 'packH', 'boilH', 'runH', 'retN', 'hdd', 'hddOn']
     };
-    const PICK_FAC = [...new Set([...FACS_U.elec, ...FACS_U.gas])];
-    const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1, boilH: 1, runH: 1 };
+    // 🧪 후보 지표 검토에서 「목록에 넣기」 한 것 (ut_monthly '9999-00' data.facsExtra)
+    const facsExtra = uk => ((((YEARDATA[9999] || {}).facsExtra) || {})[uk] || []).filter(f => PE_FAC.some(z => z[0] === f) && !FACS_BASE[uk].includes(f));
+    const FACS_U = { get elec() { return FACS_BASE.elec.concat(facsExtra('elec')); }, get gas() { return FACS_BASE.gas.concat(facsExtra('gas')); } };
+    // 검토 후보 = 지금 목록에 없는 것 중 자료가 있는 것
+    const CANDS = { elec: ['manH', 'prepH', 'crushH', 'packMH', 'steamKg', 'cookH', 'retN', 'retH'], gas: ['manH', 'prepH', 'crushH', 'packMH', 'steamKg', 'cookN', 'cookH', 'retH', 'warm'] };
+    const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1, boilH: 1, runH: 1, retN: 1, retH: 1, cookN: 1, cookH: 1, packMH: 1, manH: 1, prepH: 1, crushH: 1, steamKg: 1 };
     const PICK_PER_OP = { boilH: 1, runH: 1 }; // 계획 달 추정을 원육 비율이 아니라 생산일 1일당 평균으로 하는 지표 // 생산 대시보드 일별 실적에서 오는 지표 (계획 달은 원육 비율로 추정)
     const pickOf = (t, uk) => { const p = (t.pick || {})[uk]; return Array.isArray(p) && p.length ? p : null; };
     const facName = f => { if (/^warmT:/.test(f)) return `더운 정도(${f.slice(6)}℃ 넘는 합)`; if (/^coldT:/.test(f)) return `추운 정도(${f.slice(6)}℃ 아래 합)`; const x = PE_FAC.find(z => z[0] === f); return x ? x[1].replace(/ \(.*\)/, '') : f; };
@@ -1502,7 +1506,7 @@
           <div class="hint" style="margin-top:2px">📅 목표·예산 ①의 기준 달 ${pm.n}개로 계산${ctx === 'period' ? ' (맨 위 기간과 무관 — 위 기간은 그래프·상관계수 표에만 적용)' : ''}</div>
           <div style="margin-top:2px">월 평균 오차 <b class="${pm.mape < 5 ? 'good' : pm.mape >= 10 ? 'warn' : ''}">±${nf1.format(pm.mape)}%</b> <span class="hint">vs ${em}</span> → ${pm.neg ? '<span class="warn">마이너스 계수가 있어 목표는 자동 식으로 계산 (그 지표를 빼면 적용됨)</span>' : better ? '<span class="good">이 지표로 목표 계산</span>' : '<span class="warn">자동 식보다 덜 맞음 (그래도 고른 지표로 계산)</span>'}</div>` +
           (pm.warn.length ? `<div class="warn" style="margin-top:4px">${pm.warn.map(w => '⚠ ' + w).join('<br>')}</div>` : '<div class="good" style="margin-top:4px">✔ 계수 모두 플러스 · 지표끼리 겹침 없음</div>'); }
-      return h + exploreHtml(uk, ctx, t, y, F) + '</div>';
+      return h + exploreHtml(uk, ctx, t, y, F) + (ctx === 'period' ? candReviewHtml(uk, t, y) : '') + '</div>';
     }
     // ---- 지표 자동 탐색: 쓸 수 있는 지표를 1~3개씩 모두 조합해 맞춰 보고 가장 잘 맞는 것만 남김 ----
     //  빼는 조합: 계수 마이너스(늘수록 덜 쓴다 = 말이 안 됨) · 지표끼리 r 0.8 넘게 겹침 · 기준 달이 (지표 수 + 3)개보다 적음
@@ -1548,6 +1552,40 @@
           return `<div style="margin-top:6px;font-size:13px">비교: 지금 ${F.length ? '고른 지표' : '자동 식'} <b>${nm}</b> → 기준 달 오차 ±${nf1.format(r.mape)}% · <b>교차검증 오차 ±${nf1.format(r.cv)}%</b>${i >= 0 ? ` (탐색 ${i + 1}위)` : ''} <span class="hint">— 자동 식은 기준 달 오차가 가장 작은 식을 고르고, 탐색은 교차검증 오차로 순위를 매겨서 다를 수 있음 ${Portal.tip('explore')}</span></div>`; })() +
         `<div class="hint" style="margin-top:4px">뺀 조합: 계수 마이너스 ${E.why.neg}개 · 지표끼리 겹침(r≥0.8) ${E.why.overlap}개 · 자료 있는 달 부족 ${E.why.few}개. 「이걸로 고르기」를 누르기 전까지 목표 식은 바뀌지 않습니다.</div></details>`;
       return h;
+    }
+    // ---- 🧪 후보 지표 검토: 목록에 없는 지표를 지금 기준 식에 하나씩 더해 보고 쓸만한지 판정 ----
+    function candReviewHtml(uk, t, y) {
+      const I = stdInfo(uk); if (!I || !I.feats) return '';
+      const S0 = I.feats.map(f => f === 'warmT:5' ? 'warm' : f), list = CANDS[uk].filter(c => !FACS_U[uk].includes(c) && !S0.includes(c)), inList = facsExtra(uk), ad = isAdmin();
+      const parts = baseFor(t, y, uk).map(ym => ({ ym, p: pickPart(ym, uk) })).filter(r => r.p && r.p.y > 0), ok = v => v !== null && v !== undefined && !isNaN(v);
+      const val = (ym, f) => facOf(ym, f);
+      const cvOf = (F, rs) => { const xs = rs.map(r => F.map(f => val(r.ym, f))), ys = rs.map(r => r.p.y); const c = UT.ols(xs, ys); if (!c) return null; let e = 0, n = 0;
+        for (let o = 0; o < rs.length; o++) { const c2 = UT.ols(xs.filter((_, i) => i !== o), ys.filter((_, i) => i !== o)); if (!c2) continue; e += Math.abs(xs[o].reduce((a, v, i) => a + c2[i] * v, 0) + rs[o].p.fixed - rs[o].p.all) / rs[o].p.all; n++; }
+        return n ? { c, cv: e / n * 100 } : null; };
+      const res = list.concat(inList.filter(f => !list.includes(f))).map(f => {
+        const rs = parts.filter(r => S0.concat([f]).every(g => ok(val(r.ym, g))));
+        const o = { f, n: rs.length, extra: inList.includes(f) };
+        if (rs.length < S0.length + 4) { o.v = `자료 부족 (${rs.length}개월)`; o.cls = 'hint'; return o; }
+        const pr = pearson(rs.map(r => val(r.ym, f)), rs.map(r => r.p.y)); o.r = pr ? pr.r : null;
+        const ov = S0.map(g => { const q = pearson(rs.map(r => val(r.ym, f)), rs.map(r => val(r.ym, g))); return q ? [g, q.r] : null; }).filter(Boolean).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+        const a = cvOf(S0, rs), b = cvOf(S0.concat([f]), rs); if (!a || !b) { o.v = '계산 안 됨'; o.cls = 'hint'; return o; }
+        o.cv0 = a.cv; o.cv1 = b.cv; o.coef = b.c[b.c.length - 1];
+        if (!(o.coef > 0)) { o.v = '관계 없음 (계수 마이너스)'; o.cls = 'bad'; }
+        else if (ov && Math.abs(ov[1]) >= 0.8) { o.v = `「${facName(ov[0])}」와 겹침 (r ${ov[1].toFixed(2)})`; o.cls = 'warn'; }
+        else if (a.cv - b.cv >= 0.3) { o.v = `⭐ 쓸만함 — 오차 ${nf1.format(a.cv - b.cv)}%p 줄어듦`; o.cls = 'good'; o.star = true; }
+        else { o.v = '더해도 도움 적음'; o.cls = 'hint'; }
+        return o; }).sort((a, b) => (b.star ? 1 : 0) - (a.star ? 1 : 0) || ((a.cv1 ?? 99) - (b.cv1 ?? 99)));
+      if (!res.length) return '';
+      return `<details class="explore" style="margin-top:8px"><summary><b>🧪 후보 지표 검토</b> <span class="hint">— 목록에 없는 지표 ${res.length}개를 지금 📐 기준 식(${S0.map(facName).join(' · ')})에 하나씩 더해 보고 쓸만한지 판정</span> ${Portal.tip('cand')}</summary>
+        <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">지표</th><th>자료 있는 달</th><th>r<br><span class="hint">${PICK_U[uk].part}와</span></th><th>교차검증 오차<br><span class="hint">기준 식 → 더하면</span></th><th class="l">판정</th>${ad ? '<th></th>' : ''}</tr>` +
+        res.map(o => `<tr><td class="l">${facName(o.f)}</td><td>${o.n}개</td><td>${o.r === undefined || o.r === null ? '-' : o.r.toFixed(2)}</td><td>${o.cv0 === undefined ? '-' : `±${nf1.format(o.cv0)}% → <b>±${nf1.format(o.cv1)}%</b>`}</td><td class="l ${o.cls}">${o.v}</td>${ad ? `<td>${o.extra ? `<button class="chip" onclick="facsExtraSet('${uk}','${o.f}',false)">목록에서 빼기</button>` : `<button class="chip" onclick="facsExtraSet('${uk}','${o.f}',true)">목록에 넣기</button>`}</td>` : ''}</tr>`).join('') +
+        `</table></div><div class="hint" style="margin-top:4px">「목록에 넣기」를 누르면 구성별 비교·지표 고르기·자동 탐색 목록에 같이 들어갑니다 (기준 식은 바뀌지 않음). 같은 달 자료로만 비교해서 「자료 있는 달」이 적으면 참고만.</div></details>`;
+    }
+    async function facsExtraSet(uk, f, on) {
+      try { const { data, error } = await sb.from('ut_monthly').select('data').eq('ym', '9999-00').maybeSingle(); if (error) throw error;
+        const cur = (data && data.data) || {}, fx = Object.assign({ elec: [], gas: [] }, cur.facsExtra || {}); fx[uk] = on ? [...new Set([...(fx[uk] || []), f])] : (fx[uk] || []).filter(x => x !== f);
+        const nd = { ...cur, facsExtra: fx }; const r = await sb.from('ut_monthly').upsert({ ym: '9999-00', data: nd }, { onConflict: 'ym' }); if (r.error) throw r.error;
+        YEARDATA[9999] = nd; resetPickCache(); renderPerElec(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     async function pickSet(uk, feats, ctx) {
       const F = feats.split(',');
@@ -3056,7 +3094,7 @@
     //      켠 시각 = 그날 첫 전처리 시작 (전처리 들어가며 켬) — 전처리 기록 없는 날만 첫 자숙 시작으로 대신
     //      끈 시각 = 레토르트 있는 날: 마지막 회차 t4(배출 완료) / 없는 날: 포장 종료 + 1시간 (FC 3kg 장조림 날 + 2시간)
     const PREP_COL = 'preprocess', PACK_COL = 'packing'; // 전처리(회차별 start) · 내포장(호기별 end — 그날 가장 늦은 end) · 외포장은 시각 없음
-    let BT = null, BT_ERR = '', RET_FROM = null, COOK_FROM = null;
+    let BT = null, BT_ERR = '', RET_FROM = null, COOK_FROM = null, PACK_FROM = null;
     function tMin(v) { const m = String(v || '').trim().match(/^(\d{1,2}):(\d{2})/); if (!m) return null; const h = Number(m[1]), mi = Number(m[2]); return h < 48 && mi < 60 ? h * 60 + mi : null; }
     async function fsList(col, fields) {
       const base = `https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/${col}`, mask = fields.map(f => 'mask.fieldPaths=' + f).join('&'), out = []; let tok = '';
@@ -3070,18 +3108,24 @@
     }
     async function loadBoilerTimes() {
       const [ck, rt, pr, pk] = await Promise.all([fsList('cooking', ['date', 'start', 'end']), fsList('retort', ['date', 't1', 't3', 't4']),
-        PREP_COL ? fsList(PREP_COL, ['date', 'start']) : [], PACK_COL ? fsList(PACK_COL, ['date', 'end']) : []]);
+        PREP_COL ? fsList(PREP_COL, ['date', 'start']) : [], PACK_COL ? fsList(PACK_COL, ['date', 'start', 'end']) : []]);
       const iv = {}, D = d => (iv[d] = iv[d] || { c: [], r: [] }), add = (d, a, b, k) => { if (!d || a === null || b === null) return; if (b < a) b += 1440; if (b - a <= 0 || b - a > 1440) return; D(d)[k].push([a, b]); };
       const minTo = (o, k, v) => { if (v !== null && (o[k] === undefined || v < o[k])) o[k] = v; }, maxTo = (o, k, v) => { if (v !== null && (o[k] === undefined || v > o[k])) o[k] = v; };
       ck.forEach(x => { const d = String(x.date || '').slice(0, 10); add(d, tMin(x.start), tMin(x.end), 'c'); if (d && (!COOK_FROM || d < COOK_FROM)) COOK_FROM = d; });
-      rt.forEach(x => { const d = String(x.date || '').slice(0, 10); if (!d) return; const a = tMin(x.t1); add(d, a, tMin(x.t3), 'r'); let e = tMin(x.t4); if (e !== null && a !== null && e < a) e += 1440; maxTo(D(d), 't4', e); if (!RET_FROM || d < RET_FROM) RET_FROM = d; });
+      rt.forEach(x => { const d = String(x.date || '').slice(0, 10); if (!d) return; D(d).rN = (D(d).rN || 0) + 1; const a = tMin(x.t1); add(d, a, tMin(x.t3), 'r'); let e = tMin(x.t4); if (e !== null && a !== null && e < a) e += 1440; maxTo(D(d), 't4', e); if (!RET_FROM || d < RET_FROM) RET_FROM = d; });
       pr.forEach(x => { const d = String(x.date || '').slice(0, 10); if (d) minTo(D(d), 'prep', tMin(x.start)); });
-      pk.forEach(x => { const d = String(x.date || '').slice(0, 10); if (d) maxTo(D(d), 'pack', tMin(x.end)); });
+      pk.forEach(x => { const d = String(x.date || '').slice(0, 10); if (!d) return; const e = tMin(x.end), a = tMin(x.start); maxTo(D(d), 'pack', e);
+        if (e !== null) { if (!PACK_FROM || d < PACK_FROM) PACK_FROM = d; if (a !== null) { let b = e; if (b < a) b += 1440; if (b - a > 0 && b - a <= 1440) D(d).pkM = (D(d).pkM || 0) + b - a; } } });
       return iv;
     }
     const isFC3 = n => /FC/i.test(n) && /3\s*kg/i.test(n);
     function boilerTime(o, d) {
-      const x = BT && BT[d]; if (!x) return;
+      const x0 = BT && BT[d], h1 = v => Math.round(v / 6) / 10, sumIv = a => h1(a.reduce((t, m) => t + m[1] - m[0], 0));
+      // 검토용 지표: 레토르트 회차·가열 시간 / 자숙 회차·시간 / 내포장 호기×시간 (그 기록이 시작된 뒤 날만)
+      if (RET_FROM && d >= RET_FROM) { o.retN = x0 ? (x0.rN || 0) : 0; o.retH = x0 ? sumIv(x0.r) : 0; }
+      if (COOK_FROM && d >= COOK_FROM) { o.cookN = x0 ? x0.c.length : 0; o.cookH = x0 ? sumIv(x0.c) : 0; }
+      if (PACK_FROM && d >= PACK_FROM) o.packMH = x0 ? h1(x0.pkM || 0) : 0;
+      const x = x0; if (!x) return;
       const all = x.c.concat(x.r).sort((p, q) => p[0] - q[0]), mg = [];
       all.forEach(([a, b]) => { const l = mg[mg.length - 1]; if (l && a <= l[1]) l[1] = Math.max(l[1], b); else mg.push([a, b]); });
       o.nCook = x.c.length; o.nRet = x.r.length; o.bSeg = mg;
@@ -3133,7 +3177,9 @@
       if (f === 'days' || f === 'idle') return null; if (f === 'op') return ['prod', '생산한 날']; if (f === 'prod') return ['rm', '원육 kg']; if (f === 'pkg') return ['pkg', '완제품 kg']; if (f === 'ea') return ['ea1k', '포장 1,000EA'];
       if (f === 'steamH') return ['steamH', '자숙 작업시간 (h)']; if (f === 'packH') return ['packH', '포장 작업시간 (h)']; if (f === 'boilH') return ['boilH', '보일러 켠 시간 (h)']; if (f === 'runH') return ['runH', '보일러 실가동 (h)'];
       if (f === 'warm') return ['w5', '더운 정도 (5℃ 넘는 ℃)']; if (/^warmT:/.test(f)) return ['w' + f.slice(6), `더운 정도 (${f.slice(6)}℃ 넘는 ℃)`]; if (/^coldT:/.test(f)) return ['c' + f.slice(6), `추운 정도 (${f.slice(6)}℃ 아래 ℃)`];
-      if (f === 'hdd') return ['c18', '추운 정도 (18℃ 아래 ℃)']; if (f === 'hddOn') return ['con', '보일러 켠 날 추운 정도 (18℃ 아래 ℃)']; return null;
+      if (f === 'hdd') return ['c18', '추운 정도 (18℃ 아래 ℃)']; if (f === 'hddOn') return ['con', '보일러 켠 날 추운 정도 (18℃ 아래 ℃)'];
+      const ex = { retN: '레토르트 회차', retH: '레토르트 가열 (h)', cookN: '자숙 회차', cookH: '자숙 시간 (h)', packMH: '내포장 호기×시간 (h)', manH: '작업 인시', prepH: '전처리 작업시간 (h)', crushH: '파쇄 작업시간 (h)', steamKg: '자숙 투입 kg' };
+      return ex[f] ? [f, ex[f]] : null;
     }
     function pdFeats(uk) {
       let I = null; try { I = stdInfo(uk); } catch (e) { }
@@ -3148,6 +3194,7 @@
       const on = !!(p && (p.rm > 0 || p.ea > 0)), hasT = t !== undefined && t !== null; // 생산한 날 = 원육 투입 또는 포장한 날 (포장만 한 날도 레토르트·포장기 가동)
       const x = { prod: on ? 1 : 0, rm: p ? p.rm : 0, steamH: p ? p.steamH : 0, packH: p ? p.packH : 0, ea1k: p ? p.ea / 1000 : 0, pkg: on ? pkgDay(p) : 0,
         boilH: on ? (p.boilH === undefined ? null : p.boilH) : 0, runH: on ? (p.runH === undefined ? null : p.runH) : 0, con: !hasT ? null : on ? Math.max(0, 18 - t) : 0 };
+      ['retN', 'retH', 'cookN', 'cookH', 'packMH'].forEach(k => { x[k] = on ? (p[k] === undefined ? null : p[k]) : 0; }); ['manH', 'prepH', 'crushH', 'steamKg'].forEach(k => { x[k] = p ? Number(p[k]) || 0 : 0; });
       for (let T = 0; T <= 25; T++) { x['w' + T] = hasT ? Math.max(0, t - T) : null; x['c' + T] = hasT ? Math.max(0, T - t) : null; }
       return { ds, p, x, t, noRec, unknown };
     }
@@ -3493,8 +3540,10 @@
     const PE_FAC = [
       ['prod', '원육 투입량', 'kg', 0], ['ea', '포장 생산량', 'EA', 0], ['pkg', '완제품 중량', 'kg', 0], ['tmean', '평균기온', '℃', 1], ['warm', '더운 정도 (5℃ 넘는 기온 합)', '℃·일', 0],
       ['op', '생산일수', '일', 0], ['days', '달력 날수', '일', 0], ['idle', '쉬는 날 수', '일', 0],
-      ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0], ['boilH', '보일러 켠 시간', 'h', 0], ['runH', '보일러 실가동 시간', 'h', 0], ['hddOn', '보일러 켠 날 난방도일', '℃·일', 0]];
-    const PE_PERDAY_FAC = { prod: 1, ea: 1, pkg: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1, boilH: 1, runH: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
+      ['steamH', '자숙 작업시간', 'h', 0], ['packH', '포장 작업시간', 'h', 0], ['flow', '폐수 방류량', '㎥', 0], ['sludge', '슬러지 발생량', 'kg', 0], ['gas', '보일러 가스', '㎥', 0], ['hdd', '추운 정도 (난방도일)', '℃·일', 0], ['boilH', '보일러 켠 시간', 'h', 0], ['runH', '보일러 실가동 시간', 'h', 0], ['hddOn', '보일러 켠 날 난방도일', '℃·일', 0],
+      ['retN', '레토르트 회차 수', '회', 0], ['retH', '레토르트 가열 시간', 'h', 0], ['cookN', '자숙 회차 수', '회', 0], ['cookH', '자숙 시간 (회차 합)', 'h', 0], ['packMH', '내포장 호기×시간', 'h', 0],
+      ['manH', '작업 인시 (인원×시간)', '인시', 0], ['prepH', '전처리 작업시간', 'h', 0], ['crushH', '파쇄 작업시간', 'h', 0], ['steamKg', '자숙 투입량', 'kg', 0]];
+    const PE_PERDAY_FAC = { prod: 1, ea: 1, pkg: 1, steamH: 1, packH: 1, flow: 1, sludge: 1, gas: 1, boilH: 1, runH: 1, retN: 1, retH: 1, cookN: 1, cookH: 1, packMH: 1, manH: 1, prepH: 1, crushH: 1, steamKg: 1 }; // 하루당으로 바꿀 때 같이 나누는 인자
     // 맨 위 기간비교에서 고른 기간을 월 단위로 바꿔서 씀 (일·주는 그 날짜가 속한 달, 분기는 그 분기의 달) — 아직 안 끝난 달은 뺌
     function peMonths() {
       const { from, to } = perRange(), last = lastCompleteYm();
@@ -3505,14 +3554,15 @@
     function peRow(ym) {
       const s = S(ym), all = s.elec.usage, ww = wwKwh(ym), hv = meterKwh(ym, 'elec_hvac_kwh'), days = UT.daysIn(ym), op = UT.opDays(DAILY, ym, MONTHLY);
       const hall = all !== null && ww !== null && hv !== null && ym >= HVAC_FULL_FROM ? all - ww - hv : null;
-      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0, pk = 0, pkKn = 0, pkAll = 0, bh = 0, bhN = 0, rh = 0, rmN = 0, hOn = 0, hOnN = 0;
-      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; if (p.rm > 0) { rmN++; if (p.boilH !== undefined) { bh += p.boilH; rh += p.runH; bhN++; } } const k = pkgOf(p); pk += k.kg; pkKn += k.known; pkAll += k.all; }
+      let ea = 0, sh = 0, ph = 0, pn = 0, gas = 0, gn = 0, pk = 0, pkKn = 0, pkAll = 0, bh = 0, bhN = 0, rh = 0, rmN = 0, hOn = 0, hOnN = 0; const EX = { retN: [0, 0], retH: [0, 0], cookN: [0, 0], cookH: [0, 0], packMH: [0, 0] };
+      for (let d = 1; d <= days; d++) { const ds = UT.dateStr(ym, d), p = PRODD && PRODD[ds]; if (p) { ea += p.ea || 0; sh += p.steamH || 0; ph += p.packH || 0; pn++; if (p.rm > 0) { rmN++; if (p.boilH !== undefined) { bh += p.boilH; rh += p.runH; bhN++; } } Object.keys(EX).forEach(k => { if (p[k] !== undefined) { EX[k][0] += p[k]; EX[k][1]++; } }); const k = pkgOf(p); pk += k.kg; pkKn += k.known; pkAll += k.all; }
         const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g !== null && g >= 0) { gas += g; gn++; const tt = (TEMPS || {})[ds]; if (g <= 50) hOnN++; else if (tt !== null && tt !== undefined && !isNaN(tt)) { hOn += Math.max(0, 18 - tt); hOnN++; } } }
+      const sumP = k => { let t = 0; for (let d = 1; d <= days; d++) { const p = PRODD && PRODD[UT.dateStr(ym, d)]; if (p) t += Number(p[k]) || 0; } return t; };
       const w = wwRow(ym), tm = UT.monthWeather(ym, TEMPS || {}).tmean;
       const gc = s.gas.calc, wt = UT.monthWeather(ym, TEMPS || {});
       return { ym, c: { hall, ww: ym >= HVAC_FULL_FROM ? ww : null, hv: ym >= HVAC_FULL_FROM ? hv : null, all,
           gb: gc && gc.boiler ? gc.boiler.mj : null, gr: gc ? (gc.rest ? gc.rest.mj : 0) : null, gall: s.gas.usage, wall: s.water.usage, wwall: s.ww.usage },
-        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, pkg: pn && pkAll && pkKn / pkAll >= 0.9 ? pk : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null, boilH: rmN && bhN >= rmN * 0.9 ? bh : null, runH: rmN && bhN >= rmN * 0.9 ? rh : null, hddOn: TEMPS && hOnN >= days * 0.8 ? hOn : null } };
+        f: { hdd: wt.hdd, prod: s.production, ea: pn ? ea : null, pkg: pn && pkAll && pkKn / pkAll >= 0.9 ? pk : null, tmean: tm, warm: warmSum(ym, 5), op, days, idle: op === null ? null : days - op, steamH: pn ? sh : null, packH: pn ? ph : null, flow: w.flow, sludge: w.sludgeGen, gas: gn >= days * 0.8 ? gas : null, boilH: rmN && bhN >= rmN * 0.9 ? bh : null, runH: rmN && bhN >= rmN * 0.9 ? rh : null, hddOn: TEMPS && hOnN >= days * 0.8 ? hOn : null, ...Object.fromEntries(Object.entries(EX).map(([k, [v, n]]) => [k, pn && n >= pn * 0.9 ? v : null])), manH: pn ? sumP('manH') : null, prepH: pn ? sumP('prepH') : null, crushH: pn ? sumP('crushH') : null, steamKg: pn ? sumP('steamKg') : null } };
     }
     async function renderPerElec() {
       const el = document.getElementById('per-elec'); if (!el || !window.Chart) return;
