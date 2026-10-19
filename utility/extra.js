@@ -147,7 +147,12 @@
     //  가스: 보일러(= 전체 − 식당)만 고른 지표로 맞추고, 식당 가스는 실측 그대로 더함
     // =====================================================================
     const PICK_U = { elec: { name: '전기', part: '생산동', unit: 'kWh' }, gas: { name: '가스', part: '보일러(스팀)', unit: 'MJ' } };
-    const PICK_FAC = ['days', 'prod', 'pkg', 'ea', 'op', 'idle', 'warm', 'hdd', 'steamH', 'packH', 'boilH', 'runH', 'hddOn'];
+    // ★ 전기·가스 지표 목록 하나 — 구성별 비교(그래프·r 표) · 목표에 쓸 지표 고르기 · 🔍 자동 탐색이 모두 이 목록을 씀
+    const FACS_U = {
+      elec: ['days', 'op', 'idle', 'prod', 'pkg', 'ea', 'steamH', 'packH', 'warm', 'hdd'],
+      gas: ['days', 'op', 'idle', 'prod', 'pkg', 'ea', 'steamH', 'packH', 'boilH', 'runH', 'hdd', 'hddOn']
+    };
+    const PICK_FAC = [...new Set([...FACS_U.elec, ...FACS_U.gas])];
     const PICK_PROD = { pkg: 1, ea: 1, steamH: 1, packH: 1, boilH: 1, runH: 1 };
     const PICK_PER_OP = { boilH: 1, runH: 1 }; // 계획 달 추정을 원육 비율이 아니라 생산일 1일당 평균으로 하는 지표 // 생산 대시보드 일별 실적에서 오는 지표 (계획 달은 원육 비율로 추정)
     const pickOf = (t, uk) => { const p = (t.pick || {})[uk]; return Array.isArray(p) && p.length ? p : null; };
@@ -259,7 +264,7 @@
     // 지표 고르기 칸 (기간비교 구성별 비교 · 목표 ①에서 같이 씀)
     function pickBoxHtml(uk, ctx, facs) {
       const y = ctx === 'target' ? targetY : pickYear(), t = ctx === 'target' ? targetDraft : tgt(y), F = pickOf(t, uk) || [], ad = isAdmin(), U = PICK_U[uk];
-      const list = PICK_FAC.filter(f => !facs || facs.includes(f) || F.includes(f)).concat(F.filter(f => !PICK_FAC.includes(f)));
+      const list = FACS_U[uk].concat(F.filter(f => !FACS_U[uk].includes(f))); // 고른 지표 중 목록에 없는 것(예: 더운 정도 기준 온도 다른 것)도 보이게
       const auto = fitModels(t, y, true)[uk], pm = F.length ? fitPick(t, y, uk) : null, L = lockOf(t, uk);
       if (L) { const lm = lockedModel(t, y, uk, L), U2 = PICK_U[uk];
         return `<div class="pick-box"><div><b>🎯 ${y}년 ${U2.name} 목표 지표</b> ${Portal.tip('pick')} <span class="lock-b">🔒 확정 ${esc(t.lock.at || '')}</span></div>
@@ -284,7 +289,7 @@
     // ---- 지표 자동 탐색: 쓸 수 있는 지표를 1~3개씩 모두 조합해 맞춰 보고 가장 잘 맞는 것만 남김 ----
     //  빼는 조합: 계수 마이너스(늘수록 덜 쓴다 = 말이 안 됨) · 지표끼리 r 0.8 넘게 겹침 · 기준 달이 (지표 수 + 3)개보다 적음
     //  순위: 교차검증 오차 = 기준 달을 하나씩 빼고 나머지로 식을 만들어 뺀 달을 맞혀 본 오차의 평균 (지표를 많이 넣어 우연히 맞는 걸 걸러냄)
-    const EXPLORE = { elec: ['days', 'prod', 'pkg', 'ea', 'op', 'idle', 'warm', 'hdd', 'steamH', 'packH'], gas: ['days', 'prod', 'pkg', 'ea', 'op', 'steamH', 'packH', 'boilH', 'runH', 'hdd', 'hddOn'] };
+    const EXPLORE = FACS_U;
     const exploreCache = {};
     function exploreModels(t, y, uk) {
       const base = baseFor(t, y, uk), key = uk + '|' + base.join(',') + '|' + (PRODD ? 1 : 0) + (TEMPS ? 1 : 0); if (exploreCache[key]) return exploreCache[key];
@@ -2255,10 +2260,10 @@
     // 유틸리티별 구성 (막대) · 단위 · 비교 인자 (선)
     const PE_U = {
       elec: { name: '전기', unit: 'kWh', comps: [['hall', '생산동', '#2a78d6'], ['ww', '폐수동', '#eda100'], ['hv', '공조냉동', '#1baf7a'], ['all', '전기 전체', '#555']], stack: ['hall', 'ww', 'hv'],
-        facs: ['prod', 'ea', 'pkg', 'tmean', 'warm', 'op', 'days', 'idle', 'steamH', 'packH', 'flow', 'sludge', 'gas'],
+        get facs() { return FACS_U.elec; },
         note: '공조냉동·폐수동 계량이 나뉜 26년 3월부터 구성별 값이 나옵니다 · 생산동 = 전체 − 폐수동 − 공조냉동' },
       gas: { name: '가스', unit: 'MJ', comps: [['gb', '보일러 (스팀)', '#eb6834'], ['gr', '식당 (기숙사)', '#c9a227'], ['gall', '가스 전체', '#555']], stack: ['gb', 'gr'],
-        facs: ['prod', 'ea', 'pkg', 'steamH', 'packH', 'boilH', 'runH', 'op', 'idle', 'tmean', 'hdd', 'hddOn', 'days'],
+        get facs() { return FACS_U.gas; },
         note: '보일러 스팀 = 자숙탱크·레토르트 · 보일러·식당은 고지서(없으면 검침) 계량 지침으로 나눈 열량(MJ) · 난방도일 = 하루 평균기온이 18℃보다 낮은 만큼의 합 (난방용 가스는 없지만 급수 온도·배관 열손실 영향 확인용)' },
       water: { name: '용수', unit: '㎥', comps: [['wall', '용수 (40A+50A)', '#1baf7a']], stack: null,
         facs: ['prod', 'ea', 'pkg', 'op', 'idle', 'tmean', 'steamH', 'flow', 'days'],
@@ -2295,7 +2300,7 @@
       const el = document.getElementById('per-elec'); if (!el || !window.Chart) return;
       const need = []; if (!PRODD) need.push(loadProdDaily().catch(() => {})); if (!WWD) need.push(loadWWD()); if (!TEMPS) need.push(loadTemps().catch(() => {}));
       if (need.length) { el.innerHTML = '<div class="loading">생산 실적·기온·폐수 장부 불러오는 중...</div>'; await Promise.all(need); }
-      const PU = PE_U[peUtil], PE_COMP = PU.comps, FACS = PE_FAC.filter(f => PU.facs.includes(f[0]));
+      const PU = PE_U[peUtil], PE_COMP = PU.comps, FACS = PU.facs.map(k => PE_FAC.find(f => f[0] === k)).filter(Boolean); // 순서도 지표 고르기와 같게
       if (!PE_COMP.some(c => c[0] === peComp)) peComp = PE_COMP[0][0]; if (!PU.facs.includes(peFac)) peFac = PU.facs[0]; if (!PU.stack) peStack = false;
       const ms = peMonths(), rows = ms.map(peRow), C = PE_COMP.find(x => x[0] === peComp), F = PE_FAC.find(x => x[0] === peFac);
       const cv = (r, k) => { const v = r.c[k]; return v === null || v === undefined ? null : (pePerDay ? v / r.f.days : v); };
