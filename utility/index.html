@@ -4642,8 +4642,6 @@
         if (u.k === 'elec') {
           [['elec_rate_light', '경부하', 'elec_rate_light2'], ['elec_rate_mid', '중간부하', 'elec_rate_mid2'], ['elec_rate_peak', '최대부하', 'elec_rate_peak2']].forEach(([k, n, k2]) => {
             add(`${n} 단가 (원/kWh)`, rate(k), v => v.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), { cls: 'm1', noSum: true }); const r = rows[rows.length - 1]; r.alt = cs.map(s2 => s2.elec.status === '확정' && s2.m[k2] ? Number(s2.m[k2]) : null); });
-          add('기본요금 단가 (원/kW)', rate('elec_base_rate'), f1, { cls: 'm1', noSum: true });
-          add('기후환경·연료비조정 (원/kWh)', cs.map(s2 => s2.elec.status !== '확정' ? null : (Number(s2.m.elec_climate_rate) || 0) + (Number(s2.m.elec_fuel_rate) || 0)), f1, { cls: 'm1', noSum: true });
         }
         if (u.k === 'gas') {
           add('단가 (원/MJ)', rate('gas_price'), v => v.toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }), { cls: 'm1', noSum: true });
