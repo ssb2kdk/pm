@@ -4637,14 +4637,18 @@
         rows.push({ grp: u.name });
         addC('비용 (원)', s => s[u.k].cost, f0, { cls: 'm1', prov: cs.map(s => s[u.k].status === '가마감') });
         addC(`사용량 (${u.unit})`, s => s[u.k].usage, f0, { cls: 'm1' });
-        // 단가 = VAT 별도 금액 ÷ 사용량 (기본요금·조정요금 등 모두 포함한 평균 단가) · 진행 중인 달(고지서 전)은 기본요금만 다 들어가 터무니없이 커서 뺌 · 평균 = 금액 합 ÷ 사용량 합
-        const upr = (label, get, amt, qty, fmt) => { const ok = (s2, ym) => !(ym >= thisYm && s2[u.k].status !== '확정');
-          addC(label, s2 => { const i = cs.indexOf(s2); return i >= 0 && !ok(s2, ms[i]) ? null : get(s2); }, fmt, { cls: 'm1', noSum: true, prov: cs.map(s2 => s2[u.k].status === '가마감') });
-          const r = rows.find(x => x.label === label && !x.cmp); const A = cs.map((s2, i) => ok(s2, ms[i]) && amt(s2) !== null && qty(s2) ? [amt(s2), qty(s2)] : null).filter(Boolean);
-          if (r) r.avg = A.length ? A.reduce((t, x) => t + x[0], 0) / A.reduce((t, x) => t + x[1], 0) : null; };
-        if (u.k === 'elec') upr('단가 (원/kWh, VAT 별도)', s2 => ratio(s2.elec.exvat, s2.elec.usage), s2 => s2.elec.exvat, s2 => s2.elec.usage, f1);
-        if (u.k === 'gas') { upr('단가 (원/MJ, VAT 별도)', s2 => ratio(s2.gas.exvat, s2.gas.usage), s2 => s2.gas.exvat, s2 => s2.gas.usage, v => v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-          upr('단가 (원/㎥, VAT 별도)', s2 => ratio(s2.gas.exvat, s2.gas.m3), s2 => s2.gas.exvat, s2 => s2.gas.m3, f1); }
+        // 고지서 단가 (고지서를 넣어 확정한 달만 · 요금이 달 중간에 바뀐 달은 「변경 전 → 후」)
+        const rate = k => cs.map(s2 => { if (s2[u.k].status !== '확정') return null; const v = Number(s2.m[k]); if (!s2.m[k] && s2.m[k] !== 0 || isNaN(v)) return null; return v; });
+        if (u.k === 'elec') {
+          [['elec_rate_light', '경부하', 'elec_rate_light2'], ['elec_rate_mid', '중간부하', 'elec_rate_mid2'], ['elec_rate_peak', '최대부하', 'elec_rate_peak2']].forEach(([k, n, k2]) => {
+            add(`${n} 단가 (원/kWh)`, rate(k), v => v.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), { cls: 'm1', noSum: true }); const r = rows[rows.length - 1]; r.alt = cs.map(s2 => s2.elec.status === '확정' && s2.m[k2] ? Number(s2.m[k2]) : null); });
+          add('기본요금 단가 (원/kW)', rate('elec_base_rate'), f1, { cls: 'm1', noSum: true });
+          add('기후환경·연료비조정 (원/kWh)', cs.map(s2 => s2.elec.status !== '확정' ? null : (Number(s2.m.elec_climate_rate) || 0) + (Number(s2.m.elec_fuel_rate) || 0)), f1, { cls: 'm1', noSum: true });
+        }
+        if (u.k === 'gas') {
+          add('단가 (원/MJ)', rate('gas_price'), v => v.toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }), { cls: 'm1', noSum: true });
+          add('㎥당 단가 (원/㎥ = 원/MJ × 열량계수)', cs.map(s2 => s2.gas.status !== '확정' || !s2.m.gas_price || !s2.m.gas_heat ? null : Number(s2.m.gas_price) * Number(s2.m.gas_heat)), f1, { cls: 'm1', noSum: true });
+        }
         addC(`원육 kg당 비용 (원/kg)`, s => ratio(s[u.k].cost, s.production), f1, { cls: 'm1', noSum: true });
         addC(`원육 kg당 사용량 (${u.unit}/kg)`, s => ratio(s[u.k].usage, s.production), v => fU(v, u.k), { cls: 'm1', noSum: true });
         if (u.k === 'elec') add('최대전력 (kW)', cs.map(s => s.elec.maxKw), f1, { noSum: true });
@@ -4667,7 +4671,7 @@
           return;
         }
         h += `<tr class="${r.cls || ''}"><td class="l">${esc(r.label)}</td>` +
-          r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}</td>`).join('') +
+          r.vals.map((v, i) => `<td class="${v === null ? 'na' : ''} ${r.prov && r.prov[i] ? 'prov' : ''}">${v === null ? '-' : r.fmt(v)}${r.alt && r.alt[i] ? `<br><span class="pc" title="요금이 달 중간에 바뀜 (변경 후 단가)">→ ${r.fmt(r.alt[i])}</span>` : ''}</td>`).join('') +
           `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.label === '상태' ? '' : (r.avg === null ? '' : r.fmt(r.avg))}</td></tr>`;
       });
       document.getElementById('year-table').innerHTML = h + '</table>';
