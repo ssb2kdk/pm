@@ -638,6 +638,7 @@
     { g: '폐수', k: 'ww_sludge_fee', label: '슬러지처리비', unit: '원' },
     { g: '폐수', k: 'cluster_water_reading', label: '클러스터 상수도 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
     { g: '폐수', k: 'cluster_ww_reading', label: '클러스터 폐수 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
+    { g: '폐수', k: 'cluster_date', label: '클러스터 검침한 날', unit: '', text: true, hint: '협력업체가 검침한 날짜 (예: 9/29) — 같은 기간 우리 검침과 비교' },
 
     { g: '고지서 실제 금액', k: 'elec_bill_total', label: '전기 청구액 (부가세 포함)', unit: '원', hint: '입력하면 확정' },
     { g: '고지서 실제 금액', k: 'elec_bill_exvat', label: '전기 부가세 별도 금액', unit: '원' },
@@ -5067,8 +5068,16 @@
       if (m.cluster_water_reading !== undefined || m.cluster_ww_reading !== undefined) {
         const cw = (m.cluster_water_reading != null && pm.cluster_water_reading != null) ? m.cluster_water_reading - pm.cluster_water_reading : null;
         const cww = (m.cluster_ww_reading != null && pm.cluster_ww_reading != null) ? m.cluster_ww_reading - pm.cluster_ww_reading : null;
-        h += row('클러스터 상수 사용량', cw === null ? '전월 값 필요' : `${f1(cw)} ㎥ (우리 용수 ${f1(s.water.usage)})`);
-        h += row('클러스터 폐수 사용량', cww === null ? '전월 값 필요' : `${f1(cww)} ㎥ (우리 폐수 ${f1(s.ww.flow)})`);
+        // 클러스터는 월말 정확한 날이 아니라 협력업체가 검침한 날 기준 → 검침한 날을 넣으면 같은 기간 우리 검침(설비검침 지침)과 비교
+        const cd = (v, ym) => { const t = String(v || '').trim(); let m2 = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if (m2) return UT.dateStr(m2[1] + '-' + String(m2[2]).padStart(2, '0'), Number(m2[3]));
+          m2 = t.match(/^(\d{1,2})[\/.\-월 ]\s*(\d{1,2})/); if (m2) { let y2 = Number(ym.slice(0, 4)); if (Number(m2[1]) === 1 && ym.slice(5) === '12') y2++; if (Number(m2[1]) === 12 && ym.slice(5) === '01') y2--; return UT.dateStr(UT.ym(y2, Number(m2[1])), Number(m2[2])); } return null; };
+        const d1 = cd(m.cluster_date, monthlyYm), d0 = cd(pm.cluster_date, UT.prevYm(monthlyYm));
+        const rd = (ds, ks) => { const r = DAILY[ds]; if (!r || ks.some(k => r[k] === null || r[k] === undefined || r[k] === '')) return null; return ks.reduce((a, k) => a + Number(r[k]), 0); };
+        const ours = ks => { if (!d0 || !d1) return null; const a = rd(d0, ks), b = rd(d1, ks); return a === null || b === null ? null : b - a; };
+        const ow = ours(['water_40a', 'water_50a']), oww = ours(['wastewater']), per = d0 && d1 ? `${d0.slice(5).replace('-', '/')}~${d1.slice(5).replace('-', '/')}` : '';
+        h += row('클러스터 상수 사용량', cw === null ? '전월 값 필요' : `${f1(cw)} ㎥${per ? ` (${per})` : ''} · 우리 용수 ${ow !== null ? `같은 기간 ${f1(ow)}` : `${f1(s.water.usage)} (고지서 기간)`} ㎥`);
+        h += row('클러스터 폐수 사용량', cww === null ? '전월 값 필요' : `${f1(cww)} ㎥${per ? ` (${per})` : ''} · 우리 폐수 ${oww !== null ? `같은 기간 ${f1(oww)}` : `${f1(s.ww.flow)} (월말 기준)`} ㎥`);
+        if (!d0 || !d1) h += sub('', '「클러스터 검침한 날」을 이번 달·전월 모두 넣으면 같은 기간 우리 검침값과 비교');
       }
       h += `<tr class="tot"><td>합계 (VAT 포함)</td><td>${won(s.total)}</td></tr>`;
       h += `<tr><td>VAT 별도</td><td>${won(s.exvat)}</td></tr>`;
