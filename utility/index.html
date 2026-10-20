@@ -1824,11 +1824,37 @@
       const v = UT.effective(ym, MONTHLY, DAILY, {})[k];
       if (v !== null && v !== undefined && v !== '' && !isNaN(v)) return Number(v);
       if (ym < thisYm) return null; // 지난 달인데 기록 없음
+      // 앞으로의 달(목표·계획): 공조냉동은 기온 따라 크게 달라서 기온 식으로, 폐수동은 지금 부하 수준(최근 일일 검침)으로
+      if (k === 'elec_hvac_kwh') { const m = hvacPlanModel(); if (m) { const w = m.Tb === null ? 0 : warmSum(ym, m.Tb); if (w !== null) return m.A * UT.daysIn(ym) + m.W * w; } }
+      if (k === 'elec_ww_kwh') { const r = wwPlanRate(); if (r) return r.perDay * UT.daysIn(ym); }
       const l = []; let x = UT.prevYm(thisYm);
       for (let i = 0; i < 6 && l.length < 3; i++, x = UT.prevYm(x)) { const w = UT.effective(x, MONTHLY, DAILY, {})[k]; if (w) l.push(Number(w) / UT.daysIn(x)); }
       return l.length ? l.reduce((a, b) => a + b, 0) / l.length * UT.daysIn(ym) : null; // 계획(앞으로의 달): 최근 3개월 하루 평균
     }
     function wwKwh(ym) { return meterKwh(ym, 'elec_ww_kwh'); }
+    // 공조냉동 계획용 식: 공조냉동 = 하루 기본 A × 날수 + W × 더운 정도(Tb℃ 넘는 기온 합) — 계량이 나뉜 달(26년 3월~)로 맞춤, Tb는 가장 잘 맞는 값
+    let HVAC_PM = null, HVAC_PM_KEY = '';
+    function hvacPlanModel() {
+      const ms = []; for (let ym = HVAC_FULL_FROM; ym < thisYm; ym = UT.nextYm(ym)) { const v = UT.effective(ym, MONTHLY, DAILY, {}).elec_hvac_kwh; if (v !== null && v !== undefined && v !== '' && !isNaN(v)) ms.push([ym, Number(v)]); }
+      const key = ms.map(x => x.join(':')).join(',') + (TEMPS ? 1 : 0); if (key === HVAC_PM_KEY) return HVAC_PM; HVAC_PM_KEY = key; HVAC_PM = null;
+      if (ms.length < 4) return null;
+      let best = null; const ys = ms.map(x => x[1]);
+      const c0 = UT.ols(ms.map(x => [UT.daysIn(x[0])]), ys); if (c0) { const e = ms.reduce((t, x, i) => t + (ys[i] - c0[0] * UT.daysIn(x[0])) ** 2, 0); best = { A: c0[0], W: 0, Tb: null, e }; }
+      for (let Tb = 0; Tb <= 22; Tb++) { const X = ms.map(x => [UT.daysIn(x[0]), warmSum(x[0], Tb)]); if (X.some(r => r[1] === null)) continue; const c = UT.ols(X, ys); if (!c || c.some(v => v < 0)) continue;
+        const e = X.reduce((t, r, i) => t + (ys[i] - c[0] * r[0] - c[1] * r[1]) ** 2, 0); if (!best || e < best.e) best = { A: c[0], W: c[1], Tb, e }; }
+      if (best) best.mape = ms.reduce((t, x, i) => t + Math.abs(best.A * UT.daysIn(x[0]) + best.W * (best.Tb === null ? 0 : warmSum(x[0], best.Tb)) - ys[i]) / ys[i], 0) / ms.length * 100;
+      return (HVAC_PM = best);
+    }
+    // 폐수동 계획용 하루 전력: 설비검침 폐수전력 지침으로 최근 60일 평균 (그 사이 ⚡ 폐수동 부하 변동이 있었으면 그날 이후만) × 배율
+    function wwPlanRate() {
+      const ds = Object.keys(DAILY).filter(d => DAILY[d] && DAILY[d].ww_power !== null && DAILY[d].ww_power !== undefined && DAILY[d].ww_power !== '').sort(); if (ds.length < 2) return null;
+      const last = ds[ds.length - 1]; let from = UT.addDays(last, -60);
+      const ch = equipList().filter(x => x.area === '폐수동' && x.d > from && x.d <= last).sort((a, b) => a.d < b.d ? 1 : -1)[0]; if (ch) from = ch.d;
+      const first = ds.find(d => d >= from); if (!first || first >= last) return null;
+      const n = (new Date(last) - new Date(first)) / 864e5; if (n < 7) return null;
+      const ct = Number(UT.effective(last.slice(0, 7), MONTHLY, DAILY, {}).elec_ww_ct) || 40;
+      return { perDay: (Number(DAILY[last].ww_power) - Number(DAILY[first].ww_power)) * ct / n, from: first, to: last, change: ch || null };
+    }
     function wwKwhOld(ym) {
       const v = UT.effective(ym, MONTHLY, DAILY, {}).elec_ww_kwh;
       if (v !== null && v !== undefined && v !== '' && !isNaN(v)) return Number(v);
@@ -2108,8 +2134,10 @@
       const b = baseFor(I.t, I.y, uk).filter(ym => uk !== 'elec' || ym >= HVAC_FULL_FROM);
       const fml = I.feats ? I.feats.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : ''}<b>${cf(I.coef[i])}</b>`).join(' + ') : '휴무일 기준 예비 식';
       const go = where === 'period' ? '' : ` · <a href="#" onclick="switchTab('period');setTimeout(()=>{const e=document.querySelector('#per-elec .pick-box');if(e)e.scrollIntoView({behavior:'smooth',block:'center'})},600);return false">지표 바꾸기 (지표 분석)</a>`;
+      const planTxt = uk === 'elec' && where === 'target' ? (() => { const m = hvacPlanModel(), w = wwPlanRate();
+        return `<div class="hint" style="margin-top:2px">📅 ${I.y}년 계획의 실측 몫 — <b>공조냉동</b> = 하루 ${f0(m ? m.A : 0)} kWh × 날수${m && m.Tb !== null ? ` + ${nf1.format(m.W)} × ${m.Tb}℃ 넘는 기온 합(평년)` : ''} <span class="hint">(26년 3월~ 계량 ${m ? `· 오차 ±${nf1.format(m.mape)}%` : ''})</span> · <b>폐수동</b> = 하루 ${w ? f0(w.perDay) : '-'} kWh × 날수 <span class="hint">(지금 부하 수준: 폐수전력 검침 ${w ? `${w.from.slice(5).replace('-', '/')}~${w.to.slice(5).replace('-', '/')}${w.change ? ` · ${w.change.d.slice(5).replace('-', '/')} 부하 변동 이후` : ''}` : '-'})</span> ${Portal.tip('planfix')}</div>`; })() : '';
       return `<div class="std-badge"><b>📐 ${I.y}년 ${U.name} 기준 식</b> ${Portal.tip('std')} <span class="std-src ${I.src}">${srcT}</span><div>${U.part} = ${fml} <span class="hint">+ ${uk === 'elec' ? '폐수동·공조냉동·부하 변동 (실측)' : '식당 가스 (실측)'}</span></div>
-        <div class="hint">기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} · 월 평균 오차 ±${nf1.format(I.m.mape || 0)}%${I.pickErr ? ` · <span class="warn">고른 지표는 ${esc(I.pickErr)}라 자동 식 사용</span>` : ''} — 이 식 하나로 <b>지표 분석 · 원인 찾기 · 목표·예산</b>이 같이 계산됩니다${go}</div></div>`;
+        <div class="hint">기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} · 월 평균 오차 ±${nf1.format(I.m.mape || 0)}%${I.pickErr ? ` · <span class="warn">고른 지표는 ${esc(I.pickErr)}라 자동 식 사용</span>` : ''} — 이 식 하나로 <b>지표 분석 · 원인 찾기 · 목표·예산</b>이 같이 계산됩니다${go}</div>${planTxt}</div>`;
     }
     // 증감 원인 나누기 — 기준 식(확정 → 고른 지표 → 자동)으로
     function decompose(ym, ym0, uk) {
