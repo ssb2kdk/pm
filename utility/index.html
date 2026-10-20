@@ -632,12 +632,13 @@
     { g: '용수 단가', k: 'w_rate5', label: '1001㎥~ 단가', unit: '원/㎥', carry: true },
     { g: '용수 단가', k: 'w_use_rate', label: '물이용부담금 단가', unit: '원/㎥', carry: true },
 
-    { g: '폐수', k: 'ww_flow', label: '2공장 폐수 발생량', unit: '㎥', hint: '비우면 말일 유량계 지침 − 전월 말일 지침' },
-    { g: '폐수', k: 'ww_sewage', label: '2공장 오수량', unit: '㎥', hint: '고지서 값' },
+    { g: '폐수', k: 'ww_flow', label: '2공장 폐수 발생량', unit: '㎥', hint: '비우면 클러스터 폐수방류 검침 − 전월 검침 (없으면 우리 유량계 말일 지침 차이) · 고지서와 다르면 고지서 값' },
+    { g: '폐수', k: 'ww_sewage', label: '2공장 오수량', unit: '㎥', hint: '비우면 (클러스터 상수도 40A+50A 사용량 − 폐수 발생량) × 0.8 · 고지서와 다르면 고지서 값' },
     { g: '폐수', k: 'ww_outsource_fee', label: '위탁처리비', unit: '원' },
     { g: '폐수', k: 'ww_sludge_fee', label: '슬러지처리비', unit: '원' },
-    { g: '폐수', k: 'cluster_water_reading', label: '클러스터 상수도 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
-    { g: '폐수', k: 'cluster_ww_reading', label: '클러스터 폐수 검침값', unit: '㎥', hint: '폐수 담당자가 보내주는 값' },
+    { g: '폐수', k: 'cluster_w40_reading', label: '클러스터 상수도 40A 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
+    { g: '폐수', k: 'cluster_w50_reading', label: '클러스터 상수도 50A 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
+    { g: '폐수', k: 'cluster_ww_reading', label: '클러스터 폐수방류 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
     { g: '폐수', k: 'cluster_date', label: '클러스터 검침한 날', unit: '', text: true, hint: '협력업체가 검침한 날짜 (예: 9/29) — 같은 기간 우리 검침과 비교' },
 
     { g: '고지서 실제 금액', k: 'elec_bill_total', label: '전기 청구액 (부가세 포함)', unit: '원', hint: '입력하면 확정' },
@@ -777,7 +778,15 @@
       auto('w40_usage', r11('water_40a'));
       auto('w50_usage', r11('water_50a'));
     }
-    // 폐수: 말일 지침 차이
+    // 폐수: 클러스터 검침(협력업체가 월말 즈음 보내는 상수도 40A·50A·폐수방류 지침)으로 가마감
+    //  발생량 = 폐수방류 이번 − 전월 · 오수량 = (상수도 40A+50A 사용량 − 폐수 발생량) × 0.8 — 본마감 때 고지서와 다르면 칸에 직접 넣으면 그 값이 우선
+    {
+      const cu = UT.clusterUse(ym, monthly);
+      if (cu.ww !== null && !has(m.ww_flow)) { m.ww_flow = cu.ww; src.ww_flow = '클러스터 검침'; }
+      const fl = num(m.ww_flow);
+      if (cu.water !== null && fl !== null && !has(m.ww_sewage)) { m.ww_sewage = Math.round(Math.max(0, cu.water - fl) * 0.8 * 100) / 100; src.ww_sewage = '클러스터 검침'; }
+    }
+    // 폐수: 말일 지침 차이 (클러스터 검침이 없을 때)
     {
       const a = UT.readingOnOrBefore(daily, lastDay, 'wastewater');
       const b = UT.readingOnOrBefore(daily, prevLast, 'wastewater');
@@ -900,6 +909,16 @@
     const reduce2 = -trunc10(waterUse / 100);
     const total = useFee + reduce + (num(baseFee) || 0) + waterUse + reduce2;
     return { usage: u, useFee, reduce, baseFee: num(baseFee) || 0, waterUse, reduce2, total };
+  };
+
+  // 클러스터 검침 사용량 (이번 달 − 전월). 상수도는 40A+50A (예전에 합산 한 칸으로 넣은 달은 그 값)
+  UT.clusterUse = (ym, monthly) => {
+    const a = monthly[ym] || {}, b = monthly[UT.prevYm(ym)] || {};
+    const wt = r => (has(r.cluster_w40_reading) && has(r.cluster_w50_reading)) ? Number(r.cluster_w40_reading) + Number(r.cluster_w50_reading) : has(r.cluster_water_reading) ? Number(r.cluster_water_reading) : null;
+    const d = (x, y) => x === null || y === null ? null : Math.round((x - y) * 100) / 100;
+    const sp = r => has(r.cluster_w40_reading) && has(r.cluster_w50_reading);
+    return { water: d(wt(a), wt(b)), ww: d(has(a.cluster_ww_reading) ? Number(a.cluster_ww_reading) : null, has(b.cluster_ww_reading) ? Number(b.cluster_ww_reading) : null),
+      w40: sp(a) && sp(b) ? d(Number(a.cluster_w40_reading), Number(b.cluster_w40_reading)) : null, w50: sp(a) && sp(b) ? d(Number(a.cluster_w50_reading), Number(b.cluster_w50_reading)) : null };
   };
 
   // ---------------- 한 달 요약 ----------------
@@ -5063,20 +5082,19 @@
       h += row('발생량 (폐수 + 오수)', `${f1(s.ww.usage)} ㎥`) + sub('폐수 · 오수', `${f1(s.ww.flow)} · ${f1(s.ww.sewage)} ㎥`);
       if (s.ww.status === '확정') h += row('시설사용료', won(nv('ww_facility_fee'))) + row('개선부담금', won(nv('ww_improve_fee'))) + row('<b>계</b>', `<b>${won(s.ww.cost)}</b>`);
       else h += row('<b>예상 금액</b>', `<b>${won(s.ww.cost)}</b>`) + sub('발생량 × 전월 ㎥당 금액', '고지서 금액 넣으면 확정');
-      // 클러스터 검침값 비교
-      const pm = (UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {}));
-      if (m.cluster_water_reading !== undefined || m.cluster_ww_reading !== undefined) {
-        const cw = (m.cluster_water_reading != null && pm.cluster_water_reading != null) ? m.cluster_water_reading - pm.cluster_water_reading : null;
-        const cww = (m.cluster_ww_reading != null && pm.cluster_ww_reading != null) ? m.cluster_ww_reading - pm.cluster_ww_reading : null;
-        // 클러스터는 월말 정확한 날이 아니라 협력업체가 검침한 날 기준 → 검침한 날을 넣으면 같은 기간 우리 검침(설비검침 지침)과 비교
+      // 클러스터 검침 (협력업체 보내는 상수도 40A·50A·폐수방류) — 폐수 발생량·오수량 가마감 근거
+      const rawM = tmp[monthlyYm] || {};
+      if (['cluster_w40_reading', 'cluster_w50_reading', 'cluster_ww_reading', 'cluster_water_reading'].some(k => rawM[k] !== undefined && rawM[k] !== null && rawM[k] !== '')) {
+        const cu = UT.clusterUse(monthlyYm, tmp), pm = UT.effective(UT.prevYm(monthlyYm), tmp, DAILY, {});
         const cd = (v, ym) => { const t = String(v || '').trim(); let m2 = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if (m2) return UT.dateStr(m2[1] + '-' + String(m2[2]).padStart(2, '0'), Number(m2[3]));
           m2 = t.match(/^(\d{1,2})[\/.\-월 ]\s*(\d{1,2})/); if (m2) { let y2 = Number(ym.slice(0, 4)); if (Number(m2[1]) === 1 && ym.slice(5) === '12') y2++; if (Number(m2[1]) === 12 && ym.slice(5) === '01') y2--; return UT.dateStr(UT.ym(y2, Number(m2[1])), Number(m2[2])); } return null; };
-        const d1 = cd(m.cluster_date, monthlyYm), d0 = cd(pm.cluster_date, UT.prevYm(monthlyYm));
+        const d1 = cd(m.cluster_date, monthlyYm), d0 = cd(pm.cluster_date, UT.prevYm(monthlyYm)), per = d0 && d1 ? ` (${d0.slice(5).replace('-', '/')}~${d1.slice(5).replace('-', '/')})` : '';
         const rd = (ds, ks) => { const r = DAILY[ds]; if (!r || ks.some(k => r[k] === null || r[k] === undefined || r[k] === '')) return null; return ks.reduce((a, k) => a + Number(r[k]), 0); };
         const ours = ks => { if (!d0 || !d1) return null; const a = rd(d0, ks), b = rd(d1, ks); return a === null || b === null ? null : b - a; };
-        const ow = ours(['water_40a', 'water_50a']), oww = ours(['wastewater']), per = d0 && d1 ? `${d0.slice(5).replace('-', '/')}~${d1.slice(5).replace('-', '/')}` : '';
-        h += row('클러스터 상수 사용량', cw === null ? '전월 값 필요' : `${f1(cw)} ㎥${per ? ` (${per})` : ''} · 우리 용수 ${ow !== null ? `같은 기간 ${f1(ow)}` : `${f1(s.water.usage)} (고지서 기간)`} ㎥`);
-        h += row('클러스터 폐수 사용량', cww === null ? '전월 값 필요' : `${f1(cww)} ㎥${per ? ` (${per})` : ''} · 우리 폐수 ${oww !== null ? `같은 기간 ${f1(oww)}` : `${f1(s.ww.flow)} (월말 기준)`} ㎥`);
+        const ow = ours(['water_40a', 'water_50a']), oww = ours(['wastewater']);
+        h += row('클러스터 상수도 사용량', cu.water === null ? '전월 검침값 필요' : `${f1(cu.water)} ㎥${per}${cu.w40 !== null ? ` <span class="pv-sub">40A ${f1(cu.w40)} · 50A ${f1(cu.w50)}</span>` : ''}${ow !== null ? ` · 우리 검침 같은 기간 ${f1(ow)} ㎥` : ''}`);
+        h += row('클러스터 폐수방류', cu.ww === null ? '전월 검침값 필요' : `${f1(cu.ww)} ㎥${per}${oww !== null ? ` · 우리 검침 같은 기간 ${f1(oww)} ㎥` : ''}`);
+        if (cu.ww !== null && cu.water !== null) h += sub('→ 가마감 계산', `발생량 ${f1(cu.ww)} ㎥ · 오수량 (${f1(cu.water)} − ${f1(cu.ww)}) × 0.8 = ${f1(Math.max(0, cu.water - cu.ww) * 0.8)} ㎥${rawM.ww_flow !== undefined && rawM.ww_flow !== null && rawM.ww_flow !== '' || rawM.ww_sewage !== undefined && rawM.ww_sewage !== null && rawM.ww_sewage !== '' ? ' — 칸에 직접 넣은 값(고지서)이 우선' : ''}`);
         if (!d0 || !d1) h += sub('', '「클러스터 검침한 날」을 이번 달·전월 모두 넣으면 같은 기간 우리 검침값과 비교');
       }
       h += `<tr class="tot"><td>합계 (VAT 포함)</td><td>${won(s.total)}</td></tr>`;
