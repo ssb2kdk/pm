@@ -1956,9 +1956,9 @@
       pr.forEach(x => { const d = String(x.date || '').slice(0, 10); if (d) minTo(D(d), 'prep', tMin(x.start)); });
       pk.forEach(x => { const d = String(x.date || '').slice(0, 10); if (!d) return; const e = tMin(x.end), a = tMin(x.start); maxTo(D(d), 'pack', e);
         if (e !== null) { if (!PACK_FROM || d < PACK_FROM) PACK_FROM = d; if (a !== null) { let b = e; if (b < a) b += 1440; if (b - a > 0 && b - a <= 1440) D(d).pkM = (D(d).pkM || 0) + b - a; } } });
-      // 외포장 완료 (생산 대시보드 월별 현황의 「완제품 EA」와 같은 기준) — 시험 생산(testRun)은 뺌
+      // 외포장 완료 (생산 대시보드 월별 현황의 「완제품 EA」와 같은 기준) — 시험 생산도 포함 (에너지도 실제로 썼고 대시보드도 셈)
       OPD = null; OP_FROM = null;
-      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = Number(x.outerEa) || 0; if (!d || x.testRun === true) return; if (!OP_FROM || d < OP_FROM) OP_FROM = d;
+      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = Number(x.outerEa) || 0; if (!d) return; // 시험 생산(testRun)도 포함 — 대시보드 월별 현황이 포함해서 셈 (9월 FC 3KG 16EA 차이로 확인) if (!OP_FROM || d < OP_FROM) OP_FROM = d;
         const name = String(x.product || '').trim() || '기타'; (OPD[d] = OPD[d] || []).push({ name, ea: n }); }); }
       return iv;
     }
@@ -2323,7 +2323,7 @@
           const a1 = `<tr class="dc-sum"><td>생산일 평균<br><span class="hint">${np}일</span></td><td></td><td>${np ? f0(sum(r => r.p && r.p.rm) / np) : ''}</td><td>${np ? f0(sum(r => r.p && r.p.ea) / np) : ''}</td><td>${np ? f0(sum(r => r.p ? pkgOf(r.p).kg : 0) / np) : ''}</td>${['prepH', 'steamH', 'crushH', 'packH'].map(k => `<td>${np ? nf1.format(sum(r => r.p && r.p[k]) / np) : ''}</td>`).join('')}<td>${(() => { const b = pd.filter(r => r.p.boilH !== undefined); return b.length ? nf1.format(b.reduce((t, r) => t + r.p.boilH, 0) / b.length) : ''; })()}</td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], pd))}</td>`).join('')}<td></td></tr>`;
           const a2 = `<tr class="dc-sum"><td>쉬는 날 평균<br><span class="hint">${off.length}일</span></td><td colspan="9"></td>${DC_U.map((u, i) => `<td>${uv(avg(r => r.u[i], off))}</td>`).join('')}<td></td></tr>`;
           return tot + a1 + a2; })() + '</table></div>' +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품·EA는 <b>외포장 완료</b> 기준(생산 대시보드 월별 현황의 「완제품 EA」와 같음, 시험 생산 제외)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품·EA는 <b>외포장 완료</b> 기준(생산 대시보드 월별 현황의 「완제품 EA」와 같음, 시험 생산 포함)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
       h += prodGHtml() + dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
