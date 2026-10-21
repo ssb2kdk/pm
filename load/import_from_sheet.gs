@@ -9,9 +9,11 @@ const SB_URL = 'https://ncboxlsbbfhrupapipov.supabase.co/rest/v1/rpc/load_import
 const SB_KEY = 'sb_publishable_mYUd7LbTsbvg5lvAohRiTw_KL0T0eKD';
 const SECRET = '여기에_비밀번호';   // 쉘리 스크립트에 넣은 것과 같은 문자 (직접 입력)
 
-// 월별 백업 파일들의 ID (주소창 /d/ 와 /edit 사이 글자). 지금 이 파일만이면 비워 두세요.
+// 월별 백업 파일들 — 각 파일 주소창 주소를 통째로 복사해서 한 줄에 하나씩 (작은따옴표로 감싸고 끝에 쉼표)
+// 지금 이 파일(스크립트가 붙어 있는 시트)은 자동 포함이라 안 넣어도 됩니다.
 const FILE_IDS = [
-  // '1AbC...xyz',
+  // 'https://docs.google.com/spreadsheets/d/1AbC...xyz/edit#gid=0',
+  // 'https://docs.google.com/spreadsheets/d/1DeF...uvw/edit',
 ];
 
 const BATCH = 4000;         // 한 번에 보내는 줄 수
@@ -20,7 +22,8 @@ const TIME_LIMIT = 270000;  // 4분 30초 지나면 멈추고 이어서 실행 �
 function importLoad() {
   const t0 = Date.now(), props = PropertiesService.getScriptProperties();
   clearTriggers_();
-  const files = [SpreadsheetApp.getActiveSpreadsheet().getId()].concat(FILE_IDS.filter(String));
+  const me = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const files = [me].concat(FILE_IDS.filter(String).map(u => { const m = String(u).match(/\/d\/([\w-]+)/); return m ? m[1] : String(u).trim(); }).filter(id => id !== me));
   for (const fid of files) {
     const ss = SpreadsheetApp.openById(fid);
     const sheets = ss.getSheets().filter(s => /^데이터_\d{4}_\d{2}$/.test(s.getName()));
