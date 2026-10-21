@@ -97,3 +97,16 @@ function resetImport() { PropertiesService.getScriptProperties().getKeys().filte
 
 // 0단계: 앱스크립트 자체가 도는지 (이것도 오류면 계정·회사망 문제)
 function hello() { Logger.log('OK — 앱스크립트 정상'); }
+
+// 각 백업 파일의 「설정」 탭 내용을 로그로 보기 (그 달 분전반·채널 이름 확인용, 아무것도 안 보냄)
+function showSettings() {
+  for (const fid of fileIds_()) {
+    const ss = open_(fid); if (!ss) continue;
+    const sh = ss.getSheets().find(s => s.getName().indexOf('설정') >= 0);
+    const months = ss.getSheets().map(s => s.getName()).filter(n => /^데이터_/.test(n)).join(', ');
+    Logger.log('📄 ' + ss.getName() + ' [' + months + ']');
+    if (!sh) { Logger.log('   설정 탭 없음'); continue; }
+    const v = sh.getRange(1, 1, Math.min(sh.getLastRow(), 40), Math.min(sh.getLastColumn(), 10)).getDisplayValues();
+    v.filter(r => r.some(String)).forEach(r => Logger.log('   ' + r.join(' | ')));
+  }
+}
