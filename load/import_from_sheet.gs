@@ -16,17 +16,37 @@ const FILE_IDS = [
   // 'https://docs.google.com/spreadsheets/d/1DeF...uvw/edit',
 ];
 
-const BATCH = 4000;         // 한 번에 보내는 줄 수
+const BATCH = 2000;         // 한 번에 보내는 줄 수
 const TIME_LIMIT = 270000;  // 4분 30초 지나면 멈추고 이어서 실행 예약
 
+function fileIds_() {
+  const me = SpreadsheetApp.getActiveSpreadsheet().getId();
+  return [me].concat(FILE_IDS.filter(String).map(u => { const m = String(u).match(/\/d\/([\w-]+)/); return m ? m[1] : String(u).trim(); }).filter(id => id !== me));
+}
+function open_(fid) {
+  try { return SpreadsheetApp.openById(fid); }
+  catch (e) { Logger.log('❌ 파일 못 엶: ' + fid + ' → ' + e.message + '  (주소가 맞는지, 엑셀(.xlsx) 파일이 아닌지 확인 — 엑셀이면 [파일 → Google 스프레드시트로 저장] 후 그 주소 사용)'); return null; }
+}
+
+// ① 먼저 이것만 실행해서 파일·시트가 제대로 보이는지 확인 (아무것도 보내지 않음)
+function checkFiles() {
+  for (const fid of fileIds_()) {
+    const ss = open_(fid); if (!ss) continue;
+    const sheets = ss.getSheets().filter(s => /^데이터_\d{4}_\d{2}$/.test(s.getName()));
+    Logger.log('📄 ' + ss.getName() + ' — ' + (sheets.length ? sheets.map(s => s.getName() + '(' + (s.getLastRow() - 1) + '줄)').join(', ') : '데이터_YYYY_MM 시트 없음'));
+    const sh = sheets[0]; if (sh) Logger.log('   예시 2번째 줄: ' + JSON.stringify(sh.getRange(2, 1, 1, 6).getDisplayValues()[0]));
+  }
+  Logger.log('확인 끝');
+}
+
+// ② 확인되면 이것 실행 (실제로 보냄)
 function importLoad() {
   const t0 = Date.now(), props = PropertiesService.getScriptProperties();
   clearTriggers_();
-  const me = SpreadsheetApp.getActiveSpreadsheet().getId();
-  const files = [me].concat(FILE_IDS.filter(String).map(u => { const m = String(u).match(/\/d\/([\w-]+)/); return m ? m[1] : String(u).trim(); }).filter(id => id !== me));
-  for (const fid of files) {
-    const ss = SpreadsheetApp.openById(fid);
+  for (const fid of fileIds_()) {
+    const ss = open_(fid); if (!ss) continue;
     const sheets = ss.getSheets().filter(s => /^데이터_\d{4}_\d{2}$/.test(s.getName()));
+    Logger.log('📄 ' + ss.getName() + ': ' + sheets.map(s => s.getName()).join(', '));
     for (const sh of sheets) {
       const key = 'done:' + fid + ':' + sh.getName();
       let row = Number(props.getProperty(key) || 2), skipped = 0;   // 다음에 읽을 줄 (1줄은 제목)
@@ -47,6 +67,7 @@ function importLoad() {
           rows.push({ p: p, t: d + 'T' + hms.join(':') + '+09:00', a: num(vals[i][1]), b: num(vals[i][2]), c: num(vals[i][3]) });
         }
         if (rows.length) send_(rows);
+        Logger.log(`   ${sh.getName()} ${row + n - 1}/${last}줄 보냄`);
         row += n;
         props.setProperty(key, String(row));
       }
