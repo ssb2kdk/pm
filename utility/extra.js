@@ -2448,7 +2448,7 @@
       const slope = (c, k, u) => { const m = per[k] || 1, v = c.b * m; return `${unitX[k] === 'h' ? '1h' : k === 'temp' ? '1℃' : (m === 1000 ? '1,000' : '10,000') + unitX[k]}당 ${v >= 0 ? '+' : ''}${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${u[2]}`; };
       // 생산 항목끼리의 연관 (서로 같이 움직이면 어느 게 진짜 원인인지 구분 어려움)
       const PX = cols.map(([k]) => cols.map(([k2]) => { const v = days.filter(d => xv(d, k) !== null && xv(d, k2) !== null); return pearson(v.map(d => xv(d, k)), v.map(d => xv(d, k2))); }));
-      let h = `<h4 style="margin:18px 0 6px">연관성 검토 (상관계수 r) ${Portal.tip('r')} <span class="hint">생산한 날 ${days.length}일 · ${from} ~ ${end}</span></h4>
+      let h = `<h4 style="margin:18px 0 6px">하루 단위 연관성 (상관계수 r) ${Portal.tip('rday')} <span class="hint">점 하나 = 생산한 하루 · ${days.length}일 · ${from} ~ ${end} — 지표 분석의 r(점 하나 = 한 달)과는 다른 값</span></h4>
         <div class="toolbar"><span class="chips">${[[1, '이 달'], [3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 1년']].map(([n, l]) => `<button class="chip ${dcRange === n ? 'on' : ''}" onclick="dcRange=${n};renderDayCmp()">${l}</button>`).join('')}</span></div>`;
       if (days.length < 8) return h + '<div class="empty">생산한 날이 8일 이상 있어야 계산합니다. 기간을 늘려 보세요.</div>';
       h += `<div class="tbl-wrap"><table class="t dc-corr"><tr><th></th>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>` +
