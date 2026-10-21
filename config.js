@@ -21,7 +21,7 @@ window.APP_CONFIG = {
     { id: 'utility', icon: '📊', name: '유틸리티 분석',             desc: '전기·가스·용수·폐수 현황 · 지표 분석 · 원인 찾기 · 목표·예산 · 월간보고서',   path: 'utility/', ready: true },
     { id: 'bill',    icon: '🧾', name: '유틸리티 마감',             desc: '고지서 입력·확정 · 회계보고 · 지출결의 자료 (시설팀 누구나)',  path: 'utility/?bill', ready: true },
     { id: 'audit',   icon: '🕘', name: '변경 기록',                 desc: '누가·언제·무엇을 바꿨는지 (바뀌기 전 값 포함) — 관리자만', path: 'audit/',   ready: true, admin: true },
-    { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: false }
+    { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: true }
   ],
   // 홈 화면 '바로가기' (다른 사이트 — 새 창으로 열림, 협력업체 계정에는 안 보임)
   LINKS: [
