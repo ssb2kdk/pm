@@ -1958,7 +1958,7 @@
         if (e !== null) { if (!PACK_FROM || d < PACK_FROM) PACK_FROM = d; if (a !== null) { let b = e; if (b < a) b += 1440; if (b - a > 0 && b - a <= 1440) D(d).pkM = (D(d).pkM || 0) + b - a; } } });
       // 외포장 완료 (생산 대시보드 월별 현황의 「완제품 EA」와 같은 기준) — 시험 생산도 포함 (에너지도 실제로 썼고 대시보드도 셈)
       OPD = null; OP_FROM = null;
-      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = Number(x.outerEa) || 0; if (!d) return; // 시험 생산(testRun)도 포함 — 대시보드 월별 현황이 포함해서 셈 (9월 FC 3KG 16EA 차이로 확인) if (!OP_FROM || d < OP_FROM) OP_FROM = d;
+      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = Number(x.outerEa) || 0; if (!d) return; /* 시험 생산(testRun)도 포함 — 대시보드 월별 현황이 포함해서 셈 */ if (!OP_FROM || d < OP_FROM) OP_FROM = d;
         const name = String(x.product || '').trim() || '기타'; (OPD[d] = OPD[d] || []).push({ name, ea: n }); }); }
       return iv;
     }
