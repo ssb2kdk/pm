@@ -1,673 +1,241 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
-<script src="../config.js"></script>
-<script src="../common.js"></script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>설비별 부하 모니터링</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{background:#0d1117;color:#e6edf3;font-family:"Segoe UI",sans-serif;min-height:100vh;}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #21262d;background:#0d1117;position:sticky;top:0;z-index:100;}
-.topbar h1{font-size:17px;font-weight:600;display:flex;align-items:center;gap:8px;}
-.topbar h1 span{color:#58a6ff;}
-.topbar-right{display:flex;align-items:center;gap:10px;}
-.btn{background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;}
-.btn:hover{background:#30363d;}
-.btn.active{background:#1f6feb;border-color:#1f6feb;color:#fff;}
-.btn-danger{background:#21262d;border:1px solid #f85149;color:#f85149;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;}
-.btn-danger:hover{background:#f85149;color:#fff;}
-.updated{font-size:11px;color:#8b949e;}
-.main{padding:20px 24px;}
-.date-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px;padding:14px 16px;background:#161b22;border:1px solid #30363d;border-radius:10px;}
-.date-bar-label{font-size:12px;color:#8b949e;}
-.date-preset{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 12px;border-radius:20px;cursor:pointer;font-size:12px;}
-.date-preset:hover{background:#30363d;color:#e6edf3;}
-.date-preset.active{background:#1f6feb;border-color:#1f6feb;color:#fff;}
-.date-input{background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:5px 10px;border-radius:6px;font-size:12px;}
-.date-sep{color:#8b949e;font-size:12px;}
-.date-apply{background:#238636;border:1px solid #2ea043;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;}
-.date-apply:hover{background:#2ea043;}
-.mode-bar{display:flex;gap:8px;margin-bottom:16px;align-items:center;}
-.file-panel{background:#161b22;border:1px solid #30363d;border-radius:10px;margin-bottom:16px;overflow:hidden;}
-.file-panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;}
-.file-panel-header:hover{background:#1c2128;}
-.file-panel-title{font-size:13px;color:#8b949e;}
-.file-panel-body{padding:16px;border-top:1px solid #21262d;display:none;}
-.file-panel-body.open{display:block;}
-.file-list{margin-bottom:16px;}
-.file-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#0d1117;border:1px solid #21262d;border-radius:6px;margin-bottom:6px;font-size:12px;}
-.file-item-label{color:#e6edf3;font-weight:500;}
-.file-item-id{color:#8b949e;font-size:10px;font-family:monospace;margin-top:2px;}
-.file-item-main{color:#3fb950;font-size:10px;}
-.file-add{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
-.file-add input{background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:7px 10px;border-radius:6px;font-size:12px;flex:1;min-width:140px;}
-.file-add input::placeholder{color:#8b949e;}
-.file-add-btn{background:#1f6feb;border:1px solid #1f6feb;color:#fff;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;}
-.file-add-btn:hover{background:#388bfd;}
-.file-msg{font-size:11px;margin-top:8px;min-height:16px;}
-.file-msg.ok{color:#3fb950;}
-.file-msg.err{color:#f85149;}
-.panel-section{background:#161b22;border:1px solid #30363d;border-radius:10px;margin-bottom:20px;overflow:hidden;}
-.panel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #21262d;cursor:grab;user-select:none;}
-.panel-header:active{cursor:grabbing;}
-.panel-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
-.panel-dot{width:8px;height:8px;border-radius:50%;}
-.panel-body{padding:16px 20px;}
-.channel-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
-.ch-card{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px 16px;cursor:grab;position:relative;transition:border-color 0.2s;}
-.ch-card.over{border-color:#f85149;background:#150d0d;}
-.ch-card.dragging{opacity:0.4;}
-.ch-card.drag-over{border-color:#58a6ff;border-style:dashed;}
-.ch-label{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;}
-.ch-value{font-size:36px;font-weight:700;color:#58a6ff;line-height:1;}
-.ch-card.over .ch-value{color:#f85149;}
-.ch-unit{font-size:14px;font-weight:400;color:#8b949e;}
-.ch-limit{font-size:11px;color:#8b949e;margin-top:6px;}
-.ch-card.over .ch-limit{color:#f85149;}
-.over-tag{position:absolute;top:8px;right:8px;background:#f85149;color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;}
-.drag-handle{position:absolute;top:8px;left:8px;color:#30363d;font-size:10px;}
-.panel-chart-wrap{position:relative;height:160px;width:100%;}
-.panel-chart{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
-.time-range-bar{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
-.time-range-labels{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8b949e;}
-.dual-slider-wrap{position:relative;height:24px;width:100%;}
-.dual-slider-wrap input[type=range]{position:absolute;width:100%;height:4px;background:transparent;-webkit-appearance:none;appearance:none;pointer-events:none;top:10px;left:0;}
-.dual-slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#58a6ff;cursor:pointer;pointer-events:all;border:2px solid #0d1117;margin-top:-6px;}
-.dual-slider-wrap input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#58a6ff;cursor:pointer;pointer-events:all;border:2px solid #0d1117;}
-.dual-slider-track{position:absolute;top:12px;left:0;right:0;height:4px;background:#21262d;border-radius:2px;}
-.dual-slider-fill{position:absolute;top:12px;height:4px;background:#58a6ff;border-radius:2px;left:0%;width:100%;}
-.time-range-btns{display:flex;gap:4px;}
-.time-range-btn{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px;}
-.time-range-btn:hover{background:#30363d;color:#e6edf3;}
-.time-range-btn.active{background:#1f6feb;border-color:#1f6feb;color:#fff;}
-.compare-section{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:20px;display:none;}
-.compare-section.visible{display:block;}
-.compare-title{font-size:13px;color:#8b949e;margin-bottom:16px;}
-.compare-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
-.ch-toggle{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 12px;border-radius:20px;cursor:pointer;font-size:12px;}
-.ch-toggle.on{color:#fff;}
-.compare-chart-wrap{position:relative;height:280px;width:100%;}
-.compare-chart{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
-.energy-section{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px 20px;margin-bottom:20px;}
-.energy-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13px;font-weight:600;color:#e6edf3;}
-.energy-calc-btn{background:#238636;border:1px solid #2ea043;color:#fff;padding:5px 16px;border-radius:6px;cursor:pointer;font-size:12px;}
-.energy-calc-btn:hover{background:#2ea043;}
-.energy-calc-btn:disabled{background:#21262d;border-color:#30363d;color:#8b949e;cursor:not-allowed;}
-.energy-panel{margin-bottom:16px;}
-.energy-panel-name{font-size:13px;font-weight:600;color:#e6edf3;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #21262d;}
-.energy-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px;}
-.energy-ch-name{color:#8b949e;}
-.energy-kwh{color:#58a6ff;font-weight:600;}
-.energy-total{display:flex;justify-content:space-between;align-items:center;padding:8px 0 0;margin-top:4px;border-top:1px solid #21262d;font-size:13px;font-weight:600;}
-.energy-grand{margin-top:16px;padding:12px 16px;background:#0d1117;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;}
-.energy-grand-label{color:#8b949e;}
-.energy-grand-val{color:#3fb950;}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>설비별 부하 모니터링</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB; --radius: 12px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 0 12px; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 0; position: sticky; top: 0; z-index: 10; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .title { font-size: 17px; font-weight: 700; }
+    .vtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .vtab { font-size: 13px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .vtab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 12px 0 4px; }
+    .chip { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); cursor: pointer; color: #444; }
+    .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .bar input[type=date] { font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+    .hint { font-size: 12px; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin: 10px 0 40px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .card h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .card h3 .st { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--teal-bg); color: var(--teal); }
+    .card h3 .st.off { background: #eee; color: var(--muted); }
+    .card .when { font-size: 11px; color: var(--muted); margin-left: auto; font-weight: 400; }
+    .chs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .ch { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+    .ch.over { border-color: var(--red); background: var(--red-bg); }
+    .ch.warn { border-color: var(--amber); background: var(--amber-bg); }
+    .ch .nm { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ch .a { font-size: 24px; font-weight: 700; margin-top: 2px; } .ch .a small { font-size: 12px; font-weight: 400; color: var(--muted); }
+    .ch.over .a { color: var(--red); }
+    .ch .kw { font-size: 12px; color: #555; }
+    .ch .lim { height: 4px; background: #eee; border-radius: 2px; margin-top: 6px; overflow: hidden; } .ch .lim i { display: block; height: 100%; background: var(--teal); }
+    .ch.warn .lim i { background: var(--amber); } .ch.over .lim i { background: var(--red); }
+    .ch .lt { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .mini { height: 120px; margin-top: 10px; position: relative; }
+    .big { height: 300px; position: relative; margin-top: 8px; }
+    table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.t th, table.t td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: right; white-space: nowrap; }
+    table.t th { background: #fafafa; font-weight: 600; color: #555; position: sticky; top: 0; }
+    table.t .l { text-align: left; }
+    table.t tr.sum td { font-weight: 700; background: #f6f8fb; }
+    .tbl-wrap { overflow: auto; max-height: 560px; margin-top: 8px; border: 1px solid #eee; border-radius: 8px; }
+    .over-t { color: var(--red); font-weight: 700; }
+    .set input, .set select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; width: 100%; }
+    .set td { padding: 4px 6px; }
+    .btn { padding: 9px 18px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn.sec { background: #fff; color: #333; border: 1px solid var(--border); }
+    .loading, .empty { padding: 30px; text-align: center; color: var(--muted); font-size: 14px; }
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 50; }
+    .toast.show { opacity: 1; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .ch .a { font-size: 20px; } }
+  </style>
 </head>
 <body>
-<div class="topbar"><h1>&#9889; 설비 <span>부하량</span> 모니터링</h1><div class="topbar-right"><span class="updated" id="updatedAt">-</span><button class="btn" id="btnRefresh">&#8635; 새로고침</button></div></div>
-<div class="main">
-  <div class="date-bar">
-    <span class="date-bar-label">기간:</span>
-    <button class="date-preset" id="preset_today">오늘</button>
-    <button class="date-preset" id="preset_yesterday">어제</button>
-    <button class="date-preset" id="preset_week">1주일</button>
-    <button class="date-preset" id="preset_month">1개월</button>
-    <span class="date-sep">|</span>
-    <input type="date" id="dateFrom" class="date-input" >
-    <span class="date-sep">~</span>
-    <input type="date" id="dateTo" class="date-input" >
-    <button class="date-apply" id="btnApply">적용</button>
+  <div id="app" hidden>
+    <div class="head"><div class="wrap head-row">
+      <div class="title">⚡ 설비별 부하 모니터링</div>
+      <div class="vtabs">
+        <button class="vtab on" data-v="now">실시간</button>
+        <button class="vtab" data-v="trend">기간 그래프</button>
+        <button class="vtab" data-v="kwh">전력량 (kWh)</button>
+        <button class="vtab" data-v="set">설정</button>
+      </div>
+    </div></div>
+    <div class="wrap" id="body"><div class="loading">불러오는 중...</div></div>
+    <div class="toast" id="toast"></div>
   </div>
-  <div class="mode-bar">
-    <span style="font-size:12px;color:#8b949e;">보기:</span>
-    <button class="btn active" id="btnNormal">분전반별</button>
-    <button class="btn" id="btnCompare">설비 비교</button>
-  </div>
-  <div class="compare-section" id="compareSection">
-    <div class="compare-title">비교할 채널 선택</div>
-    <div class="compare-controls" id="compareControls"></div>
-    <div class="compare-chart-wrap"><canvas id="compareChart" class="compare-chart"></canvas></div>
-  </div>
-  <div class="energy-section" id="energySection">
-    <div class="energy-header">
-      <span>&#9889; 기간 전력 사용량 추정</span>
-      <button class="energy-calc-btn" id="btnCalcEnergy">계산하기</button>
-    </div>
-    <div class="energy-body" id="energyBody">
-      <div style="color:#8b949e;font-size:12px;">계산하기 버튼을 눌러주세요. 데이터양에 따라 10~30초 소요될 수 있어요.</div>
-    </div>
-  </div>
-  <div id="panelsContainer"></div>
-</div>
 <script>
-let PANELS_CONFIG = {}, ALL_HISTORY = {}, LATEST = {};
-const _q = new URLSearchParams(location.search);
-const TODAY_STR = new Date().toLocaleDateString("sv-SE");
-const FROM_STR = _q.get("from") || TODAY_STR, TO_STR = _q.get("to") || TODAY_STR;
-let sb = null;
-const p2 = n => String(n).padStart(2,"0");
-const dStr = d => d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
-const tStr = d => p2(d.getHours())+":"+p2(d.getMinutes());
-function kstDate(s, t){ return new Date(s+"T"+(t||"00:00")+":00+09:00"); }
-function rowOf(r){ const d=new Date(r.ts); return {date:dStr(d), time:tStr(d), ch0:r.ch0==null?"":r.ch0, ch1:r.ch1==null?"":r.ch1, ch2:r.ch2==null?"":r.ch2}; }
-async function loadConfig(){
-  const [{data:ps},{data:cs}] = await Promise.all([sb.from("load_panels").select("*"), sb.from("load_channels").select("*")]);
-  const cfg = {};
-  (ps||[]).forEach(p => { cfg[p.id] = {name:p.name, order:p.ord, channels:{}}; });
-  (cs||[]).sort((a,b)=>a.ord-b.ord||a.ch-b.ch).forEach(c => {
-    if (!cfg[c.panel_id]) return;
-    const k = c.phase==1 ? c.voltage*c.pf/1000 : Math.sqrt(3)*c.voltage*c.pf/1000;
-    cfg[c.panel_id].channels["ch"+c.ch] = {name:c.name, limit:Number(c.limit_a)||0, kwFactor:k};
-  });
-  PANELS_CONFIG = cfg;
+let sb = null, PANELS = [], CH = {}, LATEST = {}, view = 'now', nowHours = 6, timer = null, charts = {};
+let trFrom = null, trTo = null, trPanel = null, kwFrom = null, kwTo = null;
+const COLORS = ['#2a78d6', '#e5534b', '#1D9E75'];
+const p2 = n => String(n).padStart(2, '0');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => new Date().toLocaleDateString('sv-SE');
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
+const kst = (s, t) => new Date(s + 'T' + (t || '00:00') + ':00+09:00');
+const hm = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
+const f1 = v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const f0 = v => v === null || v === undefined || isNaN(v) ? '-' : Math.round(v).toLocaleString('ko-KR');
+const isAdmin = () => Portal.isAdmin();
+function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+const kwF = c => (c = c || {}, Number(c.phase) === 1 ? 1 : Math.sqrt(3)) * (Number(c.voltage) || 380) * (Number(c.pf) || 0.85) / 1000; // A → kW
+const chName = (pid, i) => (CH[pid] && CH[pid][i] && CH[pid][i].name) || ('CH' + i);
+
+async function loadConfig() {
+  const [p, c] = await Promise.all([sb.from('load_panels').select('*').order('ord'), sb.from('load_channels').select('*')]);
+  if (p.error) throw p.error; if (c.error) throw c.error;
+  PANELS = p.data || []; CH = {};
+  (c.data || []).forEach(x => { (CH[x.panel_id] = CH[x.panel_id] || [])[x.ch] = x; });
 }
-async function fetchRows(fromTs, toTs, bucket){
-  const out = {}; let from = fromTs;
-  // 한 번에 가져오는 한도(1000건)를 넘으면 시간 순으로 이어서 가져옴
-  for (let guard=0; guard<200; guard++){
-    const {data,error} = await sb.rpc("load_series",{p_from:from.toISOString(), p_to:toTs.toISOString(), p_bucket:bucket}).range(0,999);
+async function loadLatest() { const { data, error } = await sb.rpc('load_latest'); if (error) throw error; LATEST = {}; (data || []).forEach(r => { LATEST[r.panel_id] = r; }); }
+async function series(from, to, bucket) { // 1,000건씩 이어서 가져옴
+  const out = {}; let f = from;
+  for (let g = 0; g < 300; g++) {
+    const { data, error } = await sb.rpc('load_series', { p_from: f.toISOString(), p_to: to.toISOString(), p_bucket: bucket }).range(0, 999);
     if (error) throw error;
-    (data||[]).forEach(r => { (out[r.panel_id] = out[r.panel_id]||[]).push(rowOf(r)); });
-    if (!data || data.length<1000) break;
-    from = new Date(new Date(data[data.length-1].ts).getTime()+1);
+    (data || []).forEach(r => (out[r.panel_id] = out[r.panel_id] || []).push(r));
+    if (!data || data.length < 1000) break; f = new Date(new Date(data[data.length - 1].ts).getTime() + 1);
   }
   return out;
 }
-async function loadLatest(){
-  const {data} = await sb.rpc("load_latest"); const o = {};
-  (data||[]).forEach(r => { o[r.panel_id] = rowOf(r); });
-  return o;
-}
-async function loadHistory(){
-  const days = (kstDate(TO_STR) - kstDate(FROM_STR))/86400000 + 1;
-  const bucket = days<=1 ? 1 : days<=2 ? 2 : days<=7 ? 5 : 15;
-  ALL_HISTORY = await fetchRows(kstDate(FROM_STR), new Date(kstDate(TO_STR).getTime()+86400000), bucket);
-  LATEST = await loadLatest();
-}
-const COLORS = ["#58a6ff","#3fb950","#d29922","#f78166","#a371f7","#39d353","#79c0ff","#56d364"];
-let panelCharts = {}, compareChart = null, activeCompare = {}, currentMode = "normal", panelOrder = [], cardOrder = {};
-
-function getTodayStr() { return new Date().toLocaleDateString("sv-SE"); }
-function addDays(str, n) { const d = new Date(str); d.setDate(d.getDate()+n); return d.toLocaleDateString("sv-SE"); }
-function goTo(from, to) { location.search = "?from=" + from + "&to=" + to; }
-
-function init() {
-  document.getElementById("dateFrom").value = FROM_STR; document.getElementById("dateTo").value = TO_STR;
-  const today = getTodayStr();
-  if (FROM_STR === today && TO_STR === today) document.getElementById("preset_today").classList.add("active");
-  else if (FROM_STR === addDays(today,-1) && TO_STR === addDays(today,-1)) document.getElementById("preset_yesterday").classList.add("active");
-  else if (FROM_STR === addDays(today,-6) && TO_STR === today) document.getElementById("preset_week").classList.add("active");
-  else if (FROM_STR === addDays(today,-29) && TO_STR === today) document.getElementById("preset_month").classList.add("active");
-  panelOrder = Object.keys(PANELS_CONFIG).sort((a,b) => (PANELS_CONFIG[a].order||0)-(PANELS_CONFIG[b].order||0));
-  document.getElementById("btnRefresh").addEventListener("click", () => goTo(document.getElementById("dateFrom").value, document.getElementById("dateTo").value));
-  document.getElementById("btnApply").addEventListener("click", () => goTo(document.getElementById("dateFrom").value, document.getElementById("dateTo").value));
-  document.getElementById("preset_today").addEventListener("click", function(){ setPreset("today", this); });
-  document.getElementById("preset_yesterday").addEventListener("click", function(){ setPreset("yesterday", this); });
-  document.getElementById("preset_week").addEventListener("click", function(){ setPreset("week", this); });
-  document.getElementById("preset_month").addEventListener("click", function(){ setPreset("month", this); });
-  document.getElementById("btnNormal").addEventListener("click", () => setMode("normal"));
-  document.getElementById("btnCompare").addEventListener("click", () => setMode("compare"));
-  document.getElementById("btnCalcEnergy").addEventListener("click", calcEnergy);
-  renderPanels();
-  renderCompareControls();
-  updateTimestamp();
-  startAutoRefresh();
+function mk(id, cfg) { if (charts[id]) charts[id].destroy(); const el = document.getElementById(id); if (!el) return; charts[id] = new Chart(el, cfg); }
+function lineCfg(rows, pid, unit) {
+  return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: [0, 1, 2].map(i => ({ label: chName(pid, i), data: rows.map(r => r['ch' + i]), borderColor: COLORS[i], backgroundColor: COLORS[i], borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false })) },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { title: it => { const r = rows[it[0].dataIndex]; if (!r) return ''; const d = new Date(r.ts); return `${d.getMonth() + 1}/${d.getDate()} ${hm(d)}`; }, label: c => ` ${c.dataset.label}: ${f1(c.raw)} ${unit}` } } },
+      scales: { x: { type: 'category', ticks: { maxTicksLimit: 8, font: { size: 10 }, callback: v => { const r = rows[v]; if (!r) return ''; const x = new Date(r.ts); return (rows.length > 600 ? `${x.getMonth() + 1}/${x.getDate()} ` : '') + hm(x); } } }, y: { beginAtZero: true, title: { display: true, text: unit, font: { size: 11 } } } } } };
 }
 
-function setPreset(p, btn) {
-  document.querySelectorAll(".date-preset").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  const today = getTodayStr();
-  let from = today, to = today;
-  if (p === "yesterday") { from = to = addDays(today,-1); }
-  else if (p === "week") { from = addDays(today,-6); }
-  else if (p === "month") { from = addDays(today,-29); }
-  goTo(from, to);
-}
-
-function updateTimestamp() {
-  const times = Object.values(LATEST).map(v => v.time).filter(Boolean);
-  if (times.length > 0) { document.getElementById("updatedAt").textContent = "마지막: " + TODAY_STR + " " + times[times.length-1]; return; }
-  let latest = null;
-  Object.values(ALL_HISTORY).forEach(rows => { if (rows.length > 0) { const r = rows[rows.length-1], t = r.date + " " + r.time; if (!latest || t > latest) latest = t; } });
-  document.getElementById("updatedAt").textContent = latest ? "마지막: " + latest : "-";
-}
-
-function startAutoRefresh() {
-  if (FROM_STR !== TODAY_STR || TO_STR !== TODAY_STR) return;
-  setInterval(() => {
-    loadLatest().then(lt => {
-      LATEST = lt;
-      panelOrder.forEach((pid, pi) => {
-        const panel = PANELS_CONFIG[pid]; if (!panel) return;
-        const latest = LATEST[pid] || {}, channels = panel.channels || {};
-        (cardOrder[pid] || Object.keys(channels)).forEach(chKey => {
-          const ch = channels[chKey]; if (!ch) return;
-          const val = (latest[chKey] !== undefined && latest[chKey] !== "") ? parseFloat(latest[chKey]) : null;
-          const isOver = ch.limit > 0 && val !== null && val > ch.limit;
-          const card = document.querySelector(".panel-section[data-pid='" + pid + "'] [data-ch='" + chKey + "']");
-          if (!card) return;
-          card.className = "ch-card" + (isOver ? " over" : "");
-          const valueEl = card.querySelector(".ch-value");
-          if (valueEl) valueEl.innerHTML = (val !== null ? val.toFixed(1) : "--") + "<span class=\"ch-unit\"> A</span>";
-          const overTag = card.querySelector(".over-tag");
-          if (isOver && !overTag) { const tag = document.createElement("div"); tag.className = "over-tag"; tag.textContent = "과부하"; card.appendChild(tag); }
-          else if (!isOver && overTag) { overTag.remove(); }
-        });
-        const chart = panelCharts[pid];
-        if (chart && latest.time) {
-          chart.data.labels.push(latest.time);
-          Object.keys(channels).forEach((chKey, ci) => {
-            const val = (latest[chKey] !== undefined && latest[chKey] !== "") ? parseFloat(latest[chKey]) : null;
-            if (chart.data.datasets[ci]) chart.data.datasets[ci].data.push(val);
-          });
-          if (chart.data.labels.length > 200) { chart.data.labels.shift(); chart.data.datasets.forEach(ds => ds.data.shift()); }
-          chart.update("none");
-        }
-      });
-      const times = Object.values(LATEST).map(v => v.time).filter(Boolean);
-      if (times.length > 0) document.getElementById("updatedAt").textContent = "마지막: " + TODAY_STR + " " + times[times.length-1];
-    }).catch(() => {});
-  }, 60000);
-}
-
-function calcKw(val, ch) { if (val === null || !ch.kwFactor) return null; return val * ch.kwFactor; }
-
-function calcDailyKwh(history, chKey, kwFactor) {
-  if (!history || !history.length || !kwFactor) return 0;
-  let total = 0;
-  for (let i = 0; i < history.length; i++) {
-    const r = history[i];
-    const v = (r[chKey] !== undefined && r[chKey] !== "") ? parseFloat(r[chKey]) : null;
-    if (v === null) continue;
-    let minuteGap = 1;
-    if (i > 0) {
-      try {
-        const prev = history[i-1];
-        const diffMin = (new Date(r.date + "T" + r.time + ":00") - new Date(prev.date + "T" + prev.time + ":00")) / 60000;
-        if (diffMin > 0 && diffMin <= 10) minuteGap = diffMin;
-      } catch(e) {}
-    }
-    total += v * kwFactor * (minuteGap / 60);
-  }
-  return total;
-}
-
-function renderPanels() {
-  const container = document.getElementById("panelsContainer"); container.innerHTML = "";
-  panelOrder.forEach((pid, pi) => {
-    const panel = PANELS_CONFIG[pid]; if (!panel) return;
-    const channels = panel.channels || {};
-    if (!cardOrder[pid]) cardOrder[pid] = Object.keys(channels);
-    const history = ALL_HISTORY[pid] || [];
-    const latest = LATEST[pid] || history[history.length-1] || {};
-    let panelDailyKwh = 0;
-    Object.keys(channels).forEach(chKey => { panelDailyKwh += calcDailyKwh(history, chKey, channels[chKey].kwFactor); });
-
-    const section = document.createElement("div");
-    section.className = "panel-section"; section.dataset.pid = pid;
-    section.innerHTML =
-      "<div class=\"panel-header\" title=\"드래그하여 순서 변경\">" +
-        "<div class=\"panel-name\"><div class=\"panel-dot\" style=\"background:" + COLORS[pi%COLORS.length] + "\"></div>" + (panel.name||pid) +
-        "<span style=\"font-size:11px;color:#8b949e;font-weight:400;margin-left:10px;\">오늘 누적: " + panelDailyKwh.toFixed(1) + " kWh</span></div>" +
-        "<span style=\"font-size:11px;color:#8b949e;\">&#8942; 드래그</span>" +
-      "</div>" +
-      "<div class=\"panel-body\">" +
-        "<div class=\"channel-cards\" id=\"cards_" + pid + "\"></div>" +
-        "<div class=\"panel-chart-wrap\"><canvas id=\"chart_" + pid + "\" class=\"panel-chart\"></canvas></div>" +
-        "<div class=\"time-range-bar\">" +
-          "<div class=\"time-range-labels\">" +
-            "<span id=\"tslabel_" + pid + "\">00:00</span>" +
-            "<div class=\"time-range-btns\" id=\"trbtns_" + pid + "\"></div>" +
-            "<span id=\"telabel_" + pid + "\">23:59</span>" +
-          "</div>" +
-          "<div class=\"dual-slider-wrap\">" +
-            "<div class=\"dual-slider-track\"></div>" +
-            "<div class=\"dual-slider-fill\" id=\"tfill_" + pid + "\"></div>" +
-            "<input type=\"range\" id=\"tstart_" + pid + "\" min=\"0\" max=\"100\" value=\"0\">" +
-            "<input type=\"range\" id=\"tend_" + pid + "\" min=\"0\" max=\"100\" value=\"100\">" +
-          "</div>" +
-        "</div>" +
-      "</div>";
-    container.appendChild(section);
-
-    // 듀얼 슬라이더
-    initDualSlider(pid);
-    // 슬라이더 영역에서 패널 드래그 방지
-    const sliderWrap = section.querySelector(".dual-slider-wrap");
-    if (sliderWrap) {
-      sliderWrap.addEventListener("mousedown", e => e.stopPropagation());
-      sliderWrap.addEventListener("dragstart", e => e.stopPropagation());
-    }
-    // 시간 범위 버튼
-    const btnWrap = document.getElementById("trbtns_" + pid);
-    [{label:"1H",h:1},{label:"3H",h:3},{label:"6H",h:6},{label:"전체",h:0}].forEach((item, idx) => {
-      const b = document.createElement("button");
-      b.className = "time-range-btn" + (idx === 3 ? " active" : "");
-      b.textContent = item.label;
-      b.addEventListener("click", () => setTimeRange(pid, item.h, b));
-      btnWrap.appendChild(b);
-    });
-
-    const panelHeader = section.querySelector(".panel-header");
-    if (panelHeader) {
-      panelHeader.draggable = true;
-      panelHeader.addEventListener("dragstart", e => { e.dataTransfer.setData("panel", pid); });
-    }
-    section.addEventListener("dragover", e => { e.preventDefault(); section.style.outline = "2px dashed #58a6ff"; });
-    section.addEventListener("dragleave", () => { section.style.outline = ""; });
-    section.addEventListener("drop", e => {
-      section.style.outline = "";
-      const fromPid = e.dataTransfer.getData("panel");
-      if (fromPid && fromPid !== pid) {
-        const fi = panelOrder.indexOf(fromPid), ti = panelOrder.indexOf(pid);
-        panelOrder.splice(fi,1); panelOrder.splice(ti,0,fromPid);
-        renderPanels(); renderCompareControls();
-      }
-    });
-    renderCards(pid, latest, channels, pi, history);
-    renderPanelChart(pid, history, channels, pi);
+// ---------------- 실시간 ----------------
+async function renderNow() {
+  const el = document.getElementById('body');
+  try { await loadLatest(); } catch (e) { el.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}</div>`; return; }
+  const now = Date.now();
+  let h = `<div class="bar"><span class="hint">그래프</span>${[[3, '3시간'], [6, '6시간'], [24, '24시간']].map(([n, t]) => `<button class="chip ${nowHours === n ? 'on' : ''}" onclick="nowHours=${n};renderNow()">${t}</button>`).join('')}
+    <span class="hint" style="margin-left:auto">1분마다 자동 새로고침 · ${hm(new Date())}</span></div><div class="grid">`;
+  PANELS.forEach(p => {
+    const r = LATEST[p.id], age = r ? (now - new Date(r.ts)) / 60000 : null, live = age !== null && age <= 3;
+    h += `<div class="card"><h3>${esc(p.name)} <span class="st ${live ? '' : 'off'}">${live ? '수신 중' : r ? '끊김' : '기록 없음'}</span><span class="when">${r ? (age < 60 ? `${Math.round(age)}분 전` : new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</span></h3><div class="chs">` +
+      [0, 1, 2].map(i => { const c = (CH[p.id] || [])[i] || {}, a = r ? r['ch' + i] : null, lim = Number(c.limit_a) || 0, pct = lim && a !== null ? a / lim * 100 : null;
+        const cls = pct === null ? '' : pct >= 100 ? 'over' : pct >= 85 ? 'warn' : '';
+        return `<div class="ch ${cls}"><div class="nm" title="${esc(chName(p.id, i))}">${esc(chName(p.id, i))}</div><div class="a">${a === null || a === undefined ? '-' : f1(a)} <small>A</small></div><div class="kw">${a === null || a === undefined ? '' : f1(a * kwF(c)) + ' kW'}</div>
+          ${lim ? `<div class="lim"><i style="width:${Math.min(100, pct || 0)}%"></i></div><div class="lt">기준 ${f0(lim)} A · ${pct === null ? '-' : f0(pct) + '%'}</div>` : '<div class="lt">기준 미설정</div>'}</div>`; }).join('') +
+      `</div><div class="mini"><canvas id="m-${p.id}"></canvas></div></div>`;
   });
+  el.innerHTML = h + '</div>';
+  const to = new Date(), from = new Date(to.getTime() - nowHours * 3600000);
+  try { const S = await series(from, to, nowHours <= 6 ? 1 : 5); PANELS.forEach(p => mk('m-' + p.id, lineCfg(S[p.id] || [], p.id, 'A'))); } catch (e) { }
+  clearTimeout(timer); timer = setTimeout(() => { if (view === 'now') renderNow(); }, 60000);
 }
 
-function renderCards(pid, latest, channels, pi, history) {
-  const container = document.getElementById("cards_" + pid); if (!container) return;
-  container.innerHTML = "";
-  (cardOrder[pid] || Object.keys(channels)).forEach((chKey, ci) => {
-    const ch = channels[chKey]; if (!ch) return;
-    const val = (latest[chKey] !== undefined && latest[chKey] !== "") ? parseFloat(latest[chKey]) : null;
-    const isOver = ch.limit > 0 && val !== null && val > ch.limit;
-    const kw = calcKw(val, ch);
-    const dailyKwh = calcDailyKwh(history || [], chKey, ch.kwFactor);
-    const card = document.createElement("div");
-    card.className = "ch-card" + (isOver ? " over" : ""); card.draggable = true; card.dataset.ch = chKey;
-    card.innerHTML =
-      "<span class=\"drag-handle\">&#8942;</span>" +
-      (isOver ? "<div class=\"over-tag\">과부하</div>" : "") +
-      "<div class=\"ch-label\">" + (ch.name||chKey) + "</div>" +
-      "<div class=\"ch-value\">" + (val !== null ? val.toFixed(1) : "--") + "<span class=\"ch-unit\"> A</span></div>" +
-      "<div style=\"font-size:13px;color:#58a6ff;margin-top:4px;\">" + (kw !== null ? kw.toFixed(2) + " kW" : "-") + "</div>" +
-      "<div style=\"font-size:11px;color:#8b949e;margin-top:4px;\">오늘: " + dailyKwh.toFixed(1) + " kWh</div>" +
-      "<div class=\"ch-limit\">" + (ch.limit > 0 ? "기준: " + ch.limit + " A" : "기준 미설정") + "</div>";
-    card.addEventListener("dragstart", e => { e.stopPropagation(); e.dataTransfer.setData("card", chKey); e.dataTransfer.setData("cardPid", pid); card.classList.add("dragging"); });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
-    card.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); card.classList.add("drag-over"); });
-    card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
-    card.addEventListener("drop", e => {
-      e.preventDefault(); e.stopPropagation(); card.classList.remove("drag-over");
-      const fromCh = e.dataTransfer.getData("card"), fromPid = e.dataTransfer.getData("cardPid");
-      if (fromCh && fromPid === pid && fromCh !== chKey) {
-        const arr = cardOrder[pid], fi = arr.indexOf(fromCh), ti = arr.indexOf(chKey);
-        arr.splice(fi,1); arr.splice(ti,0,fromCh); renderCards(pid, latest, channels, pi, history);
-      }
-    });
-    container.appendChild(card);
-  });
+// ---------------- 기간 그래프 ----------------
+function rangeBar(kind) {
+  const f = kind === 'tr' ? trFrom : kwFrom, t = kind === 'tr' ? trTo : kwTo, d = today();
+  const pre = kind === 'tr' ? [['오늘', d, d], ['어제', addDays(d, -1), addDays(d, -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]]
+    : [['이번 달', d.slice(0, 8) + '01', d], ['지난달', (() => { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - 1); return x.toLocaleDateString('sv-SE'); })(), addDays(d.slice(0, 8) + '01', -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]];
+  return `<div class="bar">${pre.map(([n, a, b]) => `<button class="chip ${f === a && t === b ? 'on' : ''}" onclick="setRange('${kind}','${a}','${b}')">${n}</button>`).join('')}
+    <input type="date" value="${f}" onchange="setRange('${kind}',this.value,null)"> ~ <input type="date" value="${t}" onchange="setRange('${kind}',null,this.value)"></div>`;
+}
+function setRange(kind, a, b) { if (kind === 'tr') { if (a) trFrom = a; if (b) trTo = b; if (trTo < trFrom) trTo = trFrom; renderTrend(); } else { if (a) kwFrom = a; if (b) kwTo = b; if (kwTo < kwFrom) kwTo = kwFrom; renderKwh(); } }
+async function renderTrend() {
+  const el = document.getElementById('body'); if (!trPanel) trPanel = PANELS[0] && PANELS[0].id;
+  el.innerHTML = rangeBar('tr') + `<div class="bar">${PANELS.map(p => `<button class="chip ${trPanel === p.id ? 'on' : ''}" onclick="trPanel='${p.id}';renderTrend()">${esc(p.name)}</button>`).join('')}</div><div class="loading">불러오는 중...</div>`;
+  const days = (kst(trTo) - kst(trFrom)) / 864e5 + 1, bucket = days <= 1 ? 1 : days <= 2 ? 2 : days <= 7 ? 5 : 15;
+  let S; try { S = await series(kst(trFrom), new Date(kst(trTo).getTime() + 864e5), bucket); } catch (e) { el.querySelector('.loading').textContent = '불러오기 실패: ' + (e.message || e); return; }
+  const rows = S[trPanel] || [], p = PANELS.find(x => x.id === trPanel) || {}, cs = CH[trPanel] || [];
+  const st = i => { const v = rows.map(r => r['ch' + i]).filter(x => x !== null && x !== undefined); if (!v.length) return null; const mx = Math.max(...v), at = rows.find(r => r['ch' + i] === mx);
+    const lim = Number((cs[i] || {}).limit_a) || 0; return { mx, at, avg: v.reduce((a, b) => a + b, 0) / v.length, over: lim ? v.filter(x => x >= lim).length * bucket : 0, lim }; };
+  const T = [0, 1, 2].map(st);
+  el.querySelector('.loading').outerHTML = `<div class="card"><h3>${esc(p.name || '')} <span class="when">${trFrom} ~ ${trTo} · ${bucket}분마다 최댓값</span></h3>
+    ${rows.length ? `<div class="big"><canvas id="c-trend"></canvas></div>
+    <table class="t" style="margin-top:10px"><tr><th class="l">채널</th><th>최대 전류</th><th>최대 시각</th><th>평균 전류</th><th>평균 kW</th><th>기준</th><th>기준 넘은 시간</th></tr>` +
+      T.map((o, i) => `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(chName(trPanel, i))}</td><td class="${o && o.lim && o.mx >= o.lim ? 'over-t' : ''}">${o ? f1(o.mx) + ' A' : '-'}</td><td>${o && o.at ? new Date(o.at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td><td>${o ? f1(o.avg) + ' A' : '-'}</td><td>${o ? f1(o.avg * kwF(cs[i])) : '-'}</td><td>${o && o.lim ? f0(o.lim) + ' A' : '-'}</td><td class="${o && o.over ? 'over-t' : ''}">${o && o.lim ? (o.over ? `약 ${o.over}분` : '없음') : '-'}</td></tr>`).join('') + '</table>' : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
+  if (rows.length) mk('c-trend', lineCfg(rows, trPanel, 'A'));
 }
 
-function renderPanelChart(pid, history, channels, pi) {
-  const canvas = document.getElementById("chart_" + pid); if (!canvas) return;
-  if (panelCharts[pid]) { panelCharts[pid].destroy(); delete panelCharts[pid]; }
-  if (!history.length) return;
-  let data = history;
-  if (data.length > 300) { const step = Math.ceil(data.length/300); data = data.filter((_,i) => i%step===0 || i===data.length-1); }
-  const multiDay = FROM_STR !== TO_STR;
-  const labels = data.map(r => multiDay ? r.date.substring(5) + " " + r.time : r.time);
-  const datasets = Object.keys(channels).map((chKey, ci) => ({
-    label: channels[chKey].name || chKey,
-    data: data.map(r => r[chKey] !== "" && r[chKey] !== undefined ? parseFloat(r[chKey]) : null),
-    borderColor: COLORS[(pi*3+ci)%COLORS.length], backgroundColor: "transparent",
-    borderWidth: 1.5, pointRadius: 0, tension: 0.3, spanGaps: true
+// ---------------- 전력량 (kWh) ----------------
+async function renderKwh() {
+  const el = document.getElementById('body');
+  el.innerHTML = rangeBar('kw') + '<div class="loading">계산 중...</div>';
+  let rows = [];
+  try { for (let o = 0; o < 20; o++) { const { data, error } = await sb.rpc('load_energy', { p_from: kst(kwFrom).toISOString(), p_to: new Date(kst(kwTo).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
+  catch (e) { el.querySelector('.loading').textContent = '불러오기 실패: ' + (e.message || e); return; }
+  const days = [...new Set(rows.map(r => r.d))].sort(), key = (p, c) => p + '|' + c, M = {};
+  rows.forEach(r => { (M[r.d] = M[r.d] || {})[key(r.panel_id, r.ch)] = Number(r.kwh) || 0; });
+  const cols = []; PANELS.forEach(p => [0, 1, 2].forEach(c => cols.push({ p, c })));
+  const tot = cols.map(o => days.reduce((a, d) => a + ((M[d] || {})[key(o.p.id, o.c)] || 0), 0)), all = tot.reduce((a, b) => a + b, 0);
+  const pTot = p => [0, 1, 2].reduce((a, c) => a + tot[cols.findIndex(o => o.p.id === p.id && o.c === c)], 0);
+  el.querySelector('.loading').outerHTML = !rows.length ? '<div class="empty">이 기간 기록이 없습니다.</div>' :
+    `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:10px">${PANELS.map(p => `<div class="card"><div class="hint">${esc(p.name)}</div><div style="font-size:22px;font-weight:700">${f0(pTot(p))} <small style="font-size:12px;color:#888">kWh</small></div><div class="hint">${all ? f0(pTot(p) / all * 100) : 0}% · 하루 평균 ${f0(pTot(p) / days.length)} kWh</div></div>`).join('')}
+      <div class="card" style="border-color:#1a1a1a"><div class="hint">전체 합계</div><div style="font-size:22px;font-weight:700">${f0(all)} <small style="font-size:12px;color:#888">kWh</small></div><div class="hint">${days.length}일 · 하루 평균 ${f0(all / days.length)} kWh</div></div></div>
+    <div class="card"><div class="big"><canvas id="c-kwh"></canvas></div>
+    <div class="tbl-wrap"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}<th>합계</th></tr>` +
+      days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map(x => `<td>${f1(x)}</td>`).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
+      `<tr class="sum"><td class="l">합계</td>${tot.map(x => `<td>${f0(x)}</td>`).join('')}<td>${f0(all)}</td></tr></table></div>
+    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 1분 (1분마다 받은 값을 더함 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.</div></div>`;
+  if (rows.length) mk('c-kwh', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: PANELS.map((p, i) => ({ label: p.name, data: days.map(d => [0, 1, 2].reduce((a, c) => a + ((M[d] || {})[key(p.id, c)] || 0), 0)), backgroundColor: ['#2a78d6', '#e5534b', '#1D9E75', '#eda100', '#7b61c4', '#555'][i % 6], stack: 's' })) },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${f0(c.raw)} kWh` } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'kWh' } } } } });
+}
+
+// ---------------- 설정 (분전반·채널 이름, 기준 전류, 전압·상·역률) ----------------
+let SET = null;
+function renderSet() {
+  const el = document.getElementById('body'), ad = isAdmin();
+  SET = SET || { panels: PANELS.map(p => ({ ...p })), ch: PANELS.map(p => [0, 1, 2].map(i => ({ panel_id: p.id, ch: i, name: '', limit_a: 0, voltage: 380, phase: 3, pf: 0.85, ord: i, ...((CH[p.id] || [])[i] || {}) }))) };
+  const inp = (pi, ci, k, v, type = 'text', w = '100%') => ad ? `<input data-pi="${pi}" data-ci="${ci}" data-k="${k}" type="${type}" step="any" value="${esc(v ?? '')}" style="width:${w}">` : esc(v ?? '');
+  el.innerHTML = `<div class="bar"><span class="hint">${ad ? '분전반 이름, 채널(설비) 이름, 기준 전류, 전압·상·역률을 고친 뒤 [저장]' : '설정은 관리자만 바꿀 수 있습니다'}</span>${ad ? '<button class="btn" style="margin-left:auto" onclick="saveSet()">저장</button>' : ''}</div>` +
+    SET.panels.map((p, pi) => `<div class="card set" style="margin-bottom:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:13px;color:#888">${esc(p.id)}</b>
+        <span style="flex:1;min-width:200px">${ad ? `<input data-pi="${pi}" data-k="pname" value="${esc(p.name)}" placeholder="분전반 이름 (예: P-레토르트)" style="font-size:15px;font-weight:700">` : `<b>${esc(p.name)}</b>`}</span>
+        <span class="hint">순서</span><span style="width:60px">${ad ? `<input data-pi="${pi}" data-k="pord" type="number" value="${esc(p.ord)}">` : esc(p.ord)}</span></div>
+      <table class="t" style="margin-top:8px"><tr><th class="l">채널</th><th class="l">설비 이름</th><th>기준 전류 (A)</th><th>전압 (V)</th><th>상</th><th>역률</th><th>1A당 kW</th></tr>` +
+      SET.ch[pi].map((c, ci) => `<tr><td class="l">CH${ci}</td><td class="l">${inp(pi, ci, 'name', c.name, 'text')}</td><td style="width:110px">${inp(pi, ci, 'limit_a', c.limit_a, 'number')}</td><td style="width:90px">${inp(pi, ci, 'voltage', c.voltage, 'number')}</td>
+        <td style="width:90px">${ad ? `<select data-pi="${pi}" data-ci="${ci}" data-k="phase"><option value="3" ${Number(c.phase) !== 1 ? 'selected' : ''}>3상</option><option value="1" ${Number(c.phase) === 1 ? 'selected' : ''}>단상</option></select>` : (Number(c.phase) === 1 ? '단상' : '3상')}</td>
+        <td style="width:80px">${inp(pi, ci, 'pf', c.pf, 'number')}</td><td>${kwF(c).toFixed(3)}</td></tr>`).join('') + '</table></div>').join('') +
+    `<div class="hint">· 쉘리 1대 = 분전반 1개. 쉘리 스크립트의 PANEL_ID(panel_1~5)와 위 회색 글자(id)가 짝입니다.<br>· 채널 = 쉘리 CT 3개(CH0·1·2). 설비 하나를 3상으로 재면 각 상 전류, 설비 3개를 각각 재면 설비별 전류입니다.<br>· 기준 전류를 넣으면 실시간 화면에서 85% 넘으면 주황, 100% 넘으면 빨강 · 기간 그래프에 넘은 시간 표시.<br>· kW = 전류 × (3상이면 √3) × 전압 × 역률 ÷ 1000</div>`;
+  el.querySelectorAll('input[data-pi], select[data-pi]').forEach(x => x.addEventListener('change', () => {
+    const pi = Number(x.dataset.pi), k = x.dataset.k;
+    if (k === 'pname') SET.panels[pi].name = x.value; else if (k === 'pord') SET.panels[pi].ord = Number(x.value) || 0;
+    else SET.ch[pi][Number(x.dataset.ci)][k] = k === 'name' ? x.value : Number(x.value);
+    if (['voltage', 'phase', 'pf'].includes(k)) renderSet();
   }));
-  // 원본 데이터 백업
-  originalChartData[pid] = {
-    labels: [...labels],
-    datasets: datasets.map(ds => ({...ds, data: [...ds.data]}))
-  };
-  panelCharts[pid] = new Chart(canvas, {
-    type: "line", data: {labels, datasets},
-    options: {animation:false, responsive:true, maintainAspectRatio:false,
-      interaction: {mode:"index", intersect:false},
-      plugins: {legend: {labels: {color:"#8b949e", font:{size:11}, boxWidth:12}}},
-      scales: {
-        x: {ticks:{color:"#8b949e",maxTicksLimit:8,font:{size:10}}, grid:{color:"#21262d"}},
-        y: {ticks:{color:"#8b949e",font:{size:10}}, grid:{color:"#21262d"}, title:{display:true,text:"A",color:"#8b949e",font:{size:10}}}
-      }
-    }
-  });
+}
+async function saveSet() {
+  try {
+    for (const p of SET.panels) { const { error } = await sb.from('load_panels').update({ name: p.name || p.id, ord: p.ord || 0 }).eq('id', p.id); if (error) throw error; }
+    const rows = SET.ch.flat().map(c => ({ panel_id: c.panel_id, ch: c.ch, name: c.name || '', limit_a: Number(c.limit_a) || 0, voltage: Number(c.voltage) || 380, phase: Number(c.phase) === 1 ? 1 : 3, pf: Number(c.pf) || 0.85, ord: c.ord ?? c.ch }));
+    const { error } = await sb.from('load_channels').upsert(rows, { onConflict: 'panel_id,ch' }); if (error) throw error;
+    await loadConfig(); SET = null; toast('저장했습니다'); renderSet();
+  } catch (e) { alert('저장 실패: ' + (e.message || e)); }
 }
 
-function initDualSlider(pid) {
-  const sEl = document.getElementById("tstart_" + pid);
-  const eEl = document.getElementById("tend_" + pid);
-  if (!sEl || !eEl) return;
-  function update() {
-    let sv = parseInt(sEl.value), ev = parseInt(eEl.value);
-    if (sv > ev) { const tmp = sv; sv = ev; ev = tmp; }
-    const fill = document.getElementById("tfill_" + pid);
-    if (fill) { fill.style.left = sv + "%"; fill.style.width = (ev - sv) + "%"; }
-    applyDualSlider(pid, sv, ev);
-  }
-  sEl.addEventListener("input", update);
-  eEl.addEventListener("input", update);
+function show(v) {
+  view = v; clearTimeout(timer);
+  document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'now') renderNow(); else if (v === 'trend') renderTrend(); else if (v === 'kwh') renderKwh(); else { SET = null; renderSet(); }
 }
-
-function applyDualSlider(pid, sv, ev) {
-  const chart = panelCharts[pid]; if (!chart) return;
-  const total = chart.data.labels.length; if (total === 0) return;
-  const minIdx = Math.round(sv / 100 * (total-1));
-  const maxIdx = Math.round(ev / 100 * (total-1));
-  const startLabel = chart.data.labels[minIdx] || "";
-  const endLabel = chart.data.labels[maxIdx] || "";
-  if (sv <= 0 && ev >= 100) { delete chart.options.scales.x.min; delete chart.options.scales.x.max; }
-  else { chart.options.scales.x.min = minIdx; chart.options.scales.x.max = maxIdx; }
-  const sl = document.getElementById("tslabel_" + pid);
-  const el = document.getElementById("telabel_" + pid);
-  if (sl) sl.textContent = startLabel;
-  if (el) el.textContent = endLabel;
-  const btns = document.querySelectorAll(".panel-section[data-pid='" + pid + "'] .time-range-btn");
-  btns.forEach(b => b.classList.remove("active"));
-  chart.update("none");
-
-  // 구간이 2시간 이하면 1분 단위 상세 데이터 로드
-  const startTime = startLabel.length >= 5 ? startLabel.substring(startLabel.length-5) : startLabel;
-  const endTime = endLabel.length >= 5 ? endLabel.substring(endLabel.length-5) : endLabel;
-  if (startTime && endTime) {
-    const [sh,sm] = startTime.split(":").map(Number);
-    const [eh,em] = endTime.split(":").map(Number);
-    const diffMin = (eh*60+em) - (sh*60+sm);
-    if (diffMin > 0 && diffMin <= 120) {
-      loadDetailData(pid, FROM_STR, startTime, endTime);
-    }
-  }
-}
-
-const detailLoading = {};
-const originalChartData = {}; // 원본 데이터 백업
-function loadDetailData(pid, dateStr, timeFrom, timeTo) {
-  if (detailLoading[pid]) return;
-  detailLoading[pid] = true;
-  const sl = document.getElementById("tslabel_" + pid);
-  if (sl) sl.textContent += " (로딩중...)";
-  fetchRows(kstDate(dateStr, timeFrom), new Date(kstDate(dateStr, timeTo).getTime()+60000), 1)
-    .then(all => {
-      detailLoading[pid] = false;
-      const d = {data: all};
-      if (!d.data[pid]) return;
-      const chart = panelCharts[pid]; if (!chart) return;
-      const panel = PANELS_CONFIG[pid]; if (!panel) return;
-      const rows = d.data[pid];
-      const channels = panel.channels || {};
-      const labels = rows.map(r => r.time);
-      chart.data.labels = labels;
-      Object.keys(channels).forEach((chKey, ci) => {
-        if (chart.data.datasets[ci]) {
-          chart.data.datasets[ci].data = rows.map(r => r[chKey] !== "" && r[chKey] !== undefined ? parseFloat(r[chKey]) : null);
-        }
-      });
-      delete chart.options.scales.x.min;
-      delete chart.options.scales.x.max;
-      chart.update("none");
-      const sl2 = document.getElementById("tslabel_" + pid);
-      const el2 = document.getElementById("telabel_" + pid);
-      if (sl2) sl2.textContent = timeFrom + " (1분)";
-      if (el2) el2.textContent = timeTo;
-    })
-    .catch(() => { detailLoading[pid] = false; });
-}
-
-function setTimeRange(pid, hours, btn) {
-  const chart = panelCharts[pid]; if (!chart) return;
-  const btns = document.querySelectorAll(".panel-section[data-pid='" + pid + "'] .time-range-btn");
-  btns.forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  const total = chart.data.labels.length;
-  const sEl = document.getElementById("tstart_" + pid);
-  const eEl = document.getElementById("tend_" + pid);
-  const fill = document.getElementById("tfill_" + pid);
-  if (hours === 0) {
-    // 원본 데이터 복원
-    if (originalChartData[pid]) {
-      chart.data.labels = [...originalChartData[pid].labels];
-      chart.data.datasets.forEach((ds, i) => {
-        if (originalChartData[pid].datasets[i]) ds.data = [...originalChartData[pid].datasets[i].data];
-      });
-    }
-    delete chart.options.scales.x.min; delete chart.options.scales.x.max;
-    if (sEl) sEl.value = 0; if (eEl) eEl.value = 100;
-    if (fill) { fill.style.left = "0%"; fill.style.width = "100%"; }
-    const sl = document.getElementById("tslabel_" + pid); const el = document.getElementById("telabel_" + pid);
-    if (sl) sl.textContent = chart.data.labels[0] || "00:00";
-    if (el) el.textContent = chart.data.labels[chart.data.labels.length-1] || "23:59";
-  } else {
-    // 원본 데이터 복원 후 범위 적용
-    if (originalChartData[pid]) {
-      chart.data.labels = [...originalChartData[pid].labels];
-      chart.data.datasets.forEach((ds, i) => {
-        if (originalChartData[pid].datasets[i]) ds.data = [...originalChartData[pid].datasets[i].data];
-      });
-    }
-    const newTotal = chart.data.labels.length;
-    const pct = Math.max(0, 100 - Math.round(hours/24*100));
-    const minIdx = Math.round(pct/100*(newTotal-1));
-    chart.options.scales.x.min = minIdx; chart.options.scales.x.max = newTotal-1;
-    if (sEl) sEl.value = pct; if (eEl) eEl.value = 100;
-    if (fill) { fill.style.left = pct + "%"; fill.style.width = (100-pct) + "%"; }
-    const sl = document.getElementById("tslabel_" + pid); const el = document.getElementById("telabel_" + pid);
-    if (sl) sl.textContent = chart.data.labels[minIdx] || "";
-    if (el) el.textContent = chart.data.labels[newTotal-1] || "";
-  }
-  chart.update("none");
-}
-
-function renderCompareControls() {
-  const container = document.getElementById("compareControls"); container.innerHTML = "";
-  let ci = 0;
-  panelOrder.forEach(pid => {
-    const panel = PANELS_CONFIG[pid]; if (!panel) return;
-    Object.keys(panel.channels || {}).forEach(chKey => {
-      const key = pid + "__" + chKey, color = COLORS[ci++%COLORS.length];
-      const btn = document.createElement("button");
-      btn.className = "ch-toggle" + (activeCompare[key] ? " on" : "");
-      if (activeCompare[key]) { btn.style.borderColor = color; btn.style.background = color + "33"; btn.style.color = "#fff"; }
-      btn.textContent = (panel.name||pid) + " · " + (panel.channels[chKey].name||chKey);
-      btn.addEventListener("click", () => toggleCompare(key, color, btn));
-      container.appendChild(btn);
-    });
-  });
-}
-
-function toggleCompare(key, color, btn) {
-  if (activeCompare[key]) { delete activeCompare[key]; btn.classList.remove("on"); btn.style.borderColor = btn.style.background = ""; btn.style.color = "#8b949e"; }
-  else { activeCompare[key] = true; btn.classList.add("on"); btn.style.borderColor = color; btn.style.background = color + "33"; btn.style.color = "#fff"; }
-  renderCompareChart();
-}
-
-function renderCompareChart() {
-  const canvas = document.getElementById("compareChart");
-  if (compareChart) { compareChart.destroy(); compareChart = null; }
-  const keys = Object.keys(activeCompare); if (!keys.length) return;
-  const multiDay = FROM_STR !== TO_STR;
-  const allTimes = {};
-  keys.forEach(key => { const [pid] = key.split("__"); (ALL_HISTORY[pid]||[]).forEach(r => { allTimes[r.date+"T"+r.time] = true; }); });
-  let timeArr = Object.keys(allTimes).sort();
-  if (timeArr.length > 300) { const step = Math.ceil(timeArr.length/300); timeArr = timeArr.filter((_,i) => i%step===0 || i===timeArr.length-1); }
-  const labels = timeArr.map(t => multiDay ? t.substring(5,10) + " " + t.substring(11,16) : t.substring(11,16));
-  let ci = 0;
-  const datasets = keys.map(key => {
-    const [pid, chKey] = key.split("__"), panel = PANELS_CONFIG[pid], ch = panel ? (panel.channels[chKey]||{}) : {}, color = COLORS[ci++%COLORS.length];
-    const dataMap = {}; (ALL_HISTORY[pid]||[]).forEach(r => { dataMap[r.date+"T"+r.time] = r[chKey]; });
-    return {label:(panel?panel.name:pid)+" · "+(ch.name||chKey), data:timeArr.map(t => dataMap[t]!==undefined&&dataMap[t]!=="" ? parseFloat(dataMap[t]) : null), borderColor:color, backgroundColor:color+"15", borderWidth:2, pointRadius:0, tension:0.3, spanGaps:true, fill:true};
-  });
-  compareChart = new Chart(canvas, {type:"line", data:{labels,datasets}, options:{animation:false, responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false}, plugins:{legend:{labels:{color:"#8b949e",font:{size:12},boxWidth:14}}}, scales:{x:{ticks:{color:"#8b949e",maxTicksLimit:10},grid:{color:"#21262d"}},y:{ticks:{color:"#8b949e"},grid:{color:"#21262d"},title:{display:true,text:"A",color:"#8b949e"}}}}});
-}
-
-function setMode(mode) {
-  currentMode = mode;
-  document.getElementById("btnNormal").classList.toggle("active", mode === "normal");
-  document.getElementById("btnCompare").classList.toggle("active", mode === "compare");
-  document.getElementById("compareSection").classList.toggle("visible", mode === "compare");
-  document.getElementById("panelsContainer").style.display = mode === "compare" ? "none" : "";
-  if (mode === "compare") renderCompareChart();
-}
-
-function calcEnergy() {
-  const from = document.getElementById("dateFrom").value;
-  const to = document.getElementById("dateTo").value;
-  const btn = document.getElementById("btnCalcEnergy");
-  const body = document.getElementById("energyBody");
-  btn.disabled = true; btn.textContent = "계산 중...";
-  body.innerHTML = "<div style=\"color:#8b949e;font-size:12px;\">데이터 읽는 중... 잠시만 기다려주세요 ⏳</div>";
-  sb.rpc("load_energy",{p_from:kstDate(from).toISOString(), p_to:new Date(kstDate(to).getTime()+86400000).toISOString()}).range(0,9999)
-    .then(({data,error}) => {
-      btn.disabled = false; btn.textContent = "계산하기";
-      if (error) { body.innerHTML = "<div style=\"color:#f85149;\">오류가 발생했어요.</div>"; return; }
-      const energy = {};
-      (data||[]).forEach(r => { const e = energy[r.panel_id] = energy[r.panel_id]||{channels:{}}; const c = e.channels["ch"+r.ch] = e.channels["ch"+r.ch]||{kwh:0}; c.kwh = Math.round((c.kwh + Number(r.kwh))*10)/10; });
-      renderEnergyResult(energy, from, to);
-    }).catch(() => { btn.disabled = false; btn.textContent = "계산하기"; body.innerHTML = "<div style=\"color:#f85149;\">네트워크 오류가 발생했어요.</div>"; });
-}
-
-function renderEnergyResult(energy, from, to) {
-  const body = document.getElementById("energyBody"); body.innerHTML = "";
-  const period = document.createElement("div");
-  period.style.cssText = "font-size:11px;color:#8b949e;margin-bottom:16px;";
-  period.textContent = "기간: " + from + " ~ " + to + " (추정치, 역률 0.85 기준)";
-  body.appendChild(period);
-  let grandTotal = 0;
-  panelOrder.forEach(pid => {
-    const panel = PANELS_CONFIG[pid], eData = energy[pid];
-    if (!panel || !eData) return;
-    const div = document.createElement("div"); div.className = "energy-panel";
-    let html = "<div class=\"energy-panel-name\">" + (panel.name||pid) + "</div>";
-    let panelTotal = 0;
-    Object.keys(panel.channels||{}).forEach(chKey => {
-      const ch = panel.channels[chKey], chData = eData.channels[chKey]; if (!chData) return;
-      html += "<div class=\"energy-row\"><span class=\"energy-ch-name\">" + (ch.name||chKey) + "</span><span class=\"energy-kwh\">" + chData.kwh.toLocaleString() + " kWh</span></div>";
-      panelTotal += chData.kwh;
-    });
-    panelTotal = Math.round(panelTotal*10)/10;
-    html += "<div class=\"energy-total\"><span style=\"color:#8b949e;\">소계</span><span style=\"color:#3fb950;\">" + panelTotal.toLocaleString() + " kWh</span></div>";
-    div.innerHTML = html; body.appendChild(div); grandTotal += panelTotal;
-  });
-  grandTotal = Math.round(grandTotal*10)/10;
-  const grand = document.createElement("div"); grand.className = "energy-grand";
-  grand.innerHTML = "<span class=\"energy-grand-label\">전체 합계</span><span class=\"energy-grand-val\">" + grandTotal.toLocaleString() + " kWh</span>";
-  body.appendChild(grand);
-}
+document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
 
 Portal.start({
-  appId: "load",
-  title: "설비별 부하 모니터링",
+  appId: 'load',
+  title: '설비별 부하 모니터링',
   onReady: async P => {
-    sb = P.sb;
-    try { await loadConfig(); await loadHistory(); init(); }
-    catch (e) { document.getElementById("panelsContainer").innerHTML = "<div style=\"padding:30px;color:#f85149;\">불러오기 실패: " + (e.message||e) + "<br>Supabase에 25번 SQL(25_load_monitor.sql)을 실행했는지 확인해 주세요.</div>"; }
+    sb = P.sb; document.getElementById('app').hidden = false;
+    const d = today(); trFrom = trTo = d; kwFrom = d.slice(0, 8) + '01'; kwTo = d;
+    try { await loadConfig(); show('now'); }
+    catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}<br>Supabase에 25번 SQL(25_load_monitor.sql)을 실행했는지 확인해 주세요.</div>`; }
   }
 });
 </script>
