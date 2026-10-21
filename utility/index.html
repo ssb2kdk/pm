@@ -1606,14 +1606,41 @@
       let h = `<div class="toolbar" style="margin-bottom:6px"><span class="chips">${[['elec', '전기'], ['gas', '가스']].map(([k, n]) => `<button class="chip ${uk === k ? 'on' : ''}" onclick="indU='${k}';renderIndicators()">${n}</button>`).join('')}</span>
         <span class="hint">${uk === 'elec' ? '<b>전기 전체 사용량</b>(파워플래너 · 생산동+폐수동+공조냉동 모두)' : '<b>보일러 가스</b>(식당 가스는 생산과 무관해 실측 그대로 더함)'}에 맞춤 · ${y}년 목표용 기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} <a href="#" onclick="switchTab('target');return false">(목표·예산 ①에서 바꿈)</a></span></div>`;
       h += `<div class="hint" style="margin-bottom:8px">지금 ${y}년 목표에 쓰는 지표: <b>${cur.length ? cur.map(facName).join(' · ') : '-'}</b> <span class="std-src ${I ? I.src : ''}" style="font-size:12px">${L ? '🔒 확정' : I && I.src === 'pick' ? '직접 고름' : '추천 1위 자동 (확정 전)'}</span></div>`;
-      h += `<div class="ind-cols"><div><h4 style="margin:4px 0">① 쓸 수 있는 지표 <span class="hint">눌러서 넣기/빼기</span> ${Portal.tip('r')}</h4><div class="tbl-wrap"><table class="t ind-tbl"><tr><th></th><th class="l">지표</th><th>단위</th><th>같이 움직임 r</th><th>자료 달</th></tr>` +
-        C.map(f => { const o = rOf(f), on = S0.includes(f); return `<tr class="${on ? 'sel' : ''}" onclick="indToggle('${f}')" style="cursor:pointer"><td><input type="checkbox" class="ind-chk" ${on ? 'checked' : ''} tabindex="-1"></td><td class="l">${facName(f)}</td><td>${facUnit(f)}</td><td>${o.r === null ? '-' : `<b style="color:${o.r >= 0.7 ? '#1d6b35' : o.r >= 0.4 ? '#8a5a00' : '#888'}">${o.r.toFixed(2)}</b>`}</td><td>${o.n}${o.n < b.length ? ' <span class="hint">(적음)</span>' : ''}</td></tr>`; }).join('') + '</table></div></div>';
+      // 하루 단위 r (생산한 날만, 기준 달 기간) — 월 단위 r과 같이 보고 판단
+      const dU = PD_UTIL[uk], dRows = []; if (PRODD && b.length) { const d0 = UT.dateStr(b[0], 1), d1e = UT.dateStr(b[b.length - 1], UT.daysIn(b[b.length - 1])), yst = UT.addDays(todayStr, -1), d1 = d1e > yst ? yst : d1e;
+        for (let ds = d0; ds <= d1; ds = UT.addDays(ds, 1)) { const r = pdRow(ds), v = dU.val(ds); if (!r.x.prod || v === null || v === undefined || isNaN(v)) continue; dRows.push({ r, v }); } }
+      const dOf = f => { const m = pdMap(f); if (!m || m[0] === 'prod') return null; const rs = dRows.filter(o => ok(o.r.x[m[0]])); if (rs.length < 20) return { r: null, n: rs.length }; const pr = pearson(rs.map(o => o.r.x[m[0]]), rs.map(o => o.v)); return { r: pr ? pr.r : null, n: rs.length }; };
+      const isWx = f => ['warm', 'hdd', 'hddOn'].includes(f) || /^(warm|cold)T:/.test(f), isDay = f => ['days', 'op', 'idle'].includes(f);
+      const judge = f => { const m = rOf(f), d = dOf(f), mr = m.r, dr = d ? d.r : null; let v, c;
+        if (mr === null) { v = '자료 부족'; c = 'hint'; }
+        else if (f === 'days') { v = '하루 기본 몫 — r로 판단 안 함 (28~31일이라 변화가 작아 r이 낮게 나옴)'; c = ''; }
+        else if (isDay(f)) { v = mr >= 0.5 ? '날수 지표 — 월 단위로만 판단' : '날수 지표 — 관계 약함'; c = mr >= 0.5 ? '' : 'hint'; }
+        else if (dr === null) { v = mr >= 0.6 ? '월 단위로만 확인' : '관계 약함'; c = 'hint'; }
+        else if (mr >= 0.6 && dr >= 0.3) { v = '⭐ 월·하루 모두 관계 있음'; c = 'good'; }
+        else if (mr >= 0.6) { v = isWx(f) ? '기온 — 월 단위로 판단 (하루는 계절 차이가 안 보임)' : '월에서만 — 우연·계절 겹침일 수 있음'; c = isWx(f) ? '' : 'warn'; }
+        else if (dr >= 0.3) { v = '하루엔 관계 있음 — 다른 지표와 같이 쓰면 효과'; c = ''; }
+        else { v = '관계 약함'; c = 'hint'; }
+        return { m, d, v, c, ok: v.startsWith('⭐') || f === 'days' || (isWx(f) && mr >= 0.6) || (isDay(f) && mr >= 0.5) || v.startsWith('하루엔') }; };
+      const J = Object.fromEntries(C.map(f => [f, judge(f)]));
+      const rc = r => r === null || r === undefined ? '-' : `<b style="color:${r >= 0.7 ? '#1d6b35' : r >= 0.4 ? '#8a5a00' : '#888'}">${r.toFixed(2)}</b>`;
+      h += `<div class="ind-cols"><div><h4 style="margin:4px 0">① 쓸 수 있는 지표 <span class="hint">눌러서 넣기/빼기</span> ${Portal.tip('rday')}</h4><div class="tbl-wrap"><table class="t ind-tbl"><tr><th></th><th class="l">지표</th><th>월 r<br><span class="hint">점 = 한 달</span></th><th>하루 r<br><span class="hint">점 = 생산한 날</span></th><th class="l">판단</th></tr>` +
+        C.map(f => { const j = J[f], on = S0.includes(f); return `<tr class="${on ? 'sel' : ''}" onclick="indToggle('${f}')" style="cursor:pointer"><td><input type="checkbox" class="ind-chk" ${on ? 'checked' : ''} tabindex="-1"></td><td class="l">${facName(f)} <span class="hint">${facUnit(f)}</span></td><td>${rc(j.m.r)}${j.m.n < b.length ? `<div class="hint">${j.m.n}달</div>` : ''}</td><td>${j.d ? rc(j.d.r) + `<div class="hint">${j.d.n}일</div>` : '<span class="hint">-</span>'}</td><td class="l ${j.c}" style="font-size:12px">${j.v}</td></tr>`; }).join('') + '</table></div></div>';
       // ② 추천 조합: 지표 1·2·3개 각각 교차검증 오차가 가장 작은 것
       const best = n => E.list.filter(m => m.feats.length === n).slice(0, 2);
       h += `<div><h4 style="margin:4px 0">② 추천 조합 <span class="hint">지표 ${C.length}개를 1·2·3개씩 모두 맞춰 봄 · 교차검증 오차 작은 순 · 눌러서 보기</span> ${Portal.tip('explore')}</h4><div class="tbl-wrap"><table class="t ind-rec"><tr><th>개수</th><th class="l">지표</th><th>월 오차</th><th>교차검증 오차</th><th>달</th></tr>` +
         [1, 2, 3].map(n => { const L2 = best(n); if (!L2.length) return `<tr><td>${n}개</td><td colspan="4" class="hint l">쓸 만한 조합 없음</td></tr>`;
           return L2.map((m, i) => `<tr class="${same(m.feats, S0) ? 'sel' : ''}" onclick="indSet('${m.feats.join(',')}')" style="${same(m.feats, S0) ? 'background:#eef4ff' : ''}"><td>${i === 0 ? `<b>${n}개</b>` : ''}</td><td class="l">${i === 0 ? '⭐ ' : ''}${m.feats.map(facName).join(' + ')}</td><td>±${nf1.format(m.mape)}%</td><td><b>±${nf1.format(m.cv)}%</b></td><td>${m.n}${m.n < b.length ? ' <span class="hint">적음</span>' : ''}</td></tr>`).join(''); }).join('') +
         `</table></div><div class="hint" style="margin-top:4px">빠지는 조합: 계수 마이너스(늘수록 덜 쓴다 — 말이 안 됨) · 지표끼리 r 0.8 넘게 겹침 · 자료 달 부족. 지표가 많을수록 월 오차는 줄지만 교차검증 오차(안 쓴 달 맞히기)가 커지면 우연히 맞은 것.</div></div></div>`;
+      // ★ 종합 추천: 교차검증 오차 + 지표 신뢰도(월·하루 r) + 지표 수(적을수록 설명 쉬움)
+      const pool = E.list.slice(0, 40).map(m => { const bad = m.feats.filter(f => !J[f] || !J[f].ok); return { m, bad, score: m.cv + bad.length * 2 + (m.feats.length - 1) * 0.3 + (m.n < b.length ? 1 : 0) }; }).sort((a2, b2) => a2.score - b2.score);
+      const top = pool[0], bestCv = E.list[0] ? E.list[0].cv : null;
+      if (top) { const m = top.m, why = [];
+        why.push(`교차검증 오차 <b>±${nf1.format(m.cv)}%</b>${bestCv !== null && m !== E.list[0] ? ` (가장 작은 조합 ±${nf1.format(bestCv)}%와 ${nf1.format(m.cv - bestCv)}%p 차이)` : ' (전체 1위)'}`);
+        why.push(top.bad.length ? `⚠ ${top.bad.map(facName).join(', ')}은 관계 확인이 약함` : `지표 ${m.feats.length}개 모두 관계 확인됨 (${m.feats.map(f => J[f].v.replace('⭐ ', '')).join(' / ')})`);
+        why.push(m.feats.length <= 2 ? `지표 ${m.feats.length}개라 설명이 쉬움` : '지표 3개 — 각각 몫이 분명한지 ③에서 확인');
+        if (m.n < b.length) why.push(`⚠ 자료가 ${m.n}개월뿐 — 연말 자료로 한 번 더 확인`);
+        h += `<div class="ind-res" style="border-color:#9fd3ae;background:#f3fbf5"><b>★ 종합 추천: ${m.feats.map(facName).join(' + ')}</b> ${same(m.feats, S0) ? '<span class="good">(지금 보고 있음)</span>' : `<button class="btn secondary small" onclick="indSet('${m.feats.join(',')}')">이 조합 보기</button>`}
+          <ul style="margin:4px 0 0 18px;padding:0;font-size:13px">${why.map(w => `<li>${w}</li>`).join('')}</ul><div class="hint" style="margin-top:2px">교차검증 오차가 가장 작은 조합을 기본으로, 관계 확인이 약한 지표가 들어 있거나 지표가 많으면 감점해서 고름 ${Portal.tip('indrec')}</div></div>`; }
       // ③ 고른 조합 결과
       h += `<div class="ind-res" id="ind-res">${indResultHtml(uk, S0, parts, I, L, ad, y)}</div>`;
       el.innerHTML = h;
