@@ -1692,6 +1692,7 @@
     function perSrc(ym, uk) { const st = S(ym)[uk].status; return st === '확정' ? 'bill' : st ? 'daily' : null; }
     const PER_SRC_TXT = { elec: ['고지서 사용량', '파워플래너 일일값 합산'], gas: ['고지서 사용량', '가스 일일 검침 합산'], water: ['고지서 사용량', '용수 일일 검침 합산'], ww: ['고지서 발생량', '폐수 일일 검침 합산'] };
     function renderPeriod() {
+      if (!document.getElementById('chart-period')) return; // 기간 비교 화면은 뺌 (현황 「항목별 추이」와 같은 내용)
       if (!window.Chart) return;
       setTimeout(renderPerElec, 0);
       if ((perGran === 'day' || perGran === 'week') && !PRODD && !perProdTried) { perProdTried = true; loadProdDaily().then(() => { if (document.getElementById('tab-period').classList.contains('active')) renderPeriod(); }).catch(() => {}); }

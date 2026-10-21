@@ -373,16 +373,6 @@
       <div id="tab-period" class="tab">
         <div class="story no-print"><b>2단계 · 지표 분석</b> — 올해 쌓은 자료로 <b>내년 목표에 쓸 지표</b>를 찾습니다. 쓸 수 있는 지표 중 추천 조합(1·2·3개)을 보거나 직접 골라 오차를 확인하고, 「이 지표로 목표 세우기」를 누르면 3단계 목표·예산이 그 지표로 계산됩니다.</div>
         <div class="card"><div id="ind-body"><div class="loading">불러오는 중...</div></div></div>
-        <details class="card fold" ontoggle="if(this.open)renderPeriod()"><summary><b>참고 · 기간 비교</b> <span class="hint">일·주·월·분기별 사용량·비용·원단위를 전년·전월과 비교</span></summary>
-        <div class="toolbar"><span class="chips" id="per-chips"></span><span class="hint">사용량 출처·같은 요일 비교 <span class="pt-tip" tabindex="0" role="button" data-tip="persrc" title="눌러서 설명 보기">ⓘ</span></span></div>
-        <div class="toolbar" id="per-range"></div>
-        <div style="margin-top:8px">
-          <h3 id="per-title"></h3>
-          <div class="hint" id="per-note" style="margin:-6px 0 8px"></div>
-          <div class="chart-box" style="height:340px"><canvas id="chart-period"></canvas></div>
-        </div>
-        <details class="fold"><summary><b>숫자 표</b> <span class="hint">기간별 이번·전년 동월·전월 값 — 눌러서 펼치기</span></summary><div class="tbl-wrap" id="per-table" style="margin-top:8px"></div></details>
-        </details>
         <details class="card fold" ontoggle="if(this.open)renderPerElec()"><summary><b>참고 · 구성별 그래프</b> <span class="hint">전기(생산동·폐수동·공조냉동) · 가스(보일러·식당) · 용수 · 폐수와 지표를 그래프로 같이 보기</span></summary><div id="per-elec" style="margin-top:8px"></div></details>
       </div>
 
@@ -2936,6 +2926,7 @@
     function perSrc(ym, uk) { const st = S(ym)[uk].status; return st === '확정' ? 'bill' : st ? 'daily' : null; }
     const PER_SRC_TXT = { elec: ['고지서 사용량', '파워플래너 일일값 합산'], gas: ['고지서 사용량', '가스 일일 검침 합산'], water: ['고지서 사용량', '용수 일일 검침 합산'], ww: ['고지서 발생량', '폐수 일일 검침 합산'] };
     function renderPeriod() {
+      if (!document.getElementById('chart-period')) return; // 기간 비교 화면은 뺌 (현황 「항목별 추이」와 같은 내용)
       if (!window.Chart) return;
       setTimeout(renderPerElec, 0);
       if ((perGran === 'day' || perGran === 'week') && !PRODD && !perProdTried) { perProdTried = true; loadProdDaily().then(() => { if (document.getElementById('tab-period').classList.contains('active')) renderPeriod(); }).catch(() => {}); }
@@ -4740,7 +4731,7 @@
     }
 
     // ---------------- 탭 ----------------
-    const loaders = { dash: renderDash, period: () => { renderIndicators(); const d = document.querySelector('#tab-period details'); if (d && d.open) renderPeriod(); }, target: () => renderTargets(), cause: renderCause, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief, expense: renderExpense, notes: renderNotes };
+    const loaders = { dash: renderDash, period: () => renderIndicators(), target: () => renderTargets(), cause: renderCause, daily: renderDaily, monthly: renderMonthly, report: renderReport, brief: renderBrief, expense: renderExpense, notes: renderNotes };
     function switchTab(t) {
       if (t === 'anom') { t = 'cause'; setTimeout(() => { const e = document.getElementById('cz-day'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); } // 예전 이상감지 → 원인 찾기 ②
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
