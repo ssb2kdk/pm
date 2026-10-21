@@ -360,7 +360,13 @@
       const rOf = f => { const rs = parts.filter(r => ok(facOf(r.ym, f))); const pr = rs.length >= 4 ? pearson(rs.map(r => facOf(r.ym, f)), rs.map(r => r.p.y)) : null; return { r: pr ? pr.r : null, n: rs.length }; };
       const b = parts.map(r => r.ym);
       let h = `<div class="toolbar" style="margin-bottom:6px"><span class="chips">${[['elec', '전기'], ['gas', '가스']].map(([k, n]) => `<button class="chip ${uk === k ? 'on' : ''}" onclick="indU='${k}';renderIndicators()">${n}</button>`).join('')}</span>
-        <span class="hint">${uk === 'elec' ? '<b>전기 전체 사용량</b>(파워플래너 · 생산동+폐수동+공조냉동 모두)' : '<b>보일러 가스</b>(식당 가스는 생산과 무관해 실측 그대로 더함)'}에 맞춤 · ${y}년 목표용 기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} <a href="#" onclick="switchTab('target');return false">(목표·예산 ①에서 바꿈)</a></span></div>`;
+        <span class="hint">${uk === 'elec' ? '<b>전기 전체 사용량</b>(파워플래너 · 생산동+폐수동+공조냉동 모두)' : '<b>보일러 가스</b>(식당 가스는 생산과 무관해 실측 그대로 더함)'}에 맞춤 · ${y}년 목표용 기준 달 ${b.length ? `${b[0].slice(2).replace('-', '.')} ~ ${b[b.length - 1].slice(2).replace('-', '.')} (${b.length}개월)` : '-'} (아래에서 바꿈)</span></div>`;
+      // 기준 기간 (지표를 맞출 달) — 목표·예산 ①의 기준 달과 같은 값 · 확정되면 못 바꿈
+      { const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
+        const base = baseMonths(t, y), auto = !(Array.isArray(t.base) && t.base.length), lk = isLocked(t), ro = !ad || lk;
+        h += `<div style="margin-bottom:8px"><b style="font-size:13px">기준 기간</b> <span class="hint">${auto ? '(자동: 마감된 최근 달 · 원육이 아주 적은 가동 초기 달 제외)' : '(직접 고름)'}${lk ? ' · 🔒 확정되어 바꿀 수 없음' : ro ? ' · 관리자만 바꿈' : ' · 눌러서 넣기/빼기'} ${Portal.tip('baseline')}</span>
+          <div class="chips" style="margin-top:4px">${cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="indBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('')}
+          ${!ro && !auto ? '<button class="chip" onclick="indBase(null)">자동으로 되돌리기</button>' : ''}</div></div>`; }
       h += `<div class="hint" style="margin-bottom:8px">지금 ${y}년 목표에 쓰는 지표: <b>${cur.length ? cur.map(facName).join(' · ') : '-'}</b> <span class="std-src ${I ? I.src : ''}" style="font-size:12px">${L ? '🔒 확정' : I && I.src === 'pick' ? '직접 고름' : '추천 1위 자동 (확정 전)'}</span></div>`;
       // 하루 단위 r (생산한 날만, 기준 달 기간) — 월 단위 r과 같이 보고 판단
       const dU = PD_UTIL[uk], dRows = []; if (PRODD && b.length) { const d0 = UT.dateStr(b[0], 1), d1e = UT.dateStr(b[b.length - 1], UT.daysIn(b[b.length - 1])), yst = UT.addDays(todayStr, -1), d1 = d1e > yst ? yst : d1e;
@@ -436,6 +442,11 @@
       const labels = R.rs.map(r => r.ym.slice(2).replace('-', '.')), act = R.rs.map(r => r.p.all), pr = R.rs.map((r, i) => R.pred[i] + r.p.fixed);
       mkChart('chart-ind', { type: 'bar', data: { labels, datasets: [{ label: '실제', data: act, backgroundColor: uk === 'elec' ? '#2a78d6' : '#eb6834', order: 2 }, { type: 'line', label: '고른 지표로 계산', data: pr, borderColor: '#222', backgroundColor: '#222', pointRadius: 3, borderWidth: 2, order: 1 }] },
         options: baseOpts(uk === 'elec' ? 'kWh' : 'MJ') });
+    }
+    async function indBase(ym) { // 기준 기간 넣기/빼기 → 바로 저장 (목표·예산 ① 기준 달과 같은 값)
+      const y = pickYear(); try { await freshYear(y); const t = JSON.parse(JSON.stringify(tgt(y))); if (isLocked(t)) return;
+        if (ym === null) delete t.base; else { const cur = baseMonths(t, y); t.base = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort(); }
+        await saveYear(y, { targets: t }); resetPickCache(); indSel.elec = null; indSel.gas = null; renderIndicators(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     function indToggle(f) { const a = indSel[indU] || []; indSel[indU] = a.includes(f) ? a.filter(x => x !== f) : [...a, f]; renderIndicators(); }
     function indSet(fs) { indSel[indU] = fs.split(','); renderIndicators(); }
