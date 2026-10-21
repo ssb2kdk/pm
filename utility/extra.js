@@ -1958,11 +1958,11 @@
         if (e !== null) { if (!PACK_FROM || d < PACK_FROM) PACK_FROM = d; if (a !== null) { let b = e; if (b < a) b += 1440; if (b - a > 0 && b - a <= 1440) D(d).pkM = (D(d).pkM || 0) + b - a; } } });
       // 완제품 EA = 외포장 EA + 잔량 (생산 대시보드 월별 현황의 「완제품 EA」와 같은 기준) — 시험 생산은 뺌
       OPD = null; OP_FROM = null;
-      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = (Number(x.outerEa) || 0) + (Number(x.remainEa) || 0); if (!d || x.testRun === true) return; /* 완제품 EA = 외포장 EA + 잔량 (대시보드와 같음 · 9월 FC 3KG 잔량 16으로 확인) · 시험 생산은 뺌 */ if (!OP_FROM || d < OP_FROM) OP_FROM = d;
+      if (Array.isArray(op)) { OPD = {}; op.forEach(x => { const d = String(x.date || '').slice(0, 10), n = (Number(x.outerEa) || 0) + (d >= OP_REMAIN_FROM ? (Number(x.remainEa) || 0) : 0); if (!d || x.testRun === true) return; /* 완제품 EA = 외포장 EA (+ 잔량: 5월부터 기록분만 — 3·4월 기록은 외포장 EA에 잔량이 이미 들어 있음, 대시보드와 달마다 맞춰 확인) · 시험 생산은 뺌 */ if (!OP_FROM || d < OP_FROM) OP_FROM = d;
         const name = String(x.product || '').trim() || '기타'; (OPD[d] = OPD[d] || []).push({ name, ea: n, test: x.testRun === true, inner: Number(x.innerEa) || 0, defect: Number(x.productDefect) || 0, remain: Number(x.remainEa) || 0, remainB: Number(x.remainBoxes) || 0, boxes: Number(x.outerBoxes) || 0, outer: Number(x.outerEa) || 0, sample: Number(x.sample) || 0, recs: 1 }); }); }
       return iv;
     }
-    let OPD = null, OP_FROM = null;
+    let OPD = null, OP_FROM = null; const OP_REMAIN_FROM = '2026-05-01';
     const isFC3 = n => /FC/i.test(n) && /3\s*kg/i.test(n);
     function boilerTime(o, d) {
       const x0 = BT && BT[d], h1 = v => Math.round(v / 6) / 10, sumIv = a => h1(a.reduce((t, m) => t + m[1] - m[0], 0));
@@ -2328,10 +2328,10 @@
           const L = Object.entries(m).sort((a, b) => b[1].ea - a[1].ea); if (!L.length) return '';
           const tot = L.reduce((a, [k, o]) => { const g = prodGram(k); a.ea += o.ea; a.kg += g ? o.ea * g.g / 1000 : 0; return a; }, { ea: 0, kg: 0 });
           return `<details class="fold" style="margin-top:8px"><summary><b>${ymLabel(dcYm)} 제품별 완제품 EA·중량</b> <span class="hint">— 생산 대시보드 월별 현황 「제품별 생산 현황」과 맞춰 보기 (외포장 완료 기준)</span></summary>
-            <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">제품</th><th>완제품 EA<br><span class="hint">외포장 + 잔량</span></th><th>1개 중량</th><th>완제품 중량 (kg)</th><th>기록 수</th><th>외포장 EA</th><th>외포장 박스</th><th>잔량 EA</th><th>잔량 박스</th><th>내포장 EA</th><th>불량</th><th>샘플</th></tr>` +
+            <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">제품</th><th>완제품 EA<br><span class="hint">외포장 (+ 잔량, 5월~)</span></th><th>1개 중량</th><th>완제품 중량 (kg)</th><th>기록 수</th><th>외포장 EA</th><th>외포장 박스</th><th>잔량 EA</th><th>잔량 박스</th><th>내포장 EA</th><th>불량</th><th>샘플</th></tr>` +
             L.map(([k, o]) => { const g = prodGram(k); return `<tr><td class="l">${esc(k)}${o.test ? ` <span class="hint">(시험 생산 ${f0(o.test)} 포함)</span>` : ''}</td><td>${f0(o.ea)}</td><td>${g ? f0(g.g) + 'g' : '<span class="warn">?</span>'}</td><td>${g ? nf1.format(o.ea * g.g / 1000) : '-'}</td><td>${o.n}</td><td>${f0(o.outer)}</td><td>${f0(o.boxes)}</td><td>${f0(o.remain)}</td><td>${f0(o.remainB)}</td><td>${f0(o.inner)}</td><td>${f0(o.defect)}</td><td>${f0(o.sample)}</td></tr>`; }).join('') +
             `<tr class="dc-sum"><td class="l">합계</td><td>${f0(tot.ea)}</td><td></td><td>${nf1.format(tot.kg)}</td><td colspan="8"></td></tr></table></div></details>`; })() +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품·EA는 <b>완제품 EA = 외포장 EA + 잔량</b> 기준(생산 대시보드 월별 현황의 「완제품 EA」와 같음, 시험 생산 제외)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품·EA는 <b>완제품 EA = 외포장 EA + 잔량</b>(26년 5월부터, 3·4월은 외포장 EA만) 기준(생산 대시보드 월별 현황의 「완제품 EA」와 같음, 시험 생산 제외)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
       h += prodGHtml() + dcCorrHtml();
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
