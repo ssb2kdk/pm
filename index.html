@@ -39,6 +39,10 @@
     .badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #fff; }
     .badge-admin { background: #2c5aa0; } .badge-user { background: #888; } .badge-partner { background: #1D9E75; } .badge-viewer { background: #c98a00; } .badge-off { background: #bbb; }
     .hint { font-size: 12px; color: #888; margin-top: 8px; }
+    .ub { margin: 6px 0 14px; } .ub .row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; } .ub .row b { font-size: 14px; }
+    .ub .bar { height: 14px; background: #eef1f5; border-radius: 7px; overflow: hidden; } .ub .bar i { display: block; height: 100%; border-radius: 7px; background: #1D9E75; }
+    .ub .bar i.w { background: #BA7517; } .ub .bar i.d { background: #A32D2D; }
+    table.ut { width: 100%; border-collapse: collapse; font-size: 12px; } table.ut td, table.ut th { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; text-align: right; } table.ut .l { text-align: left; } table.ut th { color: #888; font-weight: normal; }
   </style>
 </head>
 <body>
@@ -56,6 +60,10 @@
         <button class="btn" onclick="openUserModal()">+ 새 계정 만들기</button>
         <div class="users-wrap"><div id="user-list"><div class="loading">불러오는 중...</div></div></div>
         <div class="hint">일반: 조회·완료 처리·인쇄 / 관리자: 항목 관리·사용자 관리·설정까지. 사용 중지된 계정은 로그인해도 아무 데이터도 볼 수 없고, 기록은 그대로 남습니다.</div>
+      </div>
+      <div class="admin-section" id="usage-section" hidden>
+        <h3>📦 저장공간 사용량 <span style="font-size:12px;color:#888;font-weight:normal;">(Supabase 무료 한도 기준)</span> <button class="btn secondary" style="float:right;padding:4px 10px;font-size:12px" onclick="loadUsage()">새로고침</button></h3>
+        <div id="usage-body"><div class="loading">불러오는 중...</div></div>
       </div>
       <div class="admin-section" id="backup-section" hidden>
         <h3>💾 전체 데이터 백업 <span style="font-size:12px;color:#888;font-weight:normal;">(한 달에 한 번 받아 두기 권장)</span></h3>
@@ -104,7 +112,7 @@
         sb = P.sb; me = P.me;
         document.getElementById('welcome').textContent = `${me.name}님, 안녕하세요 👋`;
         renderApps();
-        if (P.isAdmin()) { document.getElementById('user-section').hidden = false; document.getElementById('backup-section').hidden = false; loadUsers(); }
+        if (P.isAdmin()) { document.getElementById('user-section').hidden = false; document.getElementById('backup-section').hidden = false; document.getElementById('usage-section').hidden = false; loadUsers(); loadUsage(); }
       }
     });
 
@@ -127,6 +135,28 @@
         <a class="link-card" href="${esc(l.url)}" target="_blank" rel="noopener">
           <span class="i">${l.icon || '🔗'}</span><span><div class="n">${esc(l.name)}</div><div class="d">${esc(l.desc || '')}</div></span><span class="ext">↗</span>
         </a>`).join('');
+    }
+
+
+    // ---------------- 저장공간 사용량 (관리자) ----------------
+    const LIM = { db: 500 * 1024 * 1024, st: 1024 * 1024 * 1024 };
+    const TB_NAME = { load_readings: '설비 부하 기록 (1분마다)', meter_daily: '설비검침', hook_readings: '후크메타 측정', hook_photos: '후크메타 사진 기록', pm_logs: '예방정비 이력', pm_items: '예방정비 항목', audit_log: '변경 기록', ut_daily: '유틸리티 일별', ut_monthly: '유틸리티 월별', ww_daily: '폐수 일지', air_daily: '대기 일지', insp_daily: '설비점검일지', insp_items: '설비점검 항목', ai_log: 'AI 기록', env_settings: '환경일지 설정', profiles: '사용자' };
+    const mb = b => (b / 1048576).toLocaleString('ko-KR', { maximumFractionDigits: b < 10485760 ? 2 : 1 }) + ' MB';
+    const ubar = (label, used, lim, sub) => { const pct = used / lim * 100, c = pct >= 90 ? 'd' : pct >= 70 ? 'w' : '';
+      return `<div class="ub"><div class="row"><span>${label}</span><span><b>${mb(used)}</b> / ${mb(lim)} · ${pct.toFixed(1)}%</span></div><div class="bar"><i class="${c}" style="width:${Math.max(0.5, Math.min(100, pct))}%"></i></div>${sub ? `<div class="hint" style="margin-top:4px">${sub}</div>` : ''}</div>`; };
+    async function loadUsage() {
+      const el = document.getElementById('usage-body');
+      const { data: u, error } = await sb.rpc('usage_info');
+      if (error) { el.innerHTML = `<div class="hint">불러오기 실패: ${esc(error.message)}<br>Supabase에 27번 SQL(27_usage_info.sql)을 실행했는지 확인해 주세요.</div>`; return; }
+      const st = (u.storage || []).reduce((a, b) => a + Number(b.bytes || 0), 0), tb = u.tables || [], ld = tb.find(t => t.name === 'load_readings');
+      let grow = '';
+      if (ld && ld.rows > 0 && u.load_day > 0) { const perDay = ld.bytes / ld.rows * u.load_day, left = LIM.db - u.db;
+        grow = `부하 기록이 하루 약 ${mb(perDay)}씩 늘고 있습니다 (하루 ${Number(u.load_day).toLocaleString()}건) → 이 속도면 약 <b>${left > 0 ? Math.floor(left / perDay / 30) : 0}개월</b> 뒤 한도에 닿습니다.`; }
+      el.innerHTML = ubar('🗄️ 데이터베이스 (표·기록)', u.db, LIM.db, grow) +
+        ubar('🖼️ 사진 저장소 (Storage)', st, LIM.st, (u.storage || []).map(b => `${esc(b.bucket)}: ${mb(Number(b.bytes))} · ${Number(b.files).toLocaleString()}장`).join(' / ') || '사진 없음') +
+        `<details><summary class="hint" style="cursor:pointer">표별 크기 보기</summary><table class="ut"><tr><th class="l">표</th><th>건수(대략)</th><th>크기</th><th>비율</th></tr>` +
+        tb.filter(t => t.bytes > 0).slice(0, 25).map(t => `<tr><td class="l">${esc(TB_NAME[t.name] || t.name)} <span class="hint">${TB_NAME[t.name] ? esc(t.name) : ''}</span></td><td>${Number(t.rows).toLocaleString()}</td><td>${mb(t.bytes)}</td><td>${(t.bytes / u.db * 100).toFixed(1)}%</td></tr>`).join('') + '</table></details>' +
+        `<div class="hint">· 무료 한도: 데이터베이스 500 MB, 사진 1 GB, 한 달 내려받기(egress) 5 GB — 내려받기 양은 Supabase 화면(Usage)에서만 보입니다.<br>· 데이터베이스 크기에는 기본 시스템 공간(수십 MB)이 포함되어 있어 표 합계보다 큽니다.<br>· 70% 넘으면 주황, 90% 넘으면 빨강. GitHub(화면 파일)는 1 GB 권장 한도인데 지금은 몇 MB 수준이라 신경 쓰지 않아도 됩니다.</div>`;
     }
 
     // ---------------- 전체 데이터 백업 (관리자) ----------------

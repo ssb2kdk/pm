@@ -184,7 +184,7 @@ async function renderKwh() {
     <div class="tbl-wrap"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}<th>합계</th></tr>` +
       days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map(x => `<td>${f1(x)}</td>`).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
       `<tr class="sum"><td class="l">합계</td>${tot.map(x => `<td>${f0(x)}</td>`).join('')}<td>${f0(all)}</td></tr></table></div>
-    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 1분 (1분마다 받은 값을 더함 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.</div></div>`;
+    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 측정 간격 (10분 넘게 끊긴 구간은 1분만 인정 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.</div></div>`;
   if (rows.length) mk('c-kwh', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: PANELS.map((p, i) => ({ label: p.name, data: days.map(d => [0, 1, 2].reduce((a, c) => a + ((M[d] || {})[key(p.id, c)] || 0), 0)), backgroundColor: ['#2a78d6', '#e5534b', '#1D9E75', '#eda100', '#7b61c4', '#555'][i % 6], stack: 's' })) },
     options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${f0(c.raw)} kWh` } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'kWh' } } } } });
 }
