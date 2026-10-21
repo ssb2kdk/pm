@@ -1,6 +1,7 @@
 // ============================================================
 // 옛 구글시트 부하 기록 → Supabase 옮기기 (한 번만 쓰는 스크립트)
-//  · 옛 부하 모니터링 앱스크립트 프로젝트에 새 파일로 붙여넣고 [importLoad] 실행
+//  · script.google.com → [새 프로젝트]에 이 파일만 붙여넣고 checkFiles → importLoad 순서로 실행
+//  · 지금 쓰는 시트(데이터_2026_10 있는 파일)도 옮기려면 그 주소도 FILE_IDS에 넣기
 //  · '데이터_YYYY_MM' 시트를 모두 읽어 보냄 (날짜 | 시간 | 분전반ID | CH0 | CH1 | CH2)
 //  · 6분 실행 제한에 걸리면 1분 뒤 자동으로 이어서 실행 → 다 끝나면 스스로 멈춤
 //  · 이미 들어간 시각은 건너뛰므로 여러 번 실행해도 중복되지 않음
@@ -20,8 +21,8 @@ const BATCH = 2000;         // 한 번에 보내는 줄 수
 const TIME_LIMIT = 270000;  // 4분 30초 지나면 멈추고 이어서 실행 예약
 
 function fileIds_() {
-  const me = SpreadsheetApp.getActiveSpreadsheet().getId();
-  return [me].concat(FILE_IDS.filter(String).map(u => { const m = String(u).match(/\/d\/([\w-]+)/); return m ? m[1] : String(u).trim(); }).filter(id => id !== me));
+  const act = SpreadsheetApp.getActiveSpreadsheet(), me = act ? act.getId() : '';   // 새 프로젝트(시트에 안 붙음)면 FILE_IDS만 사용
+  return (me ? [me] : []).concat(FILE_IDS.filter(String).map(u => { const m = String(u).match(/\/d\/([\w-]+)/); return m ? m[1] : String(u).trim(); }).filter(id => id !== me));
 }
 function open_(fid) {
   try { return SpreadsheetApp.openById(fid); }
@@ -93,3 +94,6 @@ function log_(ss, msg) { Logger.log(msg); }
 
 // 처음부터 다시 옮기고 싶을 때만 실행 (진행 위치 기억 지우기)
 function resetImport() { PropertiesService.getScriptProperties().getKeys().filter(k => k.indexOf('done:') === 0).forEach(k => PropertiesService.getScriptProperties().deleteProperty(k)); clearTriggers_(); Logger.log('초기화 완료'); }
+
+// 0단계: 앱스크립트 자체가 도는지 (이것도 오류면 계정·회사망 문제)
+function hello() { Logger.log('OK — 앱스크립트 정상'); }
