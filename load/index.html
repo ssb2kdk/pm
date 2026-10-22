@@ -70,6 +70,7 @@
         <button class="vtab on" data-v="now">실시간</button>
         <button class="vtab" data-v="trend">기간 그래프</button>
         <button class="vtab" data-v="kwh">전력량 (kWh)</button>
+        <button class="vtab" data-v="run">가동시간</button>
         <button class="vtab" data-v="set">설정</button>
       </div>
     </div></div>
@@ -78,7 +79,7 @@
   </div>
 <script>
 let sb = null, PANELS = [], CH = {}, LATEST = {}, view = 'now', nowHours = 6, timer = null, charts = {};
-let trFrom = null, trTo = null, trPanel = null, kwFrom = null, kwTo = null;
+let trFrom = null, trTo = null, trPanel = null, kwFrom = null, kwTo = null, rnFrom = null, rnTo = null, ASSIGN = [];
 const COLORS = ['#2a78d6', '#e5534b', '#1D9E75'];
 const p2 = n => String(n).padStart(2, '0');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -92,12 +93,17 @@ const isAdmin = () => Portal.isAdmin();
 function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
 const kwF = c => (c = c || {}, Number(c.phase) === 1 ? 1 : Math.sqrt(3)) * (Number(c.voltage) || 380) * (Number(c.pf) || 0.85) / 1000; // A → kW
 const chName = (pid, i) => (CH[pid] && CH[pid][i] && CH[pid][i].name) || ('CH' + i);
+// 측정 이력: 그 날짜에 이 채널이 재던 설비 이름 (이력 없으면 지금 이름)
+const asgAt = (pid, i, d) => ASSIGN.find(a => a.panel_id === pid && Number(a.ch) === i && a.d_from <= d && (!a.d_to || a.d_to >= d));
+const nameAt = (pid, i, d) => { const a = asgAt(pid, i, d); return a ? a.name : chName(pid, i); };
+function nameRange(pid, i, f, t) { const out = []; for (let d = f; d <= t; d = addDays(d, 1)) { const n = nameAt(pid, i, d); if (out[out.length - 1] !== n) out.push(n); if (out.length > 3) break; } return out.join(' → '); }
 
 async function loadConfig() {
   const [p, c] = await Promise.all([sb.from('load_panels').select('*').order('ord'), sb.from('load_channels').select('*')]);
   if (p.error) throw p.error; if (c.error) throw c.error;
   PANELS = p.data || []; CH = {};
   (c.data || []).forEach(x => { (CH[x.panel_id] = CH[x.panel_id] || [])[x.ch] = x; });
+  const a = await sb.from('load_assign').select('*').order('d_from'); ASSIGN = a.error ? [] : (a.data || []);
 }
 async function loadLatest() { const { data, error } = await sb.rpc('load_latest'); if (error) throw error; LATEST = {}; (data || []).forEach(r => { LATEST[r.panel_id] = r; }); }
 async function series(from, to, bucket) { // 1,000건씩 이어서 가져옴
@@ -111,8 +117,8 @@ async function series(from, to, bucket) { // 1,000건씩 이어서 가져옴
   return out;
 }
 function mk(id, cfg) { if (charts[id]) charts[id].destroy(); const el = document.getElementById(id); if (!el) return; charts[id] = new Chart(el, cfg); }
-function lineCfg(rows, pid, unit) {
-  return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: [0, 1, 2].map(i => ({ label: chName(pid, i), data: rows.map(r => r['ch' + i]), borderColor: COLORS[i], backgroundColor: COLORS[i], borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false })) },
+function lineCfg(rows, pid, unit, names) {
+  return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: [0, 1, 2].map(i => ({ label: names ? names[i] : chName(pid, i), data: rows.map(r => r['ch' + i]), borderColor: COLORS[i], backgroundColor: COLORS[i], borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false })) },
     options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
       plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { title: it => { const r = rows[it[0].dataIndex]; if (!r) return ''; const d = new Date(r.ts); return `${d.getMonth() + 1}/${d.getDate()} ${hm(d)}`; }, label: c => ` ${c.dataset.label}: ${f1(c.raw)} ${unit}` } } },
       scales: { x: { type: 'category', ticks: { maxTicksLimit: 8, font: { size: 10 }, callback: v => { const r = rows[v]; if (!r) return ''; const x = new Date(r.ts); return (rows.length > 600 ? `${x.getMonth() + 1}/${x.getDate()} ` : '') + hm(x); } } }, y: { beginAtZero: true, title: { display: true, text: unit, font: { size: 11 } } } } } };
@@ -142,13 +148,16 @@ async function renderNow() {
 
 // ---------------- 기간 그래프 ----------------
 function rangeBar(kind) {
-  const f = kind === 'tr' ? trFrom : kwFrom, t = kind === 'tr' ? trTo : kwTo, d = today();
+  const f = { tr: trFrom, kw: kwFrom, rn: rnFrom }[kind], t = { tr: trTo, kw: kwTo, rn: rnTo }[kind], d = today();
   const pre = kind === 'tr' ? [['오늘', d, d], ['어제', addDays(d, -1), addDays(d, -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]]
     : [['이번 달', d.slice(0, 8) + '01', d], ['지난달', (() => { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - 1); return x.toLocaleDateString('sv-SE'); })(), addDays(d.slice(0, 8) + '01', -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]];
   return `<div class="bar">${pre.map(([n, a, b]) => `<button class="chip ${f === a && t === b ? 'on' : ''}" onclick="setRange('${kind}','${a}','${b}')">${n}</button>`).join('')}
     <input type="date" value="${f}" onchange="setRange('${kind}',this.value,null)"> ~ <input type="date" value="${t}" onchange="setRange('${kind}',null,this.value)"></div>`;
 }
-function setRange(kind, a, b) { if (kind === 'tr') { if (a) trFrom = a; if (b) trTo = b; if (trTo < trFrom) trTo = trFrom; renderTrend(); } else { if (a) kwFrom = a; if (b) kwTo = b; if (kwTo < kwFrom) kwTo = kwFrom; renderKwh(); } }
+function setRange(kind, a, b) {
+  if (kind === 'tr') { if (a) trFrom = a; if (b) trTo = b; if (trTo < trFrom) trTo = trFrom; renderTrend(); }
+  else if (kind === 'rn') { if (a) rnFrom = a; if (b) rnTo = b; if (rnTo < rnFrom) rnTo = rnFrom; renderRun(); }
+  else { if (a) kwFrom = a; if (b) kwTo = b; if (kwTo < kwFrom) kwTo = kwFrom; renderKwh(); } }
 async function renderTrend() {
   const el = document.getElementById('body'); if (!trPanel) trPanel = PANELS[0] && PANELS[0].id;
   el.innerHTML = rangeBar('tr') + `<div class="bar">${PANELS.map(p => `<button class="chip ${trPanel === p.id ? 'on' : ''}" onclick="trPanel='${p.id}';renderTrend()">${esc(p.name)}</button>`).join('')}</div><div class="loading">불러오는 중...</div>`;
@@ -157,12 +166,12 @@ async function renderTrend() {
   const rows = S[trPanel] || [], p = PANELS.find(x => x.id === trPanel) || {}, cs = CH[trPanel] || [];
   const st = i => { const v = rows.map(r => r['ch' + i]).filter(x => x !== null && x !== undefined); if (!v.length) return null; const mx = Math.max(...v), at = rows.find(r => r['ch' + i] === mx);
     const lim = Number((cs[i] || {}).limit_a) || 0; return { mx, at, avg: v.reduce((a, b) => a + b, 0) / v.length, over: lim ? v.filter(x => x >= lim).length * bucket : 0, lim }; };
-  const T = [0, 1, 2].map(st);
+  const T = [0, 1, 2].map(st), NM = [0, 1, 2].map(i => nameRange(trPanel, i, trFrom, trTo));
   el.querySelector('.loading').outerHTML = `<div class="card"><h3>${esc(p.name || '')} <span class="when">${trFrom} ~ ${trTo} · ${bucket}분마다 최댓값</span></h3>
     ${rows.length ? `<div class="big"><canvas id="c-trend"></canvas></div>
     <table class="t" style="margin-top:10px"><tr><th class="l">채널</th><th>최대 전류</th><th>최대 시각</th><th>평균 전류</th><th>평균 kW</th><th>기준</th><th>기준 넘은 시간</th></tr>` +
-      T.map((o, i) => `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(chName(trPanel, i))}</td><td class="${o && o.lim && o.mx >= o.lim ? 'over-t' : ''}">${o ? f1(o.mx) + ' A' : '-'}</td><td>${o && o.at ? new Date(o.at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td><td>${o ? f1(o.avg) + ' A' : '-'}</td><td>${o ? f1(o.avg * kwF(cs[i])) : '-'}</td><td>${o && o.lim ? f0(o.lim) + ' A' : '-'}</td><td class="${o && o.over ? 'over-t' : ''}">${o && o.lim ? (o.over ? `약 ${o.over}분` : '없음') : '-'}</td></tr>`).join('') + '</table>' : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
-  if (rows.length) mk('c-trend', lineCfg(rows, trPanel, 'A'));
+      T.map((o, i) => `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(NM[i])}</td><td class="${o && o.lim && o.mx >= o.lim ? 'over-t' : ''}">${o ? f1(o.mx) + ' A' : '-'}</td><td>${o && o.at ? new Date(o.at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td><td>${o ? f1(o.avg) + ' A' : '-'}</td><td>${o ? f1(o.avg * kwF(cs[i])) : '-'}</td><td>${o && o.lim ? f0(o.lim) + ' A' : '-'}</td><td class="${o && o.over ? 'over-t' : ''}">${o && o.lim ? (o.over ? `약 ${o.over}분` : '없음') : '-'}</td></tr>`).join('') + '</table>' : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
+  if (rows.length) mk('c-trend', lineCfg(rows, trPanel, 'A', NM));
 }
 
 // ---------------- 전력량 (kWh) ----------------
@@ -182,9 +191,9 @@ async function renderKwh() {
       <div class="card" style="border-color:#1a1a1a"><div class="hint">전체 합계</div><div style="font-size:22px;font-weight:700">${f0(all)} <small style="font-size:12px;color:#888">kWh</small></div><div class="hint">${days.length}일 · 하루 평균 ${f0(all / days.length)} kWh</div></div></div>
     <div class="card"><div class="big"><canvas id="c-kwh"></canvas></div>
     <div class="tbl-wrap"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}<th>합계</th></tr>` +
-      days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map(x => `<td>${f1(x)}</td>`).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
+      days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map((x, j) => { const a = asgAt(cols[j].p.id, cols[j].c, d); return a ? `<td style="background:var(--amber-bg)" title="이 날은 ${esc(a.name)} 측정">${f1(x)}</td>` : `<td>${f1(x)}</td>`; }).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
       `<tr class="sum"><td class="l">합계</td>${tot.map(x => `<td>${f0(x)}</td>`).join('')}<td>${f0(all)}</td></tr></table></div>
-    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 측정 간격 (10분 넘게 끊긴 구간은 1분만 인정 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.</div></div>`;
+    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 측정 간격 (10분 넘게 끊긴 구간은 1분만 인정 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.${ASSIGN.length ? '<br><span style="background:var(--amber-bg);padding:0 4px">주황 칸</span> = 측정 이력상 그 날은 다른 설비를 잰 값 (칸에 마우스를 올리면 설비 이름)' : ''}</div></div>`;
   if (rows.length) mk('c-kwh', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: PANELS.map((p, i) => ({ label: p.name, data: days.map(d => [0, 1, 2].reduce((a, c) => a + ((M[d] || {})[key(p.id, c)] || 0), 0)), backgroundColor: ['#2a78d6', '#e5534b', '#1D9E75', '#eda100', '#7b61c4', '#555'][i % 6], stack: 's' })) },
     options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${f0(c.raw)} kWh` } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'kWh' } } } } });
 }
@@ -193,38 +202,104 @@ async function renderKwh() {
 let SET = null;
 function renderSet() {
   const el = document.getElementById('body'), ad = isAdmin();
-  SET = SET || { panels: PANELS.map(p => ({ ...p })), ch: PANELS.map(p => [0, 1, 2].map(i => ({ panel_id: p.id, ch: i, name: '', limit_a: 0, voltage: 380, phase: 3, pf: 0.85, ord: i, ...((CH[p.id] || [])[i] || {}) }))) };
+  SET = SET || { panels: PANELS.map(p => ({ ...p })), ch: PANELS.map(p => [0, 1, 2].map(i => ({ panel_id: p.id, ch: i, name: '', limit_a: 0, on_a: null, voltage: 380, phase: 3, pf: 0.85, ord: i, ...((CH[p.id] || [])[i] || {}) }))) };
   const inp = (pi, ci, k, v, type = 'text', w = '100%') => ad ? `<input data-pi="${pi}" data-ci="${ci}" data-k="${k}" type="${type}" step="any" value="${esc(v ?? '')}" style="width:${w}">` : esc(v ?? '');
   el.innerHTML = `<div class="bar"><span class="hint">${ad ? '분전반 이름, 채널(설비) 이름, 기준 전류, 전압·상·역률을 고친 뒤 [저장]' : '설정은 관리자만 바꿀 수 있습니다'}</span>${ad ? '<button class="btn" style="margin-left:auto" onclick="saveSet()">저장</button>' : ''}</div>` +
     SET.panels.map((p, pi) => `<div class="card set" style="margin-bottom:10px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:13px;color:#888">${esc(p.id)}</b>
         <span style="flex:1;min-width:200px">${ad ? `<input data-pi="${pi}" data-k="pname" value="${esc(p.name)}" placeholder="분전반 이름 (예: P-레토르트)" style="font-size:15px;font-weight:700">` : `<b>${esc(p.name)}</b>`}</span>
         <span class="hint">순서</span><span style="width:60px">${ad ? `<input data-pi="${pi}" data-k="pord" type="number" value="${esc(p.ord)}">` : esc(p.ord)}</span></div>
-      <table class="t" style="margin-top:8px"><tr><th class="l">채널</th><th class="l">설비 이름</th><th>기준 전류 (A)</th><th>전압 (V)</th><th>상</th><th>역률</th><th>1A당 kW</th></tr>` +
-      SET.ch[pi].map((c, ci) => `<tr><td class="l">CH${ci}</td><td class="l">${inp(pi, ci, 'name', c.name, 'text')}</td><td style="width:110px">${inp(pi, ci, 'limit_a', c.limit_a, 'number')}</td><td style="width:90px">${inp(pi, ci, 'voltage', c.voltage, 'number')}</td>
+      <table class="t" style="margin-top:8px"><tr><th class="l">채널</th><th class="l">설비 이름</th><th>기준 전류 (A)</th><th>가동 기준 (A)</th><th>전압 (V)</th><th>상</th><th>역률</th><th>1A당 kW</th></tr>` +
+      SET.ch[pi].map((c, ci) => `<tr><td class="l">CH${ci}</td><td class="l">${inp(pi, ci, 'name', c.name, 'text')}</td><td style="width:110px">${inp(pi, ci, 'limit_a', c.limit_a, 'number')}</td><td style="width:110px">${inp(pi, ci, 'on_a', c.on_a, 'number')}</td><td style="width:90px">${inp(pi, ci, 'voltage', c.voltage, 'number')}</td>
         <td style="width:90px">${ad ? `<select data-pi="${pi}" data-ci="${ci}" data-k="phase"><option value="3" ${Number(c.phase) !== 1 ? 'selected' : ''}>3상</option><option value="1" ${Number(c.phase) === 1 ? 'selected' : ''}>단상</option></select>` : (Number(c.phase) === 1 ? '단상' : '3상')}</td>
         <td style="width:80px">${inp(pi, ci, 'pf', c.pf, 'number')}</td><td>${kwF(c).toFixed(3)}</td></tr>`).join('') + '</table></div>').join('') +
-    `<div class="hint">· 쉘리 1대 = 분전반 1개. 쉘리 스크립트의 PANEL_ID(panel_1~5)와 위 회색 글자(id)가 짝입니다.<br>· 채널 = 쉘리 CT 3개(CH0·1·2). 설비 하나를 3상으로 재면 각 상 전류, 설비 3개를 각각 재면 설비별 전류입니다.<br>· 기준 전류를 넣으면 실시간 화면에서 85% 넘으면 주황, 100% 넘으면 빨강 · 기간 그래프에 넘은 시간 표시.<br>· kW = 전류 × (3상이면 √3) × 전압 × 역률 ÷ 1000</div>`;
+    `<div class="hint">· 쉘리 1대 = 분전반 1개. 쉘리 스크립트의 PANEL_ID(panel_1~5)와 위 회색 글자(id)가 짝입니다.<br>· 채널 = 쉘리 CT 3개(CH0·1·2). 설비 하나를 3상으로 재면 각 상 전류, 설비 3개를 각각 재면 설비별 전류입니다.<br>· 기준 전류를 넣으면 실시간 화면에서 85% 넘으면 주황, 100% 넘으면 빨강 · 기간 그래프에 넘은 시간 표시.<br>· <b>가동 기준</b>: 이 전류 이상이면 「돌고 있음」으로 봅니다 → 「가동시간」 탭에 켠·끈 시각과 가동시간이 나옵니다. 기간 그래프에서 멈춰 있을 때 전류와 돌 때 전류 사이 값을 넣으세요 (비우면 계산 안 함).<br>· kW = 전류 × (3상이면 √3) × 전압 × 역률 ÷ 1000</div>` + assignHtml(ad);
   el.querySelectorAll('input[data-pi], select[data-pi]').forEach(x => x.addEventListener('change', () => {
     const pi = Number(x.dataset.pi), k = x.dataset.k;
     if (k === 'pname') SET.panels[pi].name = x.value; else if (k === 'pord') SET.panels[pi].ord = Number(x.value) || 0;
-    else SET.ch[pi][Number(x.dataset.ci)][k] = k === 'name' ? x.value : Number(x.value);
+    else SET.ch[pi][Number(x.dataset.ci)][k] = k === 'name' ? x.value : k === 'on_a' ? (x.value === '' ? null : Number(x.value)) : Number(x.value);
     if (['voltage', 'phase', 'pf'].includes(k)) renderSet();
   }));
 }
 async function saveSet() {
   try {
     for (const p of SET.panels) { const { error } = await sb.from('load_panels').update({ name: p.name || p.id, ord: p.ord || 0 }).eq('id', p.id); if (error) throw error; }
-    const rows = SET.ch.flat().map(c => ({ panel_id: c.panel_id, ch: c.ch, name: c.name || '', limit_a: Number(c.limit_a) || 0, voltage: Number(c.voltage) || 380, phase: Number(c.phase) === 1 ? 1 : 3, pf: Number(c.pf) || 0.85, ord: c.ord ?? c.ch }));
+    const rows = SET.ch.flat().map(c => ({ panel_id: c.panel_id, ch: c.ch, name: c.name || '', limit_a: Number(c.limit_a) || 0, on_a: c.on_a === null || c.on_a === undefined || c.on_a === '' ? null : Number(c.on_a), voltage: Number(c.voltage) || 380, phase: Number(c.phase) === 1 ? 1 : 3, pf: Number(c.pf) || 0.85, ord: c.ord ?? c.ch }));
     const { error } = await sb.from('load_channels').upsert(rows, { onConflict: 'panel_id,ch' }); if (error) throw error;
     await loadConfig(); SET = null; toast('저장했습니다'); renderSet();
   } catch (e) { alert('저장 실패: ' + (e.message || e)); }
 }
 
+// ---------------- 측정 이력 (쉘리를 옮겨 다른 설비를 잰 기간) ----------------
+function assignHtml(ad) {
+  const pOpt = PANELS.map(p => `<option value="${p.id}">${esc(p.name)} (${p.id})</option>`).join('');
+  return `<div class="card" style="margin-top:14px"><h3>📍 측정 이력 <span class="when">쉘리를 옮겨 잠시 다른 설비를 잰 기간</span></h3>
+    <div class="hint" style="margin:6px 0">여기 적은 기간에는 그래프·전력량 표에 지금 이름 대신 이 이름이 나옵니다. 기간이 없는 날은 위 「설비 이름」을 씁니다. 끝 날짜를 비우면 「지금까지」.</div>
+    <table class="t"><tr><th class="l">분전반</th><th class="l">채널</th><th class="l">시작</th><th class="l">끝</th><th class="l">그때 잰 설비</th><th class="l">메모</th>${ad ? '<th></th>' : ''}</tr>` +
+    (ASSIGN.length ? ASSIGN.map(a => `<tr><td class="l">${esc((PANELS.find(p => p.id === a.panel_id) || {}).name || a.panel_id)}</td><td class="l">CH${a.ch} <span class="hint">(지금: ${esc(chName(a.panel_id, Number(a.ch)))})</span></td><td class="l">${a.d_from}</td><td class="l">${a.d_to || '지금까지'}</td><td class="l"><b>${esc(a.name)}</b></td><td class="l">${esc(a.memo || '')}</td>${ad ? `<td><button class="chip" onclick="delAssign(${a.id})">삭제</button></td>` : ''}</tr>`).join('') : `<tr><td class="l" colspan="7" style="color:#888">아직 없음</td></tr>`) +
+    (ad ? `<tr class="set"><td><select id="as-p">${pOpt}</select></td><td><select id="as-c"><option value="0">CH0</option><option value="1">CH1</option><option value="2">CH2</option></select></td><td><input type="date" id="as-f"></td><td><input type="date" id="as-t"></td><td><input id="as-n" placeholder="예: 에어컴프레셔3"></td><td><input id="as-m" placeholder="메모 (선택)"></td><td><button class="chip on" onclick="addAssign()">추가</button></td></tr>` : '') + `</table>
+    <details style="margin-top:10px" ontoggle="if(this.open)findChanges()"><summary class="hint" style="cursor:pointer">🔎 언제 옮겼는지 데이터로 찾아보기 (채널별 하루 전력량 변화)</summary><div id="chg-body" class="loading">계산 중...</div></details></div>`;
+}
+async function addAssign() {
+  const v = id => document.getElementById(id).value.trim();
+  const row = { panel_id: v('as-p'), ch: Number(v('as-c')), d_from: v('as-f'), d_to: v('as-t') || null, name: v('as-n'), memo: v('as-m') || null };
+  if (!row.d_from || !row.name) { alert('시작 날짜와 설비 이름을 넣어 주세요'); return; }
+  if (row.d_to && row.d_to < row.d_from) { alert('끝 날짜가 시작보다 빠릅니다'); return; }
+  const { error } = await sb.from('load_assign').insert(row); if (error) { alert('저장 실패: ' + error.message + '\n(28번 SQL을 실행했는지 확인)'); return; }
+  await loadConfig(); SET = null; toast('추가했습니다'); renderSet();
+}
+async function delAssign(id) {
+  if (!confirm('이 측정 이력을 지울까요?')) return;
+  const { error } = await sb.from('load_assign').delete().eq('id', id); if (error) { alert('삭제 실패: ' + error.message); return; }
+  await loadConfig(); SET = null; renderSet();
+}
+// 채널별 하루 kWh를 색으로 — 갑자기 크게 바뀐 날(쉘리를 옮긴 날 후보)을 표시
+async function findChanges() {
+  const el = document.getElementById('chg-body'); if (!el || el.dataset.done) return;
+  const to = today(), from = addDays(to, -180); let rows = [];
+  try { for (let o = 0; o < 30; o++) { const { data, error } = await sb.rpc('load_energy', { p_from: kst(from).toISOString(), p_to: new Date(kst(to).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
+  catch (e) { el.textContent = '불러오기 실패: ' + (e.message || e); return; }
+  const days = [...new Set(rows.map(r => r.d))].sort(), M = {}; rows.forEach(r => { M[r.d + '|' + r.panel_id + '|' + r.ch] = Number(r.kwh) || 0; });
+  const cols = []; PANELS.forEach(p => [0, 1, 2].forEach(c => cols.push({ p, c })));
+  const mx = cols.map(o => Math.max(1, ...days.map(d => M[d + '|' + o.p.id + '|' + o.c] || 0)));
+  // 앞뒤 7일 평균이 2배 넘게(또는 절반 아래로) 바뀐 날 = 변화 후보
+  const avg = (o, a, b) => { const v = []; for (let i = a; i < b; i++) if (days[i]) v.push(M[days[i] + '|' + o.p.id + '|' + o.c] || 0); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+  const cand = [];
+  cols.forEach((o, j) => { let last = -99; days.forEach((d, i) => { if (i < 7 || i > days.length - 7) return; const b = avg(o, i - 7, i), a = avg(o, i, i + 7); if (b === null || a === null) return; const hi = Math.max(a, b), lo = Math.max(Math.min(a, b), mx[j] * 0.03);
+    if (hi / lo >= 2 && hi > mx[j] * 0.15 && i - last > 7) { cand.push({ d, o, b, a }); last = i; } }); });
+  el.dataset.done = 1; el.className = '';
+  el.innerHTML = (cand.length ? `<div style="margin:8px 0"><b style="font-size:13px">변화 후보</b> <span class="hint">(앞 7일과 뒤 7일 평균이 2배 넘게 차이 나는 날 — 설비를 옮겼거나, 설비 가동이 바뀐 날)</span><ul style="margin:4px 0;padding-left:18px;font-size:13px">${cand.map(c => `<li>${c.d} · ${esc(c.o.p.name)} CH${c.o.c} (${esc(chName(c.o.p.id, c.o.c))}) — 하루 ${f0(c.b)} → ${f0(c.a)} kWh</li>`).join('')}</ul></div>` : '<div class="hint" style="margin:8px 0">뚜렷한 변화 후보는 없습니다.</div>') +
+    `<div class="tbl-wrap" style="max-height:420px"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}</tr>` +
+    days.map(d => `<tr><td class="l">${d.slice(2).replace(/-/g, '/')}</td>${cols.map((o, j) => { const v = M[d + '|' + o.p.id + '|' + o.c] || 0, r = v / mx[j]; return `<td style="background:rgba(24,95,165,${(r * 0.85).toFixed(2)});color:${r > 0.55 ? '#fff' : '#333'}">${f0(v)}</td>`; }).join('')}</tr>`).join('') + '</table></div><div class="hint">색이 진할수록 그 채널 최대치에 가까움 (단위 kWh/일). 색이 갑자기 바뀌는 곳이 옮긴 날 후보입니다.</div>';
+}
+
+// ---------------- 가동시간 (가동 기준 전류 이상인 시간) ----------------
+async function renderRun() {
+  const el = document.getElementById('body');
+  const on = []; PANELS.forEach(p => [0, 1, 2].forEach(c => { const x = (CH[p.id] || [])[c]; if (x && x.on_a !== null && x.on_a !== undefined) on.push({ p, c, on_a: Number(x.on_a) }); }));
+  if (!on.length) { el.innerHTML = `<div class="empty">가동 기준 전류가 들어간 채널이 없습니다.<br>「설정」 탭에서 보일러·컴프레셔 등의 <b>가동 기준 (A)</b>를 넣어 주세요.</div>`; return; }
+  el.innerHTML = rangeBar('rn') + '<div class="loading">계산 중...</div>';
+  let rows = [];
+  try { for (let o = 0; o < 20; o++) { const { data, error } = await sb.rpc('load_runtime', { p_from: kst(rnFrom).toISOString(), p_to: new Date(kst(rnTo).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
+  catch (e) { el.querySelector('.loading').innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 28번 SQL(28_load_runtime.sql)을 실행했는지 확인해 주세요.'; return; }
+  const R = {}; rows.forEach(r => { R[r.d + '|' + r.panel_id + '|' + r.ch] = r; });
+  const days = []; for (let d = rnFrom; d <= rnTo; d = addDays(d, 1)) days.push(d);
+  const tm = t => t ? hm(new Date(t)) : '-', hr = m => (Number(m) / 60).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+  const sum = on.map(o => { const v = days.map(d => R[d + '|' + o.p.id + '|' + o.c]).filter(Boolean); const m = v.reduce((a, r) => a + Number(r.run_min || 0), 0), dd = v.filter(r => Number(r.run_min) > 0).length;
+    return { m, dd, st: v.reduce((a, r) => a + Number(r.starts || 0), 0) }; });
+  el.querySelector('.loading').outerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:10px">${on.map((o, j) => `<div class="card"><div class="hint">${esc(o.p.name)} · 기준 ${f1(o.on_a)} A 이상</div><div style="font-size:15px;font-weight:700;margin:2px 0">${esc(nameRange(o.p.id, o.c, rnFrom, rnTo))}</div>
+      <div style="font-size:22px;font-weight:700">${hr(sum[j].m)} <small style="font-size:12px;color:#888">시간</small></div><div class="hint">돈 날 ${sum[j].dd}일 · 하루 평균 ${sum[j].dd ? hr(sum[j].m / sum[j].dd) : 0}시간 · 켠 횟수 ${sum[j].st}회</div></div>`).join('')}</div>
+    <div class="card"><div class="tbl-wrap"><table class="t"><tr><th class="l" rowspan="2">날짜</th>${on.map(o => `<th colspan="3" style="text-align:center">${esc(o.p.name)} · ${esc(chName(o.p.id, o.c))}</th>`).join('')}</tr>
+      <tr>${on.map(() => '<th>처음 켠 시각</th><th>마지막 끈 시각</th><th>가동 (켠 횟수)</th>').join('')}</tr>` +
+      days.map(d => `<tr><td class="l">${d.slice(5).replace('-', '/')} <span class="hint">${'일월화수목금토'[new Date(d + 'T00:00:00').getDay()]}</span></td>${on.map(o => { const r = R[d + '|' + o.p.id + '|' + o.c], a = asgAt(o.p.id, o.c, d), bg = a ? ' style="background:var(--amber-bg)"' : '';
+        return !r || !Number(r.run_min) ? `<td${bg}>-</td><td${bg}>-</td><td${bg} style="color:#aaa">${r ? '안 돎' : '기록 없음'}</td>` : `<td${bg}>${tm(r.first_on)}</td><td${bg}>${tm(r.last_off)}</td><td${bg}><b>${hr(r.run_min)}h</b> <span class="hint">(${r.starts}회)</span></td>`; }).join('')}</tr>`).join('') + `</table></div>
+    <div class="hint" style="margin-top:6px">· 가동 = 전류가 「설정」의 가동 기준 이상인 시간의 합 · 켠 횟수 = 기준 아래 → 위로 올라간 횟수 (자주 켜졌다 꺼지면 많아짐)<br>· 처음 켠 시각·마지막 끈 시각은 그날 0시~24시 기준 · 밤새 돌면 00:00 / 24:00 근처로 나옵니다.${ASSIGN.length ? '<br>· 주황 칸 = 측정 이력상 그 날은 다른 설비를 잰 값' : ''}</div></div>`;
+}
+
 function show(v) {
   view = v; clearTimeout(timer);
   document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  if (v === 'now') renderNow(); else if (v === 'trend') renderTrend(); else if (v === 'kwh') renderKwh(); else { SET = null; renderSet(); }
+  if (v === 'now') renderNow(); else if (v === 'trend') renderTrend(); else if (v === 'kwh') renderKwh(); else if (v === 'run') renderRun(); else { SET = null; renderSet(); }
 }
 document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
 
@@ -233,7 +308,7 @@ Portal.start({
   title: '설비별 부하 모니터링',
   onReady: async P => {
     sb = P.sb; document.getElementById('app').hidden = false;
-    const d = today(); trFrom = trTo = d; kwFrom = d.slice(0, 8) + '01'; kwTo = d;
+    const d = today(); trFrom = trTo = d; kwFrom = d.slice(0, 8) + '01'; kwTo = d; rnFrom = addDays(d, -6); rnTo = d;
     try { await loadConfig(); show('now'); }
     catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}<br>Supabase에 25번 SQL(25_load_monitor.sql)을 실행했는지 확인해 주세요.</div>`; }
   }
