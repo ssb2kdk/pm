@@ -155,7 +155,7 @@ async function renderNow() {
           ${lim ? `<div class="lim"><i style="width:${Math.min(100, pct || 0)}%"></i></div><div class="lt">기준 ${f0(lim)} A · ${pct === null ? '-' : f0(pct) + '%'}</div>` : '<div class="lt">기준 미설정</div>'}</div>`; }).join('') +
       `</div><div class="mini"><canvas id="m-${p.id}"></canvas></div></div>`;
   });
-  el.innerHTML = h + '</div>';
+  el.innerHTML = backupBanner() + h + '</div>';
   const to = new Date(), from = new Date(to.getTime() - nowHours * 3600000);
   try { const S = await series(from, to, nowHours <= 6 ? 1 : 5); PANELS.forEach(p => { mk('m-' + p.id, lineCfg(S[p.id] || [], p.id, 'A')); zoomable('m-' + p.id, p.id, from, to); }); } catch (e) { }
   clearTimeout(timer); timer = setTimeout(() => { if (view === 'now') renderNow(); }, 60000);
@@ -359,14 +359,15 @@ function compactHtml() {
     <div class="hint" style="margin:6px 0">· <b>오늘</b>만 1분 기록 그대로, 지난 날은 <b>10분마다 최댓값·평균값</b>만 남깁니다 (용량 약 1/7). 매일 새벽 3시 30분에 어제 치가 자동으로 정리됩니다.<br>
     · 정리하기 전에 그날 <b>kWh와 가동시간을 1분 기록으로 계산해 보관</b>합니다 → 숫자는 1분 단위 그대로. (가동 기준을 나중에 바꾸면 지난 날 가동시간은 10분 평균으로 다시 계산되니, 가동 기준은 먼저 넣어 두세요)<br>
     · 지우기 전에 그날 kWh를 1분 기록으로 정확히 계산해 두므로 <b>전력량(kWh)은 그대로</b>, 기간 그래프는 오래된 날이 10분 단위(최댓값)로 보입니다.<br>
-    · 월별 CSV: 1분 기록이 남아 있는 날(오늘)은 1분, 지난 날은 10분 요약(최댓값·평균)으로 받습니다 (엑셀로 열림). 6~10월 옛 1분 기록은 구글시트 백업이 있습니다.</div>
+    · <b>1분 기록 원본은 하루 1줄로 압축해서 자동 보관</b>됩니다 (손실 없음, 1년 약 30~40 MB) → 아래에서 아무 달이나 1분 기록 CSV로 받을 수 있습니다 (엑셀로 열림).<br>
+    · 회사 PC에도 따로 두려면 매달 초 이 화면에 뜨는 「지난달 백업 받기」를 눌러 주세요.</div>
     <div class="bar"><select id="cv-m" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:8px">${ms.map(m => `<option>${m}</option>`).join('')}</select>
       <button class="chip" onclick="csvMonth()">⬇ 이 달 기록 CSV 받기</button>
       <button class="chip" style="margin-left:auto" onclick="compactNow()">🗜️ 지금 정리하기</button></div>
     <div class="hint" id="cv-st"></div></div>`;
 }
-async function csvMonth() {
-  const m = document.getElementById('cv-m').value, st = document.getElementById('cv-st'); let out = ['날짜,시간,분전반ID,CH0(A),CH1(A),CH2(A),CH0평균,CH1평균,CH2평균,구분(1분 값 / 10분 최댓값)'], n = 0;
+async function csvMonth(mm) {
+  const m = mm || document.getElementById('cv-m').value, st = document.getElementById('cv-st') || document.getElementById('bk-st') || { set textContent(v) {} }; let out = ['날짜,시간,분전반ID,CH0(A),CH1(A),CH2(A),CH0평균,CH1평균,CH2평균,구분(1분 값 / 10분 최댓값)'], n = 0;
   for (let d = m + '-01'; d.slice(0, 7) === m && d <= today(); d = addDays(d, 1)) {
     st.textContent = `${d} 받는 중...`;
     const { data, error } = await sb.rpc('load_csv', { p_d: d }); if (error) { st.textContent = '실패: ' + error.message + ' (30번 SQL 실행 확인)'; return; }
@@ -375,6 +376,7 @@ async function csvMonth() {
   if (!n) { st.textContent = `${m}: 기록이 없습니다.`; return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + out.join('\n')], { type: 'text/csv' })); a.download = `설비부하_${m}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   st.textContent = `${m}: ${n.toLocaleString()}줄 받았습니다.`;
+  try { localStorage.setItem('load-bk-' + m, '1'); } catch (e) { }
 }
 async function compactNow() {
   if (!confirm('어제까지의 1분 기록을 10분 요약으로 줄입니다. (kWh·가동시간은 1분 기준으로 먼저 계산해 보관 · 되돌릴 수 없음) 진행할까요?')) return;
@@ -412,9 +414,19 @@ async function renderRun() {
     <div class="hint" style="margin-top:6px">· 가동 = 전류가 「설정」의 가동 기준 이상인 시간의 합 · 켠 횟수 = 기준 아래 → 위로 올라간 횟수 (자주 켜졌다 꺼지면 많아짐)<br>· 처음 켠 시각·마지막 끈 시각은 그날 0시~24시 기준 · 밤새 돌면 00:00 / 24:00 근처로 나옵니다.${ASSIGN.length ? '<br>· 주황 칸 = 측정 이력상 그 날은 다른 설비를 잰 값' : ''}<br>· <span style="color:var(--red)">⚠</span> = 그 날 기록이 빈 시간 (마우스를 올리면 구간) — 그 시간은 가동시간에 안 들어감</div></div>` + gapCard(GG, rnFrom, rnTo);
 }
 
+function backupBanner() {
+  if (!isAdmin()) return '';
+  const d = today(); if (Number(d.slice(8)) > 10) return '';
+  const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - 1); const m = x.toLocaleDateString('sv-SE').slice(0, 7);
+  try { if (localStorage.getItem('load-bk-' + m)) return ''; } catch (e) { return ''; }
+  return `<div class="card" id="bk-ban" style="margin-top:10px;border-color:var(--blue);background:var(--blue-bg);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span>📦 <b>${m.slice(5)}월 1분 기록 백업</b>을 회사 PC에 받아 두세요 (CSV · 엑셀로 열림)</span><span class="hint" id="bk-st"></span>
+    <button class="chip on" style="margin-left:auto" onclick="csvMonth('${m}')">⬇ 받기</button><button class="chip" onclick="try{localStorage.setItem('load-bk-${m}','1')}catch(e){};this.parentNode.remove()">이번 달은 안 받기</button></div>`;
+}
 function show(v) {
   view = v; clearTimeout(timer);
   document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  const ban = document.getElementById('bk-ban'); if (ban) ban.remove();
   if (v === 'now') renderNow(); else if (v === 'trend') renderTrend(); else if (v === 'kwh') renderKwh(); else if (v === 'run') renderRun(); else { SET = null; renderSet(); }
 }
 document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
