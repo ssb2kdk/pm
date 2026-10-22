@@ -1210,7 +1210,8 @@
       add('완제품 중량', r0.f.pkg, r1.f.pkg, 'kg'); add('포장 생산량 (완제품 EA)', r0.f.ea, r1.f.ea, 'EA');
       add('생산일수', op0, op1, '일'); add('달력 날수', UT.daysIn(ym0), UT.daysIn(ym), '일');
       add('평균기온', w0.tmean, w1.tmean, '℃', 1);
-      if (uk === 'gas') { add('보일러 켠 시간', r0.f.boilH, r1.f.boilH, 'h', 1); add('레토르트 회차', r0.f.retN, r1.f.retN, '회'); }
+      const bsrc = ym2 => { let m = 0, e = 0; for (let d = 1; d <= UT.daysIn(ym2); d++) { const p = PRODD && PRODD[UT.dateStr(ym2, d)]; if (p && p.rm > 0 && p.boilH !== undefined) { if (p.bShelly) m++; else e++; } } return `${Number(ym2.slice(5))}월 ⚡실측 ${m}일·추정 ${e}일`; };
+      if (uk === 'gas') { add(`보일러 켠 시간<div class="hint" style="font-weight:400" title="⚡실측 = 쉘리 보일러 전류로 잰 켠·끈 시각 / 추정 = 전처리 시작 ~ 레토르트 t4(포장 종료+1h)">${bsrc(ym0)} / ${bsrc(ym)}</div>`, r0.f.boilH, r1.f.boilH, 'h', 1); add('레토르트 회차', r0.f.retN, r1.f.retN, '회'); }
       const per = (x, d) => x.usage && d ? x.usage / d : null;
       add(`원육 kg당 ${un}`, b.production ? b[uk].usage / b.production : null, a.production ? a[uk].usage / a.production : null, `${un}/kg`, 3);
       add(`생산일 하루당 ${un}`, per(b[uk], op0), per(a[uk], op1), un);
