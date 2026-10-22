@@ -3358,6 +3358,8 @@
         const B = (c.data || []).filter(x => /보일러/.test(x.name || '') && x.on_a !== null && x.on_a !== undefined); if (!B.length) return null;
         let rows = [];
         for (let o = 0; o < 20; o++) { const { data, error } = await sb.from('load_run_day').select('d,panel_id,ch,on_a,run_min,first_on,last_off').in('panel_id', [...new Set(B.map(x => x.panel_id))]).order('d').range(o * 1000, o * 1000 + 999); if (error) return null; rows = rows.concat(data || []); if (!data || data.length < 1000) break; }
+        const asg = await sb.from('load_assign').select('panel_id,ch,d_from,d_to'), AS = asg.error ? [] : (asg.data || []); // 측정 이력: 쉘리를 다른 설비에 달았던 기간은 빼기
+        rows = rows.filter(r => !AS.some(a => a.panel_id === r.panel_id && Number(a.ch) === Number(r.ch) && a.d_from <= r.d && (!a.d_to || a.d_to >= r.d)));
         const out = {}, min = (t, d) => { const x = new Date(t), ds = x.toLocaleDateString('sv-SE'); return (ds > d ? 1440 : 0) + x.getHours() * 60 + x.getMinutes(); };
         rows.forEach(r => { const b = B.find(x => x.panel_id === r.panel_id && x.ch === r.ch); if (!b || Number(r.on_a) !== Number(b.on_a) || !(Number(r.run_min) > 0) || !r.first_on) return;
           const o = out[r.d] = out[r.d] || { on: 1e9, off: -1, run: 0, names: [] }; o.on = Math.min(o.on, min(r.first_on, r.d)); o.off = Math.max(o.off, min(r.last_off || r.first_on, r.d)); o.run += Number(r.run_min); o.names.push(b.name); });
