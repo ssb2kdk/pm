@@ -219,7 +219,7 @@ function renderSet() {
       SET.ch[pi].map((c, ci) => `<tr><td class="l">CH${ci}</td><td class="l">${inp(pi, ci, 'name', c.name, 'text')}</td><td style="width:110px">${inp(pi, ci, 'limit_a', c.limit_a, 'number')}</td><td style="width:110px">${inp(pi, ci, 'on_a', c.on_a, 'number')}</td><td style="width:90px">${inp(pi, ci, 'voltage', c.voltage, 'number')}</td>
         <td style="width:90px">${ad ? `<select data-pi="${pi}" data-ci="${ci}" data-k="phase"><option value="3" ${Number(c.phase) !== 1 ? 'selected' : ''}>3상</option><option value="1" ${Number(c.phase) === 1 ? 'selected' : ''}>단상</option></select>` : (Number(c.phase) === 1 ? '단상' : '3상')}</td>
         <td style="width:80px">${inp(pi, ci, 'pf', c.pf, 'number')}</td><td>${kwF(c).toFixed(3)}</td></tr>`).join('') + '</table></div>').join('') +
-    `<div class="hint">· 쉘리 1대 = 분전반 1개. 쉘리 스크립트의 PANEL_ID(panel_1~5)와 위 회색 글자(id)가 짝입니다.<br>· 채널 = 쉘리 CT 3개(CH0·1·2). 설비 하나를 3상으로 재면 각 상 전류, 설비 3개를 각각 재면 설비별 전류입니다.<br>· 기준 전류를 넣으면 실시간 화면에서 85% 넘으면 주황, 100% 넘으면 빨강 · 기간 그래프에 넘은 시간 표시.<br>· <b>가동 기준</b>: 이 전류 이상이면 「돌고 있음」으로 봅니다 → 「가동시간」 탭에 켠·끈 시각과 가동시간이 나옵니다. 기간 그래프에서 멈춰 있을 때 전류와 돌 때 전류 사이 값을 넣으세요 (비우면 계산 안 함).<br>· kW = 전류 × (3상이면 √3) × 전압 × 역률 ÷ 1000</div>` + assignHtml(ad);
+    `<div class="hint">· 쉘리 1대 = 분전반 1개. 쉘리 스크립트의 PANEL_ID(panel_1~5)와 위 회색 글자(id)가 짝입니다.<br>· 채널 = 쉘리 CT 3개(CH0·1·2). 설비 하나를 3상으로 재면 각 상 전류, 설비 3개를 각각 재면 설비별 전류입니다.<br>· 기준 전류를 넣으면 실시간 화면에서 85% 넘으면 주황, 100% 넘으면 빨강 · 기간 그래프에 넘은 시간 표시.<br>· <b>가동 기준</b>: 이 전류 이상이면 「돌고 있음」으로 봅니다 → 「가동시간」 탭에 켠·끈 시각과 가동시간이 나옵니다. 기간 그래프에서 멈춰 있을 때 전류와 돌 때 전류 사이 값을 넣으세요 (비우면 계산 안 함).<br>· kW = 전류 × (3상이면 √3) × 전압 × 역률 ÷ 1000</div>` + assignHtml(ad) + (ad ? compactHtml() : '');
   el.querySelectorAll('input[data-pi], select[data-pi]').forEach(x => x.addEventListener('change', () => {
     const pi = Number(x.dataset.pi), k = x.dataset.k;
     if (k === 'pname') SET.panels[pi].name = x.value; else if (k === 'pord') SET.panels[pi].ord = Number(x.value) || 0;
@@ -277,6 +277,40 @@ async function findChanges() {
   el.innerHTML = (cand.length ? `<div style="margin:8px 0"><b style="font-size:13px">변화 후보</b> <span class="hint">(앞 7일과 뒤 7일 평균이 2배 넘게 차이 나는 날 — 설비를 옮겼거나, 설비 가동이 바뀐 날)</span><ul style="margin:4px 0;padding-left:18px;font-size:13px">${cand.map(c => `<li>${c.d} · ${esc(c.o.p.name)} CH${c.o.c} (${esc(chName(c.o.p.id, c.o.c))}) — 하루 ${f0(c.b)} → ${f0(c.a)} kWh</li>`).join('')}</ul></div>` : '<div class="hint" style="margin:8px 0">뚜렷한 변화 후보는 없습니다.</div>') +
     `<div class="tbl-wrap" style="max-height:420px"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}</tr>` +
     days.map(d => `<tr><td class="l">${d.slice(2).replace(/-/g, '/')}</td>${cols.map((o, j) => { const v = M[d + '|' + o.p.id + '|' + o.c] || 0, r = v / mx[j]; return `<td style="background:rgba(24,95,165,${(r * 0.85).toFixed(2)});color:${r > 0.55 ? '#fff' : '#333'}">${f0(v)}</td>`; }).join('')}</tr>`).join('') + '</table></div><div class="hint">색이 진할수록 그 채널 최대치에 가까움 (단위 kWh/일). 색이 갑자기 바뀌는 곳이 옮긴 날 후보입니다.</div>';
+}
+
+// ---------------- 오래된 기록 정리·백업 (관리자) ----------------
+function compactHtml() {
+  const d = today(), ms = []; for (let i = 0; i < 12; i++) { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - i); ms.push(x.toLocaleDateString('sv-SE').slice(0, 7)); }
+  return `<div class="card" style="margin-top:14px"><h3>🗜️ 오래된 기록 정리 · 백업 <span class="when">용량 줄이기</span></h3>
+    <div class="hint" style="margin:6px 0">· 최근 <b>60일</b>은 1분 기록 그대로, 그보다 오래된 날은 <b>10분마다 최댓값·평균값</b>만 남깁니다 (용량 약 1/7). 매일 새벽 3시 30분에 자동으로 정리됩니다.<br>
+    · 지우기 전에 그날 kWh를 1분 기록으로 정확히 계산해 두므로 <b>전력량(kWh)은 그대로</b>, 기간 그래프는 오래된 날이 10분 단위(최댓값)로 보입니다.<br>
+    · 1분 기록 원본이 필요하면 60일이 지나기 전에 아래에서 월별 CSV로 받아 두세요 (엑셀로 열림). 6~10월 옛 기록은 구글시트 백업이 이미 있습니다.</div>
+    <div class="bar"><select id="cv-m" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:8px">${ms.map(m => `<option>${m}</option>`).join('')}</select>
+      <button class="chip" onclick="csvMonth()">⬇ 이 달 1분 기록 CSV 받기</button>
+      <button class="chip" style="margin-left:auto" onclick="compactNow()">🗜️ 지금 정리하기</button></div>
+    <div class="hint" id="cv-st"></div></div>`;
+}
+async function csvMonth() {
+  const m = document.getElementById('cv-m').value, st = document.getElementById('cv-st'); let out = ['날짜,시간,분전반ID,CH0(A),CH1(A),CH2(A)'], n = 0;
+  for (let d = m + '-01'; d.slice(0, 7) === m && d <= today(); d = addDays(d, 1)) {
+    st.textContent = `${d} 받는 중...`;
+    const { data, error } = await sb.rpc('load_csv', { p_d: d }); if (error) { st.textContent = '실패: ' + error.message + ' (30번 SQL 실행 확인)'; return; }
+    if (data) { out.push(data); n += data.split('\n').length; }
+  }
+  if (!n) { st.textContent = `${m}: 1분 기록이 없습니다 (이미 10분 요약으로 정리됐거나 기록 없음).`; return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + out.join('\n')], { type: 'text/csv' })); a.download = `설비부하_${m}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  st.textContent = `${m}: ${n.toLocaleString()}줄 받았습니다.`;
+}
+async function compactNow() {
+  if (!confirm('60일보다 오래된 1분 기록을 10분 요약으로 줄입니다. (되돌릴 수 없음 — 원본이 필요하면 먼저 CSV를 받으세요) 진행할까요?')) return;
+  const st = document.getElementById('cv-st'); let days = 0, del = 0;
+  for (let g = 0; g < 200; g++) {
+    const { data, error } = await sb.rpc('load_compact', { p_keep: 60, p_max: 5 }); if (error) { st.textContent = '실패: ' + error.message + ' (30번 SQL 실행 확인)'; return; }
+    days += data.days; del += Number(data.deleted); st.textContent = `정리 중... ${days}일 · ${del.toLocaleString()}줄 줄임 (남은 날 ${data.left_days}일)`;
+    if (!data.days || !data.left_days) break;
+  }
+  st.textContent = days ? `완료: ${days}일 치 1분 기록 ${del.toLocaleString()}줄을 10분 요약으로 줄였습니다.` : '정리할 오래된 기록이 없습니다 (모두 60일 이내).';
 }
 
 // ---------------- 가동시간 (가동 기준 전류 이상인 시간) ----------------
