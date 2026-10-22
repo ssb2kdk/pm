@@ -3362,13 +3362,21 @@
         const asg = await sb.from('load_assign').select('panel_id,ch,d_from,d_to'), AS = asg.error ? [] : (asg.data || []); // 측정 이력: 쉘리를 다른 설비에 달았던 기간은 빼기
         rows = rows.filter(r => !AS.some(a => a.panel_id === r.panel_id && Number(a.ch) === Number(r.ch) && a.d_from <= r.d && (!a.d_to || a.d_to >= r.d)));
         const out = {}, min = (t, d) => { const x = new Date(t), ds = x.toLocaleDateString('sv-SE'); return (ds > d ? 1440 : 0) + x.getHours() * 60 + x.getMinutes(); };
+        // 기록 누락 구간: 켠 시각 직전·끈 시각 직후에 기록이 비어 있으면 실제로는 더 일찍 켰거나 늦게 껐을 수 있음 → 그날은 추정값 사용
+        const gq = await sb.from('load_gap').select('d,panel_id,g_from,g_to,minutes').in('panel_id', [...new Set(B.map(x => x.panel_id))]), GP = {};
+        if (!gq.error) (gq.data || []).forEach(g => (GP[g.d + '|' + g.panel_id] = GP[g.d + '|' + g.panel_id] || []).push(g));
         rows.forEach(r => { const b = B.find(x => x.panel_id === r.panel_id && x.ch === r.ch); if (!b || Number(r.on_a) !== Number(b.on_a) || !(Number(r.run_min) > 0) || !r.first_on) return;
-          const o = out[r.d] = out[r.d] || { on: 1e9, off: -1, run: 0, names: [] }; o.on = Math.min(o.on, min(r.first_on, r.d)); o.off = Math.max(o.off, min(r.last_off || r.first_on, r.d)); o.run += Number(r.run_min); o.names.push(b.name); });
+          const gs = GP[r.d + '|' + r.panel_id] || [], f = new Date(r.first_on).getTime(), l = new Date(r.last_off || r.first_on).getTime(), M = 10 * 60000;
+          const bad = gs.filter(g => { const a = new Date(g.g_from).getTime(), z = new Date(g.g_to).getTime(); return (z >= f - M && a <= f) || (a <= l + M && z >= l); });
+          if (bad.length) { (out[r.d] = out[r.d] || { on: 1e9, off: -1, run: 0, names: [] }).gap = bad.map(g => `${new Date(g.g_from).toTimeString().slice(0, 5)}~${new Date(g.g_to).toTimeString().slice(0, 5)}`).join(', '); return; }
+          const o = out[r.d] = out[r.d] || { on: 1e9, off: -1, run: 0, names: [] }; if (o.gap) return; o.on = Math.min(o.on, min(r.first_on, r.d)); o.off = Math.max(o.off, min(r.last_off || r.first_on, r.d)); o.run += Number(r.run_min); o.names.push(b.name); });
         return out;
       } catch (e) { return null; }
     }
     function boilerShelly(o, d) {
-      const x = BSH && BSH[d]; if (!x || x.off <= x.on) return;
+      const x = BSH && BSH[d]; if (!x) return;
+      if (x.gap) { o.bGap = x.gap; if (o.onSrc) { o.onSrc += ` (쉘리 기록 누락 ${x.gap} — 켜고 끈 시각 근처라 추정값 사용)`; } return; }
+      if (x.off <= x.on) return;
       o.bOn = x.on; o.bOff = x.off; o.boilH = Math.round((x.off - x.on) / 6) / 10; o.boilRunH = Math.round(x.run / 6) / 10; delete o.bMiss;
       o.onSrc = o.offSrc = `보일러 전류 실측 (${x.names.join('·')}, 쉘리)`; o.bShelly = true;
     }
@@ -3712,7 +3720,7 @@
             <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
               return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
             <td>${p && (p.ea || (p.packItems || []).length) ? (() => { const k = pkgOf(p); return k.known ? `${f0(k.kg)}${k.known < k.all ? `<div class="hint" title="중량 모르는 제품 EA가 있음">${Math.round(k.known / k.all * 100)}%만</div>` : ''}` : '<span class="hint">?</span>'; })() : ''}</td>
-            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b>${p.bShelly ? ' <span title="쉘리 보일러 전류로 잰 실측 시각" style="color:#1D9E75;font-size:10px">⚡실측</span>' : ''}<div class="hint" title="켠 시각: ${p.onSrc} · 끈 시각: ${p.offSrc}${p.boilRunH !== undefined ? ` · 실제 가동(기준 전류 이상) ${p.boilRunH}h` : ''}">${hhmm(p.bOn)}~${hhmm(p.bOff)}</div>${p.runH !== undefined ? `<div class="hint" title="자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 쉬는 틈을 뺀 시간">실가동 ${nf1.format(p.runH)}h</div>` : ''}` : p.bOn !== undefined ? `<span class="hint" title="${p.bMiss || ''}">${hhmm(p.bOn)}~?${p.runH !== undefined ? `<br>실가동 ${nf1.format(p.runH)}h` : ''}</span>` : `<span class="hint" title="자숙·레토르트 기록 없음">-</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
+            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b>${p.bShelly ? ' <span title="쉘리 보일러 전류로 잰 실측 시각" style="color:#1D9E75;font-size:10px">⚡실측</span>' : p.bGap ? ` <span title="쉘리 기록 누락 ${esc(p.bGap)} — 켜고 끈 시각 근처라 생산 기록 추정값 사용" style="color:#A32D2D;font-size:10px">⚠누락·추정</span>` : ''}<div class="hint" title="켠 시각: ${p.onSrc} · 끈 시각: ${p.offSrc}${p.boilRunH !== undefined ? ` · 실제 가동(기준 전류 이상) ${p.boilRunH}h` : ''}">${hhmm(p.bOn)}~${hhmm(p.bOff)}</div>${p.runH !== undefined ? `<div class="hint" title="자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 쉬는 틈을 뺀 시간">실가동 ${nf1.format(p.runH)}h</div>` : ''}` : p.bOn !== undefined ? `<span class="hint" title="${p.bMiss || ''}">${hhmm(p.bOn)}~?${p.runH !== undefined ? `<br>실가동 ${nf1.format(p.runH)}h` : ''}</span>` : `<span class="hint" title="자숙·레토르트 기록 없음">-</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
