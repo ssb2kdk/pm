@@ -131,6 +131,8 @@ async function dayRows(from, to) {
   for (let o = 0; o < 30; o++) { const { data, error } = await sb.rpc('load_day_get', { p_from: from, p_to: to }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; }
   return rows.map(r => ({ ...r, kwh: Number(r.amin || 0) * kwF((CH[r.panel_id] || [])[r.ch]) / 60 }));
 }
+// 아직 안 온 시간(지금~끝)을 빈 칸으로 채워 x축을 24시까지 보이게
+function padRows(rows, start, end, b) { const out = rows.slice(), st = b * 60000; let t = out.length ? new Date(out[out.length - 1].ts).getTime() + st : start.getTime(); t = Math.ceil(t / st) * st; for (; t < end.getTime(); t += st) out.push({ ts: new Date(t).toISOString(), ch0: null, ch1: null, ch2: null }); return out; }
 function mk(id, cfg) { if (charts[id]) charts[id].destroy(); const el = document.getElementById(id); if (!el) return; charts[id] = new Chart(el, cfg); }
 function lineCfg(rows, pid, unit, names) {
   return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: [0, 1, 2].map(i => ({ label: names ? names[i] : chName(pid, i), data: rows.map(r => r['ch' + i]), borderColor: COLORS[i], backgroundColor: COLORS[i], borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false })) },
@@ -144,7 +146,7 @@ async function renderNow() {
   const el = document.getElementById('body');
   try { await loadLatest(); } catch (e) { el.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}</div>`; return; }
   const now = Date.now();
-  let h = `<div class="bar"><span class="hint">그래프</span>${[[3, '3시간'], [6, '6시간'], [24, '24시간']].map(([n, t]) => `<button class="chip ${nowHours === n ? 'on' : ''}" onclick="nowHours=${n};renderNow()">${t}</button>`).join('')}
+  let h = `<div class="bar"><span class="hint">그래프</span>${[[0, '오늘 0~24시'], [3, '3시간'], [6, '6시간'], [24, '24시간']].map(([n, t]) => `<button class="chip ${nowHours === n ? 'on' : ''}" onclick="nowHours=${n};renderNow()">${t}</button>`).join('')}
     <span class="hint" style="margin-left:auto">1분마다 자동 새로고침 · ${hm(new Date())}</span></div><div class="grid">`;
   PANELS.forEach(p => {
     const r = LATEST[p.id], age = r ? (now - new Date(r.ts)) / 60000 : null, live = age !== null && age <= 3;
@@ -156,8 +158,8 @@ async function renderNow() {
       `</div><div class="mini"><canvas id="m-${p.id}"></canvas></div></div>`;
   });
   el.innerHTML = backupBanner() + h + '</div>';
-  const to = new Date(), from = new Date(to.getTime() - nowHours * 3600000);
-  try { const S = await series(from, to, nowHours <= 6 ? 1 : 5); PANELS.forEach(p => { mk('m-' + p.id, lineCfg(S[p.id] || [], p.id, 'A')); zoomable('m-' + p.id, p.id, from, to); }); } catch (e) { }
+  const to = new Date(), from = nowHours === 0 ? kst(today()) : new Date(to.getTime() - nowHours * 3600000), end = nowHours === 0 ? new Date(kst(today()).getTime() + 864e5) : to, bk = nowHours === 0 ? 5 : nowHours <= 6 ? 1 : 5;
+  try { const S = await series(from, to, bk); PANELS.forEach(p => { mk('m-' + p.id, lineCfg(padRows(S[p.id] || [], from, end, bk), p.id, 'A')); zoomable('m-' + p.id, p.id, from, end); }); } catch (e) { }
   clearTimeout(timer); timer = setTimeout(() => { if (view === 'now') renderNow(); }, 60000);
 }
 
@@ -186,7 +188,7 @@ async function renderTrend() {
     ${rows.length ? `<div class="big"><canvas id="c-trend"></canvas></div>
     <table class="t" style="margin-top:10px"><tr><th class="l">채널</th><th>최대 전류</th><th>최대 시각</th><th>평균 전류</th><th>평균 kW</th><th>기준</th><th>기준 넘은 시간</th></tr>` +
       T.map((o, i) => `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(NM[i])}</td><td class="${o && o.lim && o.mx >= o.lim ? 'over-t' : ''}">${o ? f1(o.mx) + ' A' : '-'}</td><td>${o && o.at ? new Date(o.at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td><td>${o ? f1(o.avg) + ' A' : '-'}</td><td>${o ? f1(o.avg * kwF(cs[i])) : '-'}</td><td>${o && o.lim ? f0(o.lim) + ' A' : '-'}</td><td class="${o && o.over ? 'over-t' : ''}">${o && o.lim ? (o.over ? `약 ${o.over}분` : '없음') : '-'}</td></tr>`).join('') + '</table>' : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
-  if (rows.length) { mk('c-trend', lineCfg(rows, trPanel, 'A', NM)); zoomable('c-trend', trPanel, kst(trFrom), new Date(kst(trTo).getTime() + 864e5)); }
+  if (rows.length) { mk('c-trend', lineCfg(trTo === today() ? padRows(rows, kst(trFrom), new Date(kst(trTo).getTime() + 864e5), bucket) : rows, trPanel, 'A', NM)); zoomable('c-trend', trPanel, kst(trFrom), new Date(kst(trTo).getTime() + 864e5)); }
 }
 
 // ---------------- 전력량 (kWh) ----------------
@@ -316,19 +318,20 @@ try { if (window.ChartZoom) Chart.register(window.ChartZoom); } catch (e) { }
 function zoomable(id, pid, from, to) { const c = document.getElementById(id); if (!c) return; c.classList.add('zoomable'); c.title = '누르면 크게 보기'; c.onclick = () => zmOpen(pid, from, to); }
 const zmBucket = (f, t) => { const h = (t - f) / 36e5, td = kst(today()); if (f >= td) return h <= 3 ? 1 : h <= 12 ? 2 : 5; return h <= 30 ? 10 : h <= 24 * 14 ? 10 : 30; };
 const dstr = d => d.toLocaleDateString('sv-SE'), tstr = d => hm(d);
-function zmOpen(pid, from, to) { ZM = { pid, from: new Date(from), to: new Date(to), base: [new Date(from), new Date(to)] }; document.getElementById('zm').hidden = false; document.addEventListener('keydown', zmKey); zmLoad(); }
+function zmOpen(pid, from, to) { const now = new Date(), t = new Date(to); ZM = { pid, from: new Date(from), to: t > now ? now : t, pad: t > now ? t : null, base: [new Date(from), t] }; document.getElementById('zm').hidden = false; document.addEventListener('keydown', zmKey); zmLoad(); }
 function zmClose() { document.getElementById('zm').hidden = true; document.removeEventListener('keydown', zmKey); if (charts['zm-c']) { charts['zm-c'].destroy(); delete charts['zm-c']; } ZM = null; }
 function zmKey(e) { if (e.key === 'Escape') zmClose(); }
-function zmSet(from, to) { if (to <= from) return; const now = new Date(); if (to > now) to = now; ZM.from = from; ZM.to = to; zmLoad(); }
+function zmSet(from, to) { if (to <= from) return; const now = new Date(); ZM.pad = to > now ? to : null; if (to > now) to = now; ZM.from = from; ZM.to = to; zmLoad(); }
+function zmToday() { const f = kst(today()); zmSet(f, new Date(f.getTime() + 864e5)); }
 function zmLast(h) { const to = new Date(); zmSet(new Date(to.getTime() - h * 36e5), to); }
 function zmShift(dir) { const sp = ZM.to - ZM.from; zmSet(new Date(ZM.from.getTime() + dir * sp), new Date(ZM.to.getTime() + dir * sp)); }
 function zmInputs() { const v = id => document.getElementById(id).value; const f = new Date(v('zm-fd') + 'T' + (v('zm-ft') || '00:00') + ':00'), t = new Date(v('zm-td') + 'T' + (v('zm-tt') || '00:00') + ':00'); if (isNaN(f) || isNaN(t) || t <= f) { alert('시작이 끝보다 빨라야 합니다'); return; } zmSet(f, t); }
 async function zmLoad() {
   const p = PANELS.find(x => x.id === ZM.pid) || {}, b = zmBucket(ZM.from, ZM.to), box = document.getElementById('zm-box');
   box.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">${esc(p.name || '')}</b><span class="hint">${b}분마다 최댓값${ZM.from < kst(today()) ? ' · 지난 날은 10분 요약' : ''}</span><button class="zm-x" onclick="zmClose()">✕</button></div>
-    <div class="bar">${[[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간'], [72, '3일'], [168, '7일']].map(([h, t]) => `<button class="chip" onclick="zmLast(${h})">최근 ${t}</button>`).join('')}</div>
+    <div class="bar"><button class="chip" onclick="zmToday()">오늘 0~24시</button>${[[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간'], [72, '3일'], [168, '7일']].map(([h, t]) => `<button class="chip" onclick="zmLast(${h})">최근 ${t}</button>`).join('')}</div>
     <div class="bar"><button class="chip" onclick="zmShift(-1)">◀ 이전</button>
-      <input type="date" id="zm-fd" value="${dstr(ZM.from)}"><input type="time" id="zm-ft" value="${tstr(ZM.from)}"> ~ <input type="date" id="zm-td" value="${dstr(ZM.to)}"><input type="time" id="zm-tt" value="${tstr(ZM.to)}">
+      <input type="date" id="zm-fd" value="${dstr(ZM.from)}"><input type="time" id="zm-ft" value="${tstr(ZM.from)}"> ~ <input type="date" id="zm-td" value="${dstr(ZM.pad ? new Date(ZM.pad.getTime() - 60000) : ZM.to)}"><input type="time" id="zm-tt" value="${ZM.pad && tstr(ZM.pad) === '00:00' ? '23:59' : tstr(ZM.pad || ZM.to)}">
       <button class="chip on" onclick="zmInputs()">보기</button><button class="chip" onclick="zmShift(1)">다음 ▶</button>
       <button class="chip" style="margin-left:auto" onclick="zmSet(ZM.base[0], ZM.base[1])">처음 범위로</button></div>
     <div class="zc"><canvas id="zm-c"></canvas><div class="loading" id="zm-ld" style="position:absolute;inset:0;background:rgba(255,255,255,.7)">불러오는 중...</div></div>
@@ -336,7 +339,7 @@ async function zmLoad() {
     <div id="zm-st" style="margin-top:6px"></div>`;
   let S; try { S = await series(ZM.from, ZM.to, b); } catch (e) { document.getElementById('zm-ld').textContent = '불러오기 실패: ' + (e.message || e); return; }
   if (!ZM) return;
-  const rows = S[ZM.pid] || [], d0 = dstr(ZM.from), d1 = dstr(new Date(ZM.to.getTime() - 1)), NM = [0, 1, 2].map(i => nameRange(ZM.pid, i, d0, d1));
+  const rows = ZM.pad ? padRows(S[ZM.pid] || [], ZM.from, ZM.pad, b) : (S[ZM.pid] || []), d0 = dstr(ZM.from), d1 = dstr(new Date(ZM.to.getTime() - 1)), NM = [0, 1, 2].map(i => nameRange(ZM.pid, i, d0, d1));
   document.getElementById('zm-ld').remove();
   if (!rows.length) { document.querySelector('#zm-box .zc').innerHTML = '<div class="empty">이 구간 기록이 없습니다.</div>'; return; }
   const cfg = lineCfg(rows, ZM.pid, 'A', NM);
