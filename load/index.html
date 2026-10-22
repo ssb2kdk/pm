@@ -8,6 +8,8 @@
   <script src="../config.js"></script>
   <script src="../common.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <style>
     :root { --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888;
       --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB; --radius: 12px; }
@@ -45,6 +47,12 @@
     .ch .lt { font-size: 10px; color: var(--muted); margin-top: 2px; }
     .mini { height: 120px; margin-top: 10px; position: relative; }
     .big { height: 300px; position: relative; margin-top: 8px; }
+    .zoomable { cursor: zoom-in; }
+    .zm-ov { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 12px; }
+    .zm-box { background: #fff; border-radius: var(--radius); width: min(1400px, 100%); max-height: 100%; overflow: auto; padding: 14px 16px; }
+    .zm-box .zc { height: 62vh; min-height: 280px; position: relative; margin-top: 8px; }
+    .zm-box input[type=date], .zm-box input[type=time] { font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; }
+    .zm-x { margin-left: auto; font-size: 20px; background: none; border: none; cursor: pointer; color: #555; }
     table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
     table.t th, table.t td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: right; white-space: nowrap; }
     table.t th { background: #fafafa; font-weight: 600; color: #555; position: sticky; top: 0; }
@@ -76,6 +84,7 @@
     </div></div>
     <div class="wrap" id="body"><div class="loading">불러오는 중...</div></div>
     <div class="toast" id="toast"></div>
+    <div class="zm-ov" id="zm" hidden onclick="if(event.target===this)zmClose()"><div class="zm-box" id="zm-box"></div></div>
   </div>
 <script>
 let sb = null, PANELS = [], CH = {}, LATEST = {}, view = 'now', nowHours = 6, timer = null, charts = {};
@@ -148,7 +157,7 @@ async function renderNow() {
   });
   el.innerHTML = h + '</div>';
   const to = new Date(), from = new Date(to.getTime() - nowHours * 3600000);
-  try { const S = await series(from, to, nowHours <= 6 ? 1 : 5); PANELS.forEach(p => mk('m-' + p.id, lineCfg(S[p.id] || [], p.id, 'A'))); } catch (e) { }
+  try { const S = await series(from, to, nowHours <= 6 ? 1 : 5); PANELS.forEach(p => { mk('m-' + p.id, lineCfg(S[p.id] || [], p.id, 'A')); zoomable('m-' + p.id, p.id, from, to); }); } catch (e) { }
   clearTimeout(timer); timer = setTimeout(() => { if (view === 'now') renderNow(); }, 60000);
 }
 
@@ -156,7 +165,7 @@ async function renderNow() {
 function rangeBar(kind) {
   const f = { tr: trFrom, kw: kwFrom, rn: rnFrom }[kind], t = { tr: trTo, kw: kwTo, rn: rnTo }[kind], d = today();
   const pre = kind === 'tr' ? [['오늘', d, d], ['어제', addDays(d, -1), addDays(d, -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]]
-    : [['이번 달', d.slice(0, 8) + '01', d], ['지난달', (() => { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - 1); return x.toLocaleDateString('sv-SE'); })(), addDays(d.slice(0, 8) + '01', -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]];
+    : [['오늘', d, d], ['이번 달', d.slice(0, 8) + '01', d], ['지난달', (() => { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - 1); return x.toLocaleDateString('sv-SE'); })(), addDays(d.slice(0, 8) + '01', -1)], ['최근 7일', addDays(d, -6), d], ['최근 30일', addDays(d, -29), d]];
   return `<div class="bar">${pre.map(([n, a, b]) => `<button class="chip ${f === a && t === b ? 'on' : ''}" onclick="setRange('${kind}','${a}','${b}')">${n}</button>`).join('')}
     <input type="date" value="${f}" onchange="setRange('${kind}',this.value,null)"> ~ <input type="date" value="${t}" onchange="setRange('${kind}',null,this.value)"></div>`;
 }
@@ -167,25 +176,47 @@ function setRange(kind, a, b) {
 async function renderTrend() {
   const el = document.getElementById('body'); if (!trPanel) trPanel = PANELS[0] && PANELS[0].id;
   el.innerHTML = rangeBar('tr') + `<div class="bar">${PANELS.map(p => `<button class="chip ${trPanel === p.id ? 'on' : ''}" onclick="trPanel='${p.id}';renderTrend()">${esc(p.name)}</button>`).join('')}</div><div class="loading">불러오는 중...</div>`;
-  const days = (kst(trTo) - kst(trFrom)) / 864e5 + 1, bucket = days <= 1 ? 1 : days <= 2 ? 2 : days <= 7 ? 5 : 15;
+  const days = (kst(trTo) - kst(trFrom)) / 864e5 + 1, bucket = (trFrom === today() && trTo === today()) ? 1 : days <= 14 ? 10 : 30; // 오늘만 1분, 지난 기간은 10분 요약
   let S; try { S = await series(kst(trFrom), new Date(kst(trTo).getTime() + 864e5), bucket); } catch (e) { el.querySelector('.loading').textContent = '불러오기 실패: ' + (e.message || e); return; }
   const rows = S[trPanel] || [], p = PANELS.find(x => x.id === trPanel) || {}, cs = CH[trPanel] || [];
   const st = i => { const v = rows.map(r => r['ch' + i]).filter(x => x !== null && x !== undefined); if (!v.length) return null; const mx = Math.max(...v), at = rows.find(r => r['ch' + i] === mx);
     const lim = Number((cs[i] || {}).limit_a) || 0; return { mx, at, avg: v.reduce((a, b) => a + b, 0) / v.length, over: lim ? v.filter(x => x >= lim).length * bucket : 0, lim }; };
   const T = [0, 1, 2].map(st), NM = [0, 1, 2].map(i => nameRange(trPanel, i, trFrom, trTo));
-  el.querySelector('.loading').outerHTML = `<div class="card"><h3>${esc(p.name || '')} <span class="when">${trFrom} ~ ${trTo} · ${bucket}분마다 최댓값</span></h3>
+  el.querySelector('.loading').outerHTML = `<div class="card"><h3>${esc(p.name || '')} <span class="when">${trFrom} ~ ${trTo} · ${bucket}분마다 최댓값 · 그래프를 누르면 크게</span></h3>
     ${rows.length ? `<div class="big"><canvas id="c-trend"></canvas></div>
     <table class="t" style="margin-top:10px"><tr><th class="l">채널</th><th>최대 전류</th><th>최대 시각</th><th>평균 전류</th><th>평균 kW</th><th>기준</th><th>기준 넘은 시간</th></tr>` +
       T.map((o, i) => `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(NM[i])}</td><td class="${o && o.lim && o.mx >= o.lim ? 'over-t' : ''}">${o ? f1(o.mx) + ' A' : '-'}</td><td>${o && o.at ? new Date(o.at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td><td>${o ? f1(o.avg) + ' A' : '-'}</td><td>${o ? f1(o.avg * kwF(cs[i])) : '-'}</td><td>${o && o.lim ? f0(o.lim) + ' A' : '-'}</td><td class="${o && o.over ? 'over-t' : ''}">${o && o.lim ? (o.over ? `약 ${o.over}분` : '없음') : '-'}</td></tr>`).join('') + '</table>' : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
-  if (rows.length) mk('c-trend', lineCfg(rows, trPanel, 'A', NM));
+  if (rows.length) { mk('c-trend', lineCfg(rows, trPanel, 'A', NM)); zoomable('c-trend', trPanel, kst(trFrom), new Date(kst(trTo).getTime() + 864e5)); }
 }
 
 // ---------------- 전력량 (kWh) ----------------
+// ---------------- 데이터 누락 (정전·쉘리 꺼짐·인터넷) ----------------
+async function loadGaps(from, to) {
+  const G = {}; let rows = [];
+  for (let o = 0; o < 10; o++) { const { data, error } = await sb.from('load_gap').select('*').gte('d', from).lte('d', to).order('g_from').range(o * 1000, o * 1000 + 999); if (error) return { G, rows: [], err: true }; rows = rows.concat(data || []); if (!data || data.length < 1000) break; }
+  rows.forEach(g => (G[g.d + '|' + g.panel_id] = G[g.d + '|' + g.panel_id] || []).push(g));
+  return { G, rows };
+}
+const gapTxt = gs => gs.map(g => `${hm(new Date(g.g_from))}~${hm(new Date(g.g_to))} (${g.minutes}분)`).join(', ');
+const gapMark = (G, d, pid) => { const gs = G[d + '|' + pid]; if (!gs) return ''; const m = gs.reduce((a, g) => a + g.minutes, 0); return ` <span style="color:var(--red);font-size:11px" title="기록 누락: ${esc(gapTxt(gs))}">⚠${m >= 60 ? (m / 60).toFixed(1) + 'h' : m + '분'}</span>`; };
+function gapCard(GG, from, to) {
+  if (GG.err) return '<div class="hint" style="margin-top:8px">⚠ 누락 구간을 보려면 31번 SQL을 실행해 주세요.</div>';
+  const rows = GG.rows; if (!rows.length) return `<div class="card" style="margin-top:10px"><h3>✅ 데이터 누락 없음 <span class="when">${from} ~ ${to} · 5분 넘게 기록이 빈 구간 없음</span></h3></div>`;
+  const tot = {}; rows.forEach(g => { tot[g.panel_id] = (tot[g.panel_id] || 0) + g.minutes; });
+  const pn = id => esc((PANELS.find(p => p.id === id) || {}).name || id), dur = m => m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`;
+  return `<div class="card" style="margin-top:10px;border-color:var(--red)"><h3>⚠ 데이터 누락 구간 <span class="when">정전·쉘리 꺼짐·인터넷 문제 등으로 기록이 5분 넘게 빈 시간 — 이 시간은 kWh·가동시간에 안 들어감</span></h3>
+    <div class="bar">${Object.entries(tot).map(([id, m]) => `<span class="chip" style="cursor:default;border-color:var(--red);color:var(--red)">${pn(id)} 합계 ${dur(m)}</span>`).join('')}</div>
+    <div class="tbl-wrap" style="max-height:300px"><table class="t"><tr><th class="l">날짜</th><th class="l">분전반</th><th class="l">언제부터</th><th class="l">언제까지</th><th>빠진 시간</th></tr>` +
+    rows.map(g => `<tr><td class="l">${g.d}</td><td class="l">${pn(g.panel_id)}</td><td class="l">${new Date(g.g_from).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td class="l">${new Date(g.g_to).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${dur(g.minutes)}</td></tr>`).join('') + `</table></div>
+    <div class="hint" style="margin-top:4px">· 같은 시각에 여러 분전반이 같이 빠졌으면 정전·인터넷, 한 분전반만 빠졌으면 그 쉘리 문제일 가능성이 큽니다.</div></div>`;
+}
+
 async function renderKwh() {
   const el = document.getElementById('body');
   el.innerHTML = rangeBar('kw') + '<div class="loading">계산 중...</div>';
   let rows = [];
-  try { rows = await dayRows(kwFrom, kwTo); }
+  let GG = { G: {}, rows: [] };
+  try { rows = await dayRows(kwFrom, kwTo); GG = await loadGaps(kwFrom, kwTo); }
   catch (e) { el.querySelector('.loading').innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 29번 SQL(29_load_daily.sql)을 실행했는지 확인해 주세요.'; return; }
   const days = [...new Set(rows.map(r => r.d))].sort(), key = (p, c) => p + '|' + c, M = {};
   rows.forEach(r => { (M[r.d] = M[r.d] || {})[key(r.panel_id, r.ch)] = Number(r.kwh) || 0; });
@@ -197,9 +228,9 @@ async function renderKwh() {
       <div class="card" style="border-color:#1a1a1a"><div class="hint">전체 합계</div><div style="font-size:22px;font-weight:700">${f0(all)} <small style="font-size:12px;color:#888">kWh</small></div><div class="hint">${days.length}일 · 하루 평균 ${f0(all / days.length)} kWh</div></div></div>
     <div class="card"><div class="big"><canvas id="c-kwh"></canvas></div>
     <div class="tbl-wrap"><table class="t"><tr><th class="l">날짜</th>${cols.map(o => `<th>${esc(o.p.name)}<br><span class="hint">${esc(chName(o.p.id, o.c))}</span></th>`).join('')}<th>합계</th></tr>` +
-      days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map((x, j) => { const a = asgAt(cols[j].p.id, cols[j].c, d); return a ? `<td style="background:var(--amber-bg)" title="이 날은 ${esc(a.name)} 측정">${f1(x)}</td>` : `<td>${f1(x)}</td>`; }).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
+      days.map(d => { const v = cols.map(o => (M[d] || {})[key(o.p.id, o.c)] || 0); return `<tr><td class="l">${d.slice(5).replace('-', '/')}</td>${v.map((x, j) => { const a = asgAt(cols[j].p.id, cols[j].c, d), gm = cols[j].c === 0 ? gapMark(GG.G, d, cols[j].p.id) : ''; return a ? `<td style="background:var(--amber-bg)" title="이 날은 ${esc(a.name)} 측정">${f1(x)}${gm}</td>` : `<td>${f1(x)}${gm}</td>`; }).join('')}<td><b>${f1(v.reduce((a, b) => a + b, 0))}</b></td></tr>`; }).join('') +
       `<tr class="sum"><td class="l">합계</td>${tot.map(x => `<td>${f0(x)}</td>`).join('')}<td>${f0(all)}</td></tr></table></div>
-    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 측정 간격 (10분 넘게 끊긴 구간은 1분만 인정 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.${ASSIGN.length ? '<br><span style="background:var(--amber-bg);padding:0 4px">주황 칸</span> = 측정 이력상 그 날은 다른 설비를 잰 값 (칸에 마우스를 올리면 설비 이름)' : ''}</div></div>`;
+    <div class="hint" style="margin-top:6px">kWh = 전류(A) × ${'√3'} × 전압 × 역률 ÷ 1000 × 측정 간격 (10분 넘게 끊긴 구간은 1분만 인정 · 설정의 전압·상·역률 사용) — 계량기 값이 아니라 전류로 계산한 추정값입니다.${ASSIGN.length ? '<br><span style="background:var(--amber-bg);padding:0 4px">주황 칸</span> = 측정 이력상 그 날은 다른 설비를 잰 값 (칸에 마우스를 올리면 설비 이름)' : ''}<br><span style="color:var(--red)">⚠</span> = 그 날 그 분전반 기록이 빈 시간 (마우스를 올리면 구간) — 그만큼 kWh가 적게 잡힘</div></div>` + gapCard(GG, kwFrom, kwTo);
   if (rows.length) mk('c-kwh', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: PANELS.map((p, i) => ({ label: p.name, data: days.map(d => [0, 1, 2].reduce((a, c) => a + ((M[d] || {})[key(p.id, c)] || 0), 0)), backgroundColor: ['#2a78d6', '#e5534b', '#1D9E75', '#eda100', '#7b61c4', '#555'][i % 6], stack: 's' })) },
     options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${f0(c.raw)} kWh` } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'kWh' } } } } });
 }
@@ -279,38 +310,81 @@ async function findChanges() {
     days.map(d => `<tr><td class="l">${d.slice(2).replace(/-/g, '/')}</td>${cols.map((o, j) => { const v = M[d + '|' + o.p.id + '|' + o.c] || 0, r = v / mx[j]; return `<td style="background:rgba(24,95,165,${(r * 0.85).toFixed(2)});color:${r > 0.55 ? '#fff' : '#333'}">${f0(v)}</td>`; }).join('')}</tr>`).join('') + '</table></div><div class="hint">색이 진할수록 그 채널 최대치에 가까움 (단위 kWh/일). 색이 갑자기 바뀌는 곳이 옮긴 날 후보입니다.</div>';
 }
 
+// ---------------- 그래프 크게 보기 (누르면 열림 · 시간 조절 · 드래그 확대) ----------------
+let ZM = null;
+try { if (window.ChartZoom) Chart.register(window.ChartZoom); } catch (e) { }
+function zoomable(id, pid, from, to) { const c = document.getElementById(id); if (!c) return; c.classList.add('zoomable'); c.title = '누르면 크게 보기'; c.onclick = () => zmOpen(pid, from, to); }
+const zmBucket = (f, t) => { const h = (t - f) / 36e5, td = kst(today()); if (f >= td) return h <= 3 ? 1 : h <= 12 ? 2 : 5; return h <= 30 ? 10 : h <= 24 * 14 ? 10 : 30; };
+const dstr = d => d.toLocaleDateString('sv-SE'), tstr = d => hm(d);
+function zmOpen(pid, from, to) { ZM = { pid, from: new Date(from), to: new Date(to), base: [new Date(from), new Date(to)] }; document.getElementById('zm').hidden = false; document.addEventListener('keydown', zmKey); zmLoad(); }
+function zmClose() { document.getElementById('zm').hidden = true; document.removeEventListener('keydown', zmKey); if (charts['zm-c']) { charts['zm-c'].destroy(); delete charts['zm-c']; } ZM = null; }
+function zmKey(e) { if (e.key === 'Escape') zmClose(); }
+function zmSet(from, to) { if (to <= from) return; const now = new Date(); if (to > now) to = now; ZM.from = from; ZM.to = to; zmLoad(); }
+function zmLast(h) { const to = new Date(); zmSet(new Date(to.getTime() - h * 36e5), to); }
+function zmShift(dir) { const sp = ZM.to - ZM.from; zmSet(new Date(ZM.from.getTime() + dir * sp), new Date(ZM.to.getTime() + dir * sp)); }
+function zmInputs() { const v = id => document.getElementById(id).value; const f = new Date(v('zm-fd') + 'T' + (v('zm-ft') || '00:00') + ':00'), t = new Date(v('zm-td') + 'T' + (v('zm-tt') || '00:00') + ':00'); if (isNaN(f) || isNaN(t) || t <= f) { alert('시작이 끝보다 빨라야 합니다'); return; } zmSet(f, t); }
+async function zmLoad() {
+  const p = PANELS.find(x => x.id === ZM.pid) || {}, b = zmBucket(ZM.from, ZM.to), box = document.getElementById('zm-box');
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">${esc(p.name || '')}</b><span class="hint">${b}분마다 최댓값${ZM.from < kst(today()) ? ' · 지난 날은 10분 요약' : ''}</span><button class="zm-x" onclick="zmClose()">✕</button></div>
+    <div class="bar">${[[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간'], [72, '3일'], [168, '7일']].map(([h, t]) => `<button class="chip" onclick="zmLast(${h})">최근 ${t}</button>`).join('')}</div>
+    <div class="bar"><button class="chip" onclick="zmShift(-1)">◀ 이전</button>
+      <input type="date" id="zm-fd" value="${dstr(ZM.from)}"><input type="time" id="zm-ft" value="${tstr(ZM.from)}"> ~ <input type="date" id="zm-td" value="${dstr(ZM.to)}"><input type="time" id="zm-tt" value="${tstr(ZM.to)}">
+      <button class="chip on" onclick="zmInputs()">보기</button><button class="chip" onclick="zmShift(1)">다음 ▶</button>
+      <button class="chip" style="margin-left:auto" onclick="zmSet(ZM.base[0], ZM.base[1])">처음 범위로</button></div>
+    <div class="zc"><canvas id="zm-c"></canvas><div class="loading" id="zm-ld" style="position:absolute;inset:0;background:rgba(255,255,255,.7)">불러오는 중...</div></div>
+    <div class="hint" style="margin-top:6px">· 그래프 위에서 <b>마우스로 끌면</b> 그 구간만 확대 (더 촘촘한 간격으로 다시 불러옴) · 마우스 휠로 확대/축소 · Shift+끌기로 좌우 이동 · Esc 또는 바깥을 누르면 닫힘</div>
+    <div id="zm-st" style="margin-top:6px"></div>`;
+  let S; try { S = await series(ZM.from, ZM.to, b); } catch (e) { document.getElementById('zm-ld').textContent = '불러오기 실패: ' + (e.message || e); return; }
+  if (!ZM) return;
+  const rows = S[ZM.pid] || [], d0 = dstr(ZM.from), d1 = dstr(new Date(ZM.to.getTime() - 1)), NM = [0, 1, 2].map(i => nameRange(ZM.pid, i, d0, d1));
+  document.getElementById('zm-ld').remove();
+  if (!rows.length) { document.querySelector('#zm-box .zc').innerHTML = '<div class="empty">이 구간 기록이 없습니다.</div>'; return; }
+  const cfg = lineCfg(rows, ZM.pid, 'A', NM);
+  if (window.ChartZoom || (Chart.registry && Chart.registry.plugins.get('zoom'))) {
+    cfg.options.plugins.zoom = { zoom: { drag: { enabled: true, backgroundColor: 'rgba(24,95,165,.15)' }, wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x',
+      onZoomComplete: ({ chart }) => { const sx = chart.scales.x, i0 = Math.max(0, Math.floor(sx.min)), i1 = Math.min(rows.length - 1, Math.ceil(sx.max)); if (i1 - i0 < 2) return;
+        const f = new Date(rows[i0].ts), t = new Date(new Date(rows[i1].ts).getTime() + b * 60000); if (zmBucket(f, t) < b) { clearTimeout(ZM.tm); ZM.tm = setTimeout(() => zmSet(f, t), 400); } } },
+      pan: { enabled: true, mode: 'x', modifierKey: 'shift' } };
+  }
+  mk('zm-c', cfg);
+  const cs = CH[ZM.pid] || [];
+  document.getElementById('zm-st').innerHTML = '<table class="t"><tr><th class="l">채널</th><th>최대</th><th>최대 시각</th><th>평균</th><th>기준</th></tr>' + [0, 1, 2].map(i => { const v = rows.map(r => r['ch' + i]).filter(x => x !== null && x !== undefined); if (!v.length) return ''; const mx = Math.max(...v), at = rows.find(r => r['ch' + i] === mx), lim = Number((cs[i] || {}).limit_a) || 0;
+    return `<tr><td class="l"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[i]};margin-right:6px"></i>${esc(NM[i])}</td><td class="${lim && mx >= lim ? 'over-t' : ''}">${f1(mx)} A</td><td>${new Date(at.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${f1(v.reduce((a, c) => a + c, 0) / v.length)} A</td><td>${lim ? f0(lim) + ' A' : '-'}</td></tr>`; }).join('') + '</table>';
+}
+
 // ---------------- 오래된 기록 정리·백업 (관리자) ----------------
 function compactHtml() {
   const d = today(), ms = []; for (let i = 0; i < 12; i++) { const x = new Date(d.slice(0, 8) + '01T00:00:00'); x.setMonth(x.getMonth() - i); ms.push(x.toLocaleDateString('sv-SE').slice(0, 7)); }
   return `<div class="card" style="margin-top:14px"><h3>🗜️ 오래된 기록 정리 · 백업 <span class="when">용량 줄이기</span></h3>
-    <div class="hint" style="margin:6px 0">· 최근 <b>60일</b>은 1분 기록 그대로, 그보다 오래된 날은 <b>10분마다 최댓값·평균값</b>만 남깁니다 (용량 약 1/7). 매일 새벽 3시 30분에 자동으로 정리됩니다.<br>
+    <div class="hint" style="margin:6px 0">· <b>오늘</b>만 1분 기록 그대로, 지난 날은 <b>10분마다 최댓값·평균값</b>만 남깁니다 (용량 약 1/7). 매일 새벽 3시 30분에 어제 치가 자동으로 정리됩니다.<br>
+    · 정리하기 전에 그날 <b>kWh와 가동시간을 1분 기록으로 계산해 보관</b>합니다 → 숫자는 1분 단위 그대로. (가동 기준을 나중에 바꾸면 지난 날 가동시간은 10분 평균으로 다시 계산되니, 가동 기준은 먼저 넣어 두세요)<br>
     · 지우기 전에 그날 kWh를 1분 기록으로 정확히 계산해 두므로 <b>전력량(kWh)은 그대로</b>, 기간 그래프는 오래된 날이 10분 단위(최댓값)로 보입니다.<br>
-    · 1분 기록 원본이 필요하면 60일이 지나기 전에 아래에서 월별 CSV로 받아 두세요 (엑셀로 열림). 6~10월 옛 기록은 구글시트 백업이 이미 있습니다.</div>
+    · 월별 CSV: 1분 기록이 남아 있는 날(오늘)은 1분, 지난 날은 10분 요약(최댓값·평균)으로 받습니다 (엑셀로 열림). 6~10월 옛 1분 기록은 구글시트 백업이 있습니다.</div>
     <div class="bar"><select id="cv-m" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:8px">${ms.map(m => `<option>${m}</option>`).join('')}</select>
-      <button class="chip" onclick="csvMonth()">⬇ 이 달 1분 기록 CSV 받기</button>
+      <button class="chip" onclick="csvMonth()">⬇ 이 달 기록 CSV 받기</button>
       <button class="chip" style="margin-left:auto" onclick="compactNow()">🗜️ 지금 정리하기</button></div>
     <div class="hint" id="cv-st"></div></div>`;
 }
 async function csvMonth() {
-  const m = document.getElementById('cv-m').value, st = document.getElementById('cv-st'); let out = ['날짜,시간,분전반ID,CH0(A),CH1(A),CH2(A)'], n = 0;
+  const m = document.getElementById('cv-m').value, st = document.getElementById('cv-st'); let out = ['날짜,시간,분전반ID,CH0(A),CH1(A),CH2(A),CH0평균,CH1평균,CH2평균,구분(1분 값 / 10분 최댓값)'], n = 0;
   for (let d = m + '-01'; d.slice(0, 7) === m && d <= today(); d = addDays(d, 1)) {
     st.textContent = `${d} 받는 중...`;
     const { data, error } = await sb.rpc('load_csv', { p_d: d }); if (error) { st.textContent = '실패: ' + error.message + ' (30번 SQL 실행 확인)'; return; }
     if (data) { out.push(data); n += data.split('\n').length; }
   }
-  if (!n) { st.textContent = `${m}: 1분 기록이 없습니다 (이미 10분 요약으로 정리됐거나 기록 없음).`; return; }
+  if (!n) { st.textContent = `${m}: 기록이 없습니다.`; return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + out.join('\n')], { type: 'text/csv' })); a.download = `설비부하_${m}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   st.textContent = `${m}: ${n.toLocaleString()}줄 받았습니다.`;
 }
 async function compactNow() {
-  if (!confirm('60일보다 오래된 1분 기록을 10분 요약으로 줄입니다. (되돌릴 수 없음 — 원본이 필요하면 먼저 CSV를 받으세요) 진행할까요?')) return;
+  if (!confirm('어제까지의 1분 기록을 10분 요약으로 줄입니다. (kWh·가동시간은 1분 기준으로 먼저 계산해 보관 · 되돌릴 수 없음) 진행할까요?')) return;
   const st = document.getElementById('cv-st'); let days = 0, del = 0;
   for (let g = 0; g < 200; g++) {
-    const { data, error } = await sb.rpc('load_compact', { p_keep: 60, p_max: 5 }); if (error) { st.textContent = '실패: ' + error.message + ' (30번 SQL 실행 확인)'; return; }
+    const { data, error } = await sb.rpc('load_compact', { p_keep: 0, p_max: 3 }); if (error) { st.textContent = '실패: ' + error.message + ' (30·31번 SQL 실행 확인)'; return; }
     days += data.days; del += Number(data.deleted); st.textContent = `정리 중... ${days}일 · ${del.toLocaleString()}줄 줄임 (남은 날 ${data.left_days}일)`;
     if (!data.days || !data.left_days) break;
   }
-  st.textContent = days ? `완료: ${days}일 치 1분 기록 ${del.toLocaleString()}줄을 10분 요약으로 줄였습니다.` : '정리할 오래된 기록이 없습니다 (모두 60일 이내).';
+  st.textContent = days ? `완료: ${days}일 치 1분 기록 ${del.toLocaleString()}줄을 10분 요약으로 줄였습니다.` : '정리할 지난 1분 기록이 없습니다.';
 }
 
 // ---------------- 가동시간 (가동 기준 전류 이상인 시간) ----------------
@@ -320,8 +394,10 @@ async function renderRun() {
   if (!on.length) { el.innerHTML = `<div class="empty">가동 기준 전류가 들어간 채널이 없습니다.<br>「설정」 탭에서 보일러·컴프레셔 등의 <b>가동 기준 (A)</b>를 넣어 주세요.</div>`; return; }
   el.innerHTML = rangeBar('rn') + '<div class="loading">계산 중...</div>';
   let rows = [];
-  try { for (let o = 0; o < 20; o++) { const { data, error } = await sb.rpc('load_runtime', { p_from: kst(rnFrom).toISOString(), p_to: new Date(kst(rnTo).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
-  catch (e) { el.querySelector('.loading').innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 28번 SQL(28_load_runtime.sql)을 실행했는지 확인해 주세요.'; return; }
+  try { for (let o = 0; o < 20; o++) { const { data, error } = await sb.rpc('load_run_get', { p_from: rnFrom, p_to: rnTo }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
+  catch (e) { el.querySelector('.loading').innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 30번·31번 SQL을 실행했는지 확인해 주세요.'; return; }
+  if (rnTo >= today()) { try { await sb.rpc('load_day_get', { p_from: today(), p_to: today() }); } catch (e) { } }   // 오늘 누락 구간 갱신
+  const GG = await loadGaps(rnFrom, rnTo);
   const R = {}; rows.forEach(r => { R[r.d + '|' + r.panel_id + '|' + r.ch] = r; });
   const days = []; for (let d = rnFrom; d <= rnTo; d = addDays(d, 1)) days.push(d);
   const tm = t => t ? hm(new Date(t)) : '-', hr = m => (Number(m) / 60).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
@@ -332,8 +408,8 @@ async function renderRun() {
     <div class="card"><div class="tbl-wrap"><table class="t"><tr><th class="l" rowspan="2">날짜</th>${on.map(o => `<th colspan="3" style="text-align:center">${esc(o.p.name)} · ${esc(chName(o.p.id, o.c))}</th>`).join('')}</tr>
       <tr>${on.map(() => '<th>처음 켠 시각</th><th>마지막 끈 시각</th><th>가동 (켠 횟수)</th>').join('')}</tr>` +
       days.map(d => `<tr><td class="l">${d.slice(5).replace('-', '/')} <span class="hint">${'일월화수목금토'[new Date(d + 'T00:00:00').getDay()]}</span></td>${on.map(o => { const r = R[d + '|' + o.p.id + '|' + o.c], a = asgAt(o.p.id, o.c, d), bg = a ? ' style="background:var(--amber-bg)"' : '';
-        return !r || !Number(r.run_min) ? `<td${bg}>-</td><td${bg}>-</td><td${bg} style="color:#aaa">${r ? '안 돎' : '기록 없음'}</td>` : `<td${bg}>${tm(r.first_on)}</td><td${bg}>${tm(r.last_off)}</td><td${bg}><b>${hr(r.run_min)}h</b> <span class="hint">(${r.starts}회)</span></td>`; }).join('')}</tr>`).join('') + `</table></div>
-    <div class="hint" style="margin-top:6px">· 가동 = 전류가 「설정」의 가동 기준 이상인 시간의 합 · 켠 횟수 = 기준 아래 → 위로 올라간 횟수 (자주 켜졌다 꺼지면 많아짐)<br>· 처음 켠 시각·마지막 끈 시각은 그날 0시~24시 기준 · 밤새 돌면 00:00 / 24:00 근처로 나옵니다.${ASSIGN.length ? '<br>· 주황 칸 = 측정 이력상 그 날은 다른 설비를 잰 값' : ''}</div></div>`;
+        return !r || !Number(r.run_min) ? `<td${bg}>-</td><td${bg}>-</td><td${bg} style="color:#aaa">${r ? '안 돎' : '기록 없음'}</td>` : `<td${bg}>${tm(r.first_on)}</td><td${bg}>${tm(r.last_off)}</td><td${bg}><b>${hr(r.run_min)}h</b> <span class="hint">(${r.starts}회)</span>${gapMark(GG.G, d, o.p.id)}</td>`; }).join('')}</tr>`).join('') + `</table></div>
+    <div class="hint" style="margin-top:6px">· 가동 = 전류가 「설정」의 가동 기준 이상인 시간의 합 · 켠 횟수 = 기준 아래 → 위로 올라간 횟수 (자주 켜졌다 꺼지면 많아짐)<br>· 처음 켠 시각·마지막 끈 시각은 그날 0시~24시 기준 · 밤새 돌면 00:00 / 24:00 근처로 나옵니다.${ASSIGN.length ? '<br>· 주황 칸 = 측정 이력상 그 날은 다른 설비를 잰 값' : ''}<br>· <span style="color:var(--red)">⚠</span> = 그 날 기록이 빈 시간 (마우스를 올리면 구간) — 그 시간은 가동시간에 안 들어감</div></div>` + gapCard(GG, rnFrom, rnTo);
 }
 
 function show(v) {
