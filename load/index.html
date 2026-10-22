@@ -116,6 +116,12 @@ async function series(from, to, bucket) { // 1,000건씩 이어서 가져옴
   }
   return out;
 }
+// 하루 요약(29번 SQL) → 채널별 하루 kWh. kWh = A·분 × kW계수 ÷ 60
+async function dayRows(from, to) {
+  let rows = [];
+  for (let o = 0; o < 30; o++) { const { data, error } = await sb.rpc('load_day_get', { p_from: from, p_to: to }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; }
+  return rows.map(r => ({ ...r, kwh: Number(r.amin || 0) * kwF((CH[r.panel_id] || [])[r.ch]) / 60 }));
+}
 function mk(id, cfg) { if (charts[id]) charts[id].destroy(); const el = document.getElementById(id); if (!el) return; charts[id] = new Chart(el, cfg); }
 function lineCfg(rows, pid, unit, names) {
   return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: [0, 1, 2].map(i => ({ label: names ? names[i] : chName(pid, i), data: rows.map(r => r['ch' + i]), borderColor: COLORS[i], backgroundColor: COLORS[i], borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false })) },
@@ -179,8 +185,8 @@ async function renderKwh() {
   const el = document.getElementById('body');
   el.innerHTML = rangeBar('kw') + '<div class="loading">계산 중...</div>';
   let rows = [];
-  try { for (let o = 0; o < 20; o++) { const { data, error } = await sb.rpc('load_energy', { p_from: kst(kwFrom).toISOString(), p_to: new Date(kst(kwTo).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
-  catch (e) { el.querySelector('.loading').textContent = '불러오기 실패: ' + (e.message || e); return; }
+  try { rows = await dayRows(kwFrom, kwTo); }
+  catch (e) { el.querySelector('.loading').innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 29번 SQL(29_load_daily.sql)을 실행했는지 확인해 주세요.'; return; }
   const days = [...new Set(rows.map(r => r.d))].sort(), key = (p, c) => p + '|' + c, M = {};
   rows.forEach(r => { (M[r.d] = M[r.d] || {})[key(r.panel_id, r.ch)] = Number(r.kwh) || 0; });
   const cols = []; PANELS.forEach(p => [0, 1, 2].forEach(c => cols.push({ p, c })));
@@ -257,8 +263,8 @@ async function delAssign(id) {
 async function findChanges() {
   const el = document.getElementById('chg-body'); if (!el || el.dataset.done) return;
   const to = today(), from = addDays(to, -180); let rows = [];
-  try { for (let o = 0; o < 30; o++) { const { data, error } = await sb.rpc('load_energy', { p_from: kst(from).toISOString(), p_to: new Date(kst(to).getTime() + 864e5).toISOString() }).range(o * 1000, o * 1000 + 999); if (error) throw error; rows = rows.concat(data || []); if (!data || data.length < 1000) break; } }
-  catch (e) { el.textContent = '불러오기 실패: ' + (e.message || e); return; }
+  try { rows = await dayRows(from, to); }
+  catch (e) { el.innerHTML = '불러오기 실패: ' + esc(e.message || e) + '<br>Supabase에 29번 SQL(29_load_daily.sql)을 실행했는지 확인해 주세요.'; return; }
   const days = [...new Set(rows.map(r => r.d))].sort(), M = {}; rows.forEach(r => { M[r.d + '|' + r.panel_id + '|' + r.ch] = Number(r.kwh) || 0; });
   const cols = []; PANELS.forEach(p => [0, 1, 2].forEach(c => cols.push({ p, c })));
   const mx = cols.map(o => Math.max(1, ...days.map(d => M[d + '|' + o.p.id + '|' + o.c] || 0)));
