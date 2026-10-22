@@ -1666,7 +1666,7 @@
       h += `<div>${U.part} = ${F.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : '× '}<b>${cf(R.c[i])}</b>`).join(' + ')}${uk === 'gas' ? ' <span class="hint">+ 식당 가스(실측)</span>' : ''}</div>
         <div style="margin-top:4px">월 평균 오차 <b class="${R.mape < 5 ? 'good' : R.mape >= 10 ? 'warn' : ''}">±${nf1.format(R.mape)}%</b> · 교차검증 오차 <b>±${R.cv === null ? '-' : nf1.format(R.cv)}%</b> <span class="hint">(기준 달 ${R.rs.length}개 · ${Portal.tip('ols')})</span></div>` +
         (R.warn.length ? `<div class="warn" style="margin-top:4px">${R.warn.map(w => '⚠ ' + w).join('<br>')}</div>` : '<div class="good" style="margin-top:4px">✔ 계수 모두 플러스 · 지표끼리 겹침 없음</div>') +
-        `<div class="chart-box" style="height:240px;margin-top:8px"><canvas id="chart-ind"></canvas></div>
+        `<div class="chart-box" style="height:240px;margin-top:8px"><canvas id="chart-ind"></canvas></div><div class="hint">막대 = 실제 사용량 · <b>검은 선 = 고른 지표로 계산한 값</b>(위 식에 그 달 지표 값을 넣은 것) — 막대 끝과 선이 가까울수록 이 지표로 잘 설명됨</div>
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">` +
         (L ? `<span class="hint">🔒 ${y}년 목표 지표가 확정되어 있습니다 (${L.feats.map(facName).join(' · ')}). 바꾸려면 목표·예산 ①에서 「확정 풀기」.</span>`
           : isCur ? `<span class="good">✔ 지금 ${y}년 목표에 쓰는 지표입니다</span> <button class="btn secondary small" onclick="switchTab('target')">3단계 목표·예산 보기 →</button>`
@@ -1677,12 +1677,12 @@
       const R = indFit(uk, F, parts); if (R.err || !document.getElementById('chart-ind')) return;
       const labels = R.rs.map(r => r.ym.slice(2).replace('-', '.')), act = R.rs.map(r => r.p.all), pr = R.rs.map((r, i) => R.pred[i] + r.p.fixed);
       mkChart('chart-ind', { type: 'bar', data: { labels, datasets: [{ label: '실제', data: act, backgroundColor: uk === 'elec' ? '#2a78d6' : '#eb6834', order: 2 }, { type: 'line', label: '고른 지표로 계산', data: pr, borderColor: '#222', backgroundColor: '#222', pointRadius: 3, borderWidth: 2, order: 1 }] },
-        options: baseOpts(uk === 'elec' ? 'kWh' : 'MJ') });
+        options: (() => { const o = baseOpts(uk === 'elec' ? 'kWh' : 'MJ'); o.plugins = o.plugins || {}; o.plugins.legend = Object.assign({}, o.plugins.legend, { display: true }); return o; })() });
     }
     async function indBase(ym) { // 기준 기간 넣기/빼기 → 바로 저장 (목표·예산 ① 기준 달과 같은 값)
       const y = pickYear(); try { await freshYear(y); const t = JSON.parse(JSON.stringify(tgt(y))); if (isLocked(t)) return;
         if (ym === null) delete t.base; else { const cur = baseMonths(t, y); t.base = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort(); }
-        await saveYear(y, { targets: t }); resetPickCache(); indSel.elec = null; indSel.gas = null; renderIndicators(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
+        await saveYear(y, { targets: t }); resetPickCache(); indSel.elec = null; indSel.gas = null; renderIndicators(); if (typeof renderPerElec === 'function' && document.getElementById('per-elec')) renderPerElec(); } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     function indToggle(f) { const a = indSel[indU] || []; indSel[indU] = a.includes(f) ? a.filter(x => x !== f) : [...a, f]; renderIndicators(); }
     function indSet(fs) { indSel[indU] = fs.split(','); renderIndicators(); }
@@ -3785,7 +3785,7 @@
     // 기간비교 · 전력 구성별 비교 (월별): 생산동·폐수동·공조냉동 전력 ↔ 원육·포장 EA·기온·생산일수 등
     //   생산동 = 고지서(없으면 파워플래너 합산) 전체 − 폐수동 계량 − 공조냉동 계량 12곳
     // =====================================================================
-    let peUtil = 'elec', peComp = 'hall', peFac = 'prod', pePerDay = false, peStack = false, peN = 12, peRatio = true;
+    let peUtil = 'elec', peComp = 'hall', peFac = 'prod', pePerDay = false, peStack = false, peN = 12, peRatio = true, peSpan = 'base';
     // 유틸리티별 구성 (막대) · 단위 · 비교 인자 (선)
     const PE_U = {
       elec: { name: '전기', unit: 'kWh', comps: [['hall', '생산동', '#2a78d6'], ['ww', '폐수동', '#eda100'], ['hv', '공조냉동', '#1baf7a'], ['all', '전기 전체', '#555']], stack: ['hall', 'ww', 'hv'],
@@ -3834,7 +3834,9 @@
       if (need.length) { el.innerHTML = '<div class="loading">생산 실적·기온·폐수 장부 불러오는 중...</div>'; await Promise.all(need); }
       const PU = PE_U[peUtil], PE_COMP = PU.comps, FACS = PU.facs.map(k => PE_FAC.find(f => f[0] === k)).filter(Boolean); // 순서도 지표 고르기와 같게
       if (!PE_COMP.some(c => c[0] === peComp)) peComp = PE_COMP[0][0]; if (!PU.facs.includes(peFac)) peFac = PU.facs[0]; if (!PU.stack) peStack = false;
-      const ms = peMonths(), rows = ms.map(peRow), C = PE_COMP.find(x => x[0] === peComp), F = PE_FAC.find(x => x[0] === peFac);
+      const ms = (() => { const last = lastCompleteYm(); // 기간: 기준 기간(위 칩)과 같게 / 최근 24개월
+        if (peSpan === 'base') { try { const y = pickYear(), b = baseMonths(tgt(y), y).filter(m => m <= last).sort(); if (b.length >= 2) { const o = []; for (let m = b[0]; m <= b[b.length - 1]; m = UT.nextYm(m)) o.push(m); return o; } } catch (e) { } }
+        const o = []; let m = last; for (let i = 0; i < 24; i++) { o.unshift(m); m = UT.prevYm(m); } return o; })(), rows = ms.map(peRow), C = PE_COMP.find(x => x[0] === peComp), F = PE_FAC.find(x => x[0] === peFac);
       const cv = (r, k) => { const v = r.c[k]; return v === null || v === undefined ? null : (pePerDay ? v / r.f.days : v); };
       const fv = (r, k) => { const v = r.f[k]; return v === null || v === undefined ? null : (pePerDay && PE_PERDAY_FAC[k] ? v / r.f.days : v); };
       const cu = pePerDay ? PU.unit + '/일' : PU.unit, fu = pePerDay && PE_PERDAY_FAC[F[0]] ? F[2] + '/일' : F[2];
@@ -3846,7 +3848,8 @@
       let h = `<div class="toolbar"><span class="chips">${Object.entries(PE_U).map(([k, u]) => `<button class="chip ${peUtil === k ? 'on' : ''}" onclick="peUtil='${k}';renderPerElec()"><b>${u.name}</b></button>`).join('')}</span></div>
         <div class="toolbar"><span class="hint">${PU.name} (막대)</span><span class="chips">${PE_COMP.map(([k, n]) => `<button class="chip ${peComp === k && !peStack ? 'on' : ''}" onclick="peComp='${k}';peStack=false;renderPerElec()">${n}</button>`).join('')}${PU.stack ? `<button class="chip ${peStack ? 'on' : ''}" onclick="peStack=true;renderPerElec()">구성 쌓아 보기</button>` : ''}</span>
           <label class="hint"><input type="checkbox" ${pePerDay ? 'checked' : ''} onchange="pePerDay=this.checked;renderPerElec()"> 하루당으로 보기 (날수 차이 없앰)</label>
-          <span class="hint">기간: <b>${ms[0].slice(2).replace('-', '.')} ~ ${ms[ms.length - 1].slice(2).replace('-', '.')}</b> (${ms.length}개월 · 맨 위 기간 설정을 따름, 진행 중인 달 제외)</span></div>
+          <span class="hint">기간</span><span class="chips"><button class="chip ${peSpan === 'base' ? 'on' : ''}" onclick="peSpan='base';renderPerElec()">기준 기간과 같게</button><button class="chip ${peSpan === 'all' ? 'on' : ''}" onclick="peSpan='all';renderPerElec()">최근 24개월</button></span>
+          <span class="hint"><b>${ms[0].slice(2).replace('-', '.')} ~ ${ms[ms.length - 1].slice(2).replace('-', '.')}</b> (${ms.length}개월 · 진행 중인 달 제외)</span></div>
         <div class="toolbar"><span class="hint">비교할 것 (선) ${Portal.tip('degday')}</span><span class="chips">${FACS.map(([k, n]) => `<button class="chip ${peFac === k ? 'on' : ''}" onclick="peFac='${k}';renderPerElec()">${n}</button>`).join('')}</span>${RT_OK && !peStack ? ` <label class="hint"><input type="checkbox" ${peRatio ? 'checked' : ''} onchange="peRatio=this.checked;renderPerElec()"> 원단위 선도 보기 (${C[1]} ÷ ${F[1].replace(/ \(.*\)/, '')})</label>${Portal.tip('unit')}` : ''}</div>
         <div class="chart-box" style="height:300px"><canvas id="chart-pe"></canvas></div>`;
       // 연관성 (상관계수 r) — 마감된 달끼리
