@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>자재 발주 요청</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root { --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB; --radius: 12px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 12px; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 0; position: sticky; top: 0; z-index: 10; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .title { font-size: 17px; font-weight: 700; }
+    .vtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .vtab { font-size: 13px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .vtab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .vtab .n { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; margin-left: 4px; }
+    .content { padding: 12px 0 60px; display: flex; flex-direction: column; gap: 10px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .f { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .f label { font-size: 12px; color: #555; font-weight: 600; }
+    .f input, .f select, .f textarea { font-size: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; width: 100%; background: #fff; font-family: inherit; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .qty { display: grid; grid-template-columns: 1fr 110px; gap: 6px; }
+    .btn { padding: 13px 20px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .btn.blue { background: var(--blue); } .btn.teal { background: var(--teal); } .btn.sec { background: #fff; color: #333; border: 1px solid var(--border); } .btn.red { background: #fff; color: var(--red); border: 1px solid var(--red); }
+    .btn.sm { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+    .btn:disabled { opacity: .5; }
+    .urg { display: flex; gap: 6px; }
+    .urg button { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font-size: 14px; cursor: pointer; }
+    .urg button.on { background: var(--primary); color: #fff; border-color: var(--primary); } .urg button.on.u { background: var(--red); border-color: var(--red); }
+    .phs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .phs .ph { width: 84px; height: 84px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); cursor: pointer; background: #eee; }
+    .phs .pw { position: relative; } .phs .pw .x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 11px; border: none; background: #000a; color: #fff; font-size: 13px; cursor: pointer; }
+    .phs label.add { width: 84px; height: 84px; border-radius: 10px; border: 2px dashed #bbb; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); cursor: pointer; }
+    .phs label.add b { font-size: 24px; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); cursor: pointer; color: #444; }
+    .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .hint { font-size: 12px; color: var(--muted); }
+    .req { display: flex; gap: 12px; }
+    .req .thumb { width: 92px; height: 92px; border-radius: 10px; object-fit: cover; flex: none; background: #eee; cursor: pointer; border: 1px solid var(--border); }
+    .req .thumb.none { display: flex; align-items: center; justify-content: center; font-size: 28px; color: #bbb; cursor: default; }
+    .req .body { flex: 1; min-width: 0; }
+    .req .it { font-size: 16px; font-weight: 700; } .req .sp { font-size: 13px; color: #444; margin-top: 2px; word-break: break-all; }
+    .req .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .st { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; vertical-align: middle; }
+    .st.s요청 { background: var(--amber-bg); color: var(--amber); } .st.s확인 { background: var(--blue-bg); color: var(--blue); } .st.s구매완료 { background: var(--teal-bg); color: var(--teal); } .st.s반려 { background: #eee; color: #777; }
+    .st.urgent { background: var(--red); color: #fff; }
+    .card.urgent { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; }
+    .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+    .acts input { font-size: 14px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; flex: 1; min-width: 160px; }
+    .bm { font-size: 12px; background: #f6f8fb; border-radius: 8px; padding: 6px 9px; margin-top: 6px; color: #333; }
+    .empty, .loading { padding: 30px; text-align: center; color: var(--muted); font-size: 14px; }
+    .lb { position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 70; display: flex; align-items: center; justify-content: center; }
+    .lb img { max-width: 96vw; max-height: 86vh; border-radius: 6px; }
+    .lb .c { position: absolute; top: 12px; right: 16px; color: #fff; font-size: 28px; background: none; border: none; cursor: pointer; }
+    .lb .nv { position: absolute; top: 50%; transform: translateY(-50%); color: #fff; font-size: 34px; background: none; border: none; cursor: pointer; padding: 10px; }
+    .toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 80; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="head"><div class="wrap head-row">
+      <div class="title">🛒 자재 발주 요청</div>
+      <div class="vtabs">
+        <button class="vtab on" data-v="new">요청하기</button>
+        <button class="vtab" data-v="open">처리 대기 <span class="n" id="n-open" hidden>0</span></button>
+        <button class="vtab" data-v="done">구매 완료</button>
+      </div>
+    </div></div>
+    <div class="wrap content" id="body"><div class="loading">불러오는 중...</div></div>
+    <div class="toast" id="toast"></div>
+    <div class="lb" id="lb" hidden onclick="if(event.target===this)lbClose()"><button class="c" onclick="lbClose()">✕</button><button class="nv" style="left:8px" onclick="lbGo(-1)">‹</button><img id="lb-img"><button class="nv" style="right:8px" onclick="lbGo(1)">›</button></div>
+  </div>
+<script>
+const esc = Portal.esc;
+let sb = null, me = null, view = 'new', REQ = [], URLS = {}, NEW = null, EDIT = null, doneYm = null;
+const BUCKET = 'pm-photos', UNITS = ['EA', '박스', '팩', '롤', '세트', 'kg', 'L', 'm', '통', '켤레'];
+const p2 = n => String(n).padStart(2, '0');
+const canWrite = () => Portal.me && ['admin', 'user'].includes(Portal.me.role);
+const errMsg = e => (e && (e.message || e.error_description)) || String(e);
+function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+const dt = s => { if (!s) return ''; const d = new Date(s); return `${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+const ago = s => { const m = (Date.now() - new Date(s)) / 60000; return m < 60 ? `${Math.max(1, Math.round(m))}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`; };
+const qtyTxt = r => r.qty !== null && r.qty !== undefined && r.qty !== '' ? `${Number(r.qty).toLocaleString('ko-KR')} ${esc(r.unit || '')}` : '';
+const blank = () => ({ item: '', spec: '', qty: '', unit: 'EA', place: '', urgent: false, memo: '', photos: [], files: [] });
+
+async function loadReq() {
+  let out = [];
+  for (let o = 0; o < 20; o++) { const { data, error } = await sb.from('mat_req').select('*').order('created_at', { ascending: false }).range(o * 1000, o * 1000 + 999); if (error) throw error; out = out.concat(data || []); if (!data || data.length < 1000) break; }
+  REQ = out; await signUrls(REQ.flatMap(r => r.photos || []));
+  const n = REQ.filter(r => r.status === '요청' || r.status === '확인').length, b = document.getElementById('n-open'); b.textContent = n; b.hidden = !n;
+}
+async function signUrls(paths) {
+  const need = [...new Set(paths)].filter(p => p && !URLS[p]); if (!need.length) return;
+  try { const { data } = await sb.storage.from(BUCKET).createSignedUrls(need, 60 * 60 * 6); (data || []).forEach(x => { if (x.signedUrl) URLS[x.path] = x.signedUrl; }); } catch (e) { }
+}
+async function compressImage(file) { // 긴 변 1600px · JPEG 0.82
+  const img = await new Promise((ok, no) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => no(new Error('사진을 읽지 못했습니다')); im.src = u; });
+  let w = img.naturalWidth, h = img.naturalHeight; const r = Math.min(1, 1600 / Math.max(w, h)); w = Math.round(w * r); h = Math.round(h * r);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+  return await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('사진 변환 실패')), 'image/jpeg', 0.82));
+}
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
+
+// ---------------- 요청하기 ----------------
+function renderNew() {
+  const el = document.getElementById('body');
+  if (!canWrite()) { el.innerHTML = '<div class="empty">요청은 시설팀 계정만 올릴 수 있습니다. 「처리 대기」에서 요청 내용을 볼 수 있습니다.</div>'; return; }
+  const F = EDIT || NEW || (NEW = blank()), ed = !!EDIT;
+  const past = [...new Map(REQ.map(r => [r.item + '|' + r.spec, r])).values()].slice(0, 300);
+  el.innerHTML = `<div class="card">
+    ${ed ? `<div style="margin-bottom:8px"><b>요청 고치기</b> <span class="hint">#${EDIT.id}</span></div>` : ''}
+    <div class="f"><label>📷 사진 <span class="hint" style="font-weight:400">(물건·라벨·규격이 보이게 · 여러 장 가능)</span></label>
+      <div class="phs">${F.photos.map((p, i) => `<div class="pw"><img class="ph" src="${esc(URLS[p] || '')}"><button class="x" onclick="rmPhoto('old',${i})">✕</button></div>`).join('')}
+        ${F.files.map((f, i) => `<div class="pw"><img class="ph" src="${f.url}"><button class="x" onclick="rmPhoto('new',${i})">✕</button></div>`).join('')}
+        <label class="add"><b>＋</b>사진<input type="file" accept="image/*" multiple hidden onchange="addPhotos(this.files);this.value=''"></label></div></div>
+    <div class="f"><label>품명 *</label><input id="m-item" list="m-past" value="${esc(F.item)}" placeholder="예: 케이블타이, 니트릴 장갑, 베어링" autocomplete="off" oninput="pastFill(this.value)">
+      <datalist id="m-past">${[...new Set(past.map(r => r.item))].map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="f"><label>규격·모델·사이즈</label><input id="m-spec" value="${esc(F.spec)}" placeholder="예: 300mm 흰색 / L 사이즈 / 6205ZZ"></div>
+    <div class="row2">
+      <div class="f"><label>수량</label><div class="qty"><input id="m-qty" type="number" inputmode="decimal" value="${esc(F.qty ?? '')}" placeholder="수량"><select id="m-unit">${[...new Set(UNITS.concat([F.unit || 'EA']))].map(u => `<option ${u === (F.unit || 'EA') ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></div></div>
+      <div class="f"><label>어디에 쓰나 (설비·장소)</label><input id="m-place" value="${esc(F.place)}" placeholder="예: 내포장실, 보일러실"></div>
+    </div>
+    <div class="f"><label>급한 정도</label><div class="urg"><button class="${!F.urgent ? 'on' : ''}" onclick="setUrg(false)">보통</button><button class="u ${F.urgent ? 'on' : ''}" onclick="setUrg(true)">🚨 급함 (곧 떨어짐)</button></div></div>
+    <div class="f"><label>메모</label><textarea id="m-memo" rows="2" placeholder="예: 지금 2개 남음, 구매처 링크, 대체품 가능">${esc(F.memo)}</textarea></div>
+    <div style="display:flex;gap:8px">${ed ? '<button class="btn sec" onclick="EDIT=null;show(\'open\')">취소</button>' : ''}<button class="btn blue" style="flex:1" id="m-save" onclick="saveReq()">${ed ? '고친 내용 저장' : '요청 올리기'}</button></div>
+    <div class="hint" id="m-st" style="margin-top:6px"></div></div>
+    <div class="hint">· 올리면 「처리 대기」에 올라가고, 담당자가 확인 → 구매 → 「구매 완료」로 바꿉니다.<br>· 품명을 치면 전에 요청했던 품목이 나옵니다 — 고르면 규격·단위가 자동으로 채워집니다.</div>`;
+}
+function grab() { const F = EDIT || NEW, v = id => document.getElementById(id); if (!F || !v('m-item')) return; F.item = v('m-item').value.trim(); F.spec = v('m-spec').value.trim(); F.qty = v('m-qty').value; F.unit = v('m-unit').value; F.place = v('m-place').value.trim(); F.memo = v('m-memo').value.trim(); }
+function setUrg(u) { grab(); (EDIT || NEW).urgent = u; renderNew(); }
+function pastFill(v) { const r = REQ.find(x => x.item === v); if (!r) return; const s = document.getElementById('m-spec'), u = document.getElementById('m-unit'), p = document.getElementById('m-place');
+  if (!s.value) s.value = r.spec || ''; if (r.unit) { if (![...u.options].some(o => o.value === r.unit)) u.add(new Option(r.unit)); u.value = r.unit; } if (!p.value) p.value = r.place || ''; }
+function addPhotos(files) { grab(); const F = EDIT || NEW; [...files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)).forEach(f => F.files.push({ f, url: URL.createObjectURL(f) })); renderNew(); }
+function rmPhoto(k, i) { grab(); const F = EDIT || NEW; if (k === 'old') F.photos.splice(i, 1); else F.files.splice(i, 1); renderNew(); }
+async function saveReq() {
+  grab(); const F = EDIT || NEW, st = document.getElementById('m-st'), btn = document.getElementById('m-save');
+  if (!F.item) { alert('품명을 넣어 주세요'); return; }
+  btn.disabled = true;
+  try {
+    const paths = F.photos.slice();
+    for (let i = 0; i < F.files.length; i++) {
+      st.textContent = `사진 올리는 중... ${i + 1}/${F.files.length}`;
+      const blob = await compressImage(F.files[i].f), d = new Date(), path = `mat/${d.getFullYear()}/${p2(d.getMonth() + 1)}/${uuid()}.jpg`;
+      const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false }); if (up.error) throw up.error;
+      paths.push(path);
+    }
+    st.textContent = '저장 중...';
+    const row = { item: F.item, spec: F.spec, qty: F.qty === '' || F.qty === null ? null : Number(F.qty), unit: F.unit || 'EA', place: F.place, urgent: !!F.urgent, memo: F.memo, photos: paths };
+    if (EDIT) { const { error } = await sb.from('mat_req').update(row).eq('id', EDIT.id); if (error) throw error; }
+    else { row.req_name = (me && (me.name || me.username)) || ''; const { error } = await sb.from('mat_req').insert(row); if (error) throw error; }
+    const was = !!EDIT; EDIT = null; NEW = null; await loadReq(); toast(was ? '고쳤습니다' : '요청을 올렸습니다'); show('open');
+  } catch (e) { st.textContent = ''; alert('저장 실패: ' + errMsg(e) + '\n(34번 SQL을 실행했는지 확인)'); btn.disabled = false; }
+}
+
+// ---------------- 요청 카드 ----------------
+let LB = null;
+function lbOpen(id, i) { const r = REQ.find(x => x.id === id); if (!r || !r.photos.length) return; LB = { L: r.photos, i }; document.getElementById('lb').hidden = false; lbShow(); }
+function lbShow() { document.getElementById('lb-img').src = URLS[LB.L[LB.i]] || ''; }
+function lbGo(d) { if (!LB) return; LB.i = (LB.i + d + LB.L.length) % LB.L.length; lbShow(); }
+function lbClose() { document.getElementById('lb').hidden = true; LB = null; }
+function cardHtml(r) {
+  const ph = r.photos || [], mine = Portal.me && r.created_by === Portal.me.id, ad = Portal.isAdmin(), w = canWrite();
+  const stTxt = { 요청: '요청', 확인: '구매 진행 중', 구매완료: '구매 완료', 반려: '반려' }[r.status] || r.status;
+  return `<div class="card ${r.urgent && (r.status === '요청' || r.status === '확인') ? 'urgent' : ''}"><div class="req">
+    ${ph.length ? `<img class="thumb" src="${esc(URLS[ph[0]] || '')}" onclick="lbOpen(${r.id},0)" title="누르면 크게${ph.length > 1 ? ` (${ph.length}장)` : ''}">` : '<div class="thumb none">📦</div>'}
+    <div class="body">
+      <div>${r.urgent && r.status !== '구매완료' ? '<span class="st urgent">🚨 급함</span> ' : ''}<span class="st s${esc(r.status)}">${stTxt}</span>${ph.length > 1 ? ` <span class="hint">📷 ${ph.length}장</span>` : ''}</div>
+      <div class="it" style="margin-top:4px">${esc(r.item)} ${qtyTxt(r) ? `<span style="font-weight:400;color:#555">· ${qtyTxt(r)}</span>` : ''}</div>
+      ${r.spec ? `<div class="sp">${esc(r.spec)}</div>` : ''}
+      ${r.place ? `<div class="sp">📍 ${esc(r.place)}</div>` : ''}
+      ${r.memo ? `<div class="sp" style="color:#666">💬 ${esc(r.memo)}</div>` : ''}
+      <div class="meta">${esc(r.req_name || '')} · ${dt(r.created_at)} (${ago(r.created_at)})${r.checked_at ? ` · 확인 ${dt(r.checked_at)}` : ''}${r.done_at ? ` · ${r.status === '반려' ? '반려' : '완료'} ${dt(r.done_at)}` : ''}${r.handled_by ? ` · 처리 ${esc(r.handled_by)}` : ''}</div>
+      ${r.buy_memo || r.price ? `<div class="bm">🧾 ${esc(r.buy_memo || '')}${r.price ? ` · ${Number(r.price).toLocaleString('ko-KR')}원` : ''}</div>` : ''}
+    </div></div>
+    ${w ? `<div class="acts">
+      ${r.status === '요청' || r.status === '확인' ? `<input id="bm-${r.id}" value="${esc(r.buy_memo || '')}" placeholder="업체·입고 예정·메모 (선택)"><input id="pr-${r.id}" type="number" inputmode="numeric" value="${r.price ?? ''}" placeholder="금액(원)" style="flex:0 0 110px;min-width:0">` : ''}
+      ${r.status === '요청' ? `<button class="btn sm blue" onclick="setSt(${r.id},'확인')">확인 · 구매 진행</button>` : ''}
+      ${r.status === '요청' || r.status === '확인' ? `<button class="btn sm teal" onclick="setSt(${r.id},'구매완료')">✓ 구매 완료</button><button class="btn sm red" onclick="setSt(${r.id},'반려')">반려</button>` : ''}
+      ${r.status === '구매완료' || r.status === '반려' ? `<button class="btn sm sec" onclick="setSt(${r.id},'요청')">↩ 다시 대기로</button><button class="btn sm sec" onclick="again(${r.id})">🔁 같은 걸 다시 요청</button>` : ''}
+      ${(mine || ad) && r.status === '요청' ? `<button class="btn sm sec" onclick="editReq(${r.id})">고치기</button>` : ''}
+      ${(mine && r.status === '요청') || ad ? `<button class="btn sm sec" style="color:var(--red)" onclick="delReq(${r.id})">삭제</button>` : ''}
+    </div>` : ''}</div>`;
+}
+async function setSt(id, st) {
+  const r = REQ.find(x => x.id === id); if (!r) return;
+  if (st === '반려' && !confirm(`「${r.item}」 요청을 반려할까요? (메모 칸에 이유를 적어 두면 좋습니다)`)) return;
+  const now = new Date().toISOString(), bm = document.getElementById('bm-' + id), pr = document.getElementById('pr-' + id), who = (me && (me.name || me.username)) || '';
+  const patch = { status: st, handled_by: who };
+  if (bm) patch.buy_memo = bm.value.trim(); if (pr) patch.price = pr.value === '' ? null : Number(pr.value);
+  if (st === '확인') patch.checked_at = now;
+  if (st === '구매완료' || st === '반려') { patch.done_at = now; if (!r.checked_at) patch.checked_at = now; }
+  if (st === '요청') { patch.done_at = null; patch.checked_at = null; patch.handled_by = ''; }
+  const { error } = await sb.from('mat_req').update(patch).eq('id', id); if (error) { alert('저장 실패: ' + errMsg(error)); return; }
+  await loadReq(); toast({ 확인: '구매 진행으로 바꿨습니다', 구매완료: '구매 완료 ✓', 반려: '반려했습니다', 요청: '다시 대기로 돌렸습니다' }[st]); render();
+}
+function editReq(id) { const r = REQ.find(x => x.id === id); if (!r) return; EDIT = { id, item: r.item, spec: r.spec, qty: r.qty ?? '', unit: r.unit, place: r.place, urgent: r.urgent, memo: r.memo, photos: (r.photos || []).slice(), files: [] }; show('new', true); }
+function again(id) { const r = REQ.find(x => x.id === id); if (!r) return; NEW = { item: r.item, spec: r.spec, qty: r.qty ?? '', unit: r.unit, place: r.place, urgent: false, memo: '', photos: (r.photos || []).slice(), files: [] }; EDIT = null; show('new', true); toast('전 요청 내용을 채웠습니다 — 수량만 확인하고 올리세요'); }
+async function delReq(id) {
+  const r = REQ.find(x => x.id === id); if (!r || !confirm(`「${r.item}」 요청을 지울까요?`)) return;
+  const { error } = await sb.from('mat_req').delete().eq('id', id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; }
+  const used = new Set(REQ.filter(x => x.id !== id).flatMap(x => x.photos || [])), rm = (r.photos || []).filter(p => !used.has(p));
+  if (rm.length) { try { await sb.storage.from(BUCKET).remove(rm); } catch (e) { } }
+  await loadReq(); toast('지웠습니다'); render();
+}
+
+// ---------------- 처리 대기 / 구매 완료 ----------------
+function renderOpen() {
+  const el = document.getElementById('body');
+  const L = REQ.filter(r => r.status === '요청' || r.status === '확인').sort((a, b) => (b.urgent - a.urgent) || (a.status === b.status ? 0 : a.status === '요청' ? -1 : 1) || (a.created_at < b.created_at ? -1 : 1));
+  const nU = L.filter(r => r.urgent).length, nR = L.filter(r => r.status === '요청').length, nC = L.length - nR;
+  el.innerHTML = `<div class="hint">대기 ${L.length}건 — 새 요청 ${nR} · 구매 진행 중 ${nC}${nU ? ` · <b style="color:var(--red)">🚨 급함 ${nU}</b>` : ''} · 급한 것 → 오래된 순</div>` +
+    (L.length ? L.map(cardHtml).join('') : '<div class="empty">처리할 요청이 없습니다 👍</div>');
+}
+function renderDone() {
+  const el = document.getElementById('body'), all = REQ.filter(r => r.status === '구매완료' || r.status === '반려');
+  const yms = [...new Set(all.map(r => (r.done_at || r.created_at).slice(0, 7)))].sort().reverse();
+  if (!doneYm || !yms.includes(doneYm)) doneYm = yms[0] || null;
+  const L = all.filter(r => (r.done_at || r.created_at).slice(0, 7) === doneYm).sort((a, b) => (a.done_at || '') < (b.done_at || '') ? 1 : -1);
+  const sum = L.filter(r => r.status === '구매완료').reduce((a, r) => a + (Number(r.price) || 0), 0);
+  el.innerHTML = (yms.length ? `<div class="chips">${yms.map(m => `<button class="chip ${m === doneYm ? 'on' : ''}" onclick="doneYm='${m}';renderDone()">${m.slice(0, 4)}년 ${Number(m.slice(5))}월</button>`).join('')}</div>
+    <div class="hint">구매 완료 ${L.filter(r => r.status === '구매완료').length}건${sum ? ` · 적은 금액 합계 ${sum.toLocaleString('ko-KR')}원` : ''}${L.some(r => r.status === '반려') ? ` · 반려 ${L.filter(r => r.status === '반려').length}건` : ''}</div>` : '') +
+    (L.length ? L.map(cardHtml).join('') : '<div class="empty">아직 구매 완료된 요청이 없습니다.</div>');
+}
+
+function render() { if (view === 'new') renderNew(); else if (view === 'open') renderOpen(); else renderDone(); }
+function show(v, keep) {
+  if (view === 'new' && v !== 'new') { grab(); if (!keep) EDIT = null; }
+  view = v; document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v)); render(); window.scrollTo(0, 0);
+}
+document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
+document.addEventListener('keydown', e => { if (!LB) return; if (e.key === 'Escape') lbClose(); else if (e.key === 'ArrowLeft') lbGo(-1); else if (e.key === 'ArrowRight') lbGo(1); });
+
+Portal.start({
+  appId: 'mat',
+  title: '자재 발주 요청',
+  onReady: async P => {
+    sb = P.sb; me = P.me; document.getElementById('app').hidden = false;
+    try { await loadReq(); } catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 34번 SQL(34_mat_request.sql)을 실행했는지 확인해 주세요.</div>`; return; }
+    show(new URLSearchParams(location.search).has('open') || !canWrite() ? 'open' : 'new');
+    setInterval(async () => { if (view === 'new' || document.hidden) return; try { await loadReq(); render(); } catch (e) { } }, 120000); // 2분마다 새로고침 (입력 중엔 안 함)
+  }
+});
+</script>
+</body>
+</html>

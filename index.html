@@ -112,10 +112,16 @@
         sb = P.sb; me = P.me;
         document.getElementById('welcome').textContent = `${me.name}님, 안녕하세요 👋`;
         renderApps();
+        matBadge();
         if (P.isAdmin()) { document.getElementById('user-section').hidden = false; document.getElementById('backup-section').hidden = false; document.getElementById('usage-section').hidden = false; loadUsers(); loadUsage(); }
       }
     });
 
+    async function matBadge() { // 자재 발주 요청: 처리 대기 건수 표시
+      try { if (!Portal.visibleApps().some(a => a.id === 'mat')) return; const { data, error } = await sb.from('mat_req').select('id,urgent').in('status', ['요청', '확인']); if (error || !data || !data.length) return;
+        const card = [...document.querySelectorAll('#app-grid a.app-card')].find(a => /mat\//.test(a.getAttribute('href') || '')); if (!card) return; const u = data.filter(x => x.urgent).length;
+        card.querySelector('.name').insertAdjacentHTML('beforeend', ` <span style="font-size:12px;background:#A32D2D;color:#fff;border-radius:10px;padding:1px 8px;vertical-align:middle">대기 ${data.length}${u ? ` · 🚨급함 ${u}` : ''}</span>`); } catch (e) { }
+    }
     function renderApps() {
       document.getElementById('app-grid').innerHTML = Portal.visibleApps().map(a => a.ready ? `
         <a class="app-card" href="${Portal.appUrl(a)}">
