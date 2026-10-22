@@ -3599,7 +3599,15 @@
       const EQ = uk === 'elec' || uk === 'gas' ? eqAll().filter(x => x.d >= from && x.d <= to && (uk === 'elec' ? Number(x.kw) > 0 || x.area !== '기타' : /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))) : [];
       L.push(...EQ.map(x => ({ d: x.d, _eq: x }))); L.sort((p, q) => p.d < q.d ? -1 : 1);
       return `<h3>③ 그 기간에 무슨 일이 있었나 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
-        (L.length ? `<ul class="un-list">${L.map(n => `<li>${n._eq ? eqLine(n._eq) : unLine(n)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
+        (L.length ? (() => { // 이번 달 / 비교 달 / 그 사이로 나눠 보여 줌
+          const li = arr => `<ul class="un-list">${arr.map(n => `<li>${n._eq ? eqLine(n._eq) : unLine(n)}</li>`).join('')}</ul>`, mo = x => x.d.slice(0, 7);
+          const cur = L.filter(n => mo(n) === ym), cmp = L.filter(n => mo(n) === ym0), mid = L.filter(n => mo(n) !== ym && mo(n) !== ym0);
+          const sec = (t, sub, arr) => arr.length ? `<div style="margin:8px 0 2px;font-weight:600;font-size:13px">${t} <span class="hint" style="font-weight:400">${sub}</span></div>${li(arr)}` : '';
+          return sec(`이번 달 (${ymLabel(ym)})`, '이 달에 있었던 일', cur) +
+            sec(`비교 달 (${ymLabel(ym0)})`, '비교하는 달에 있었던 일', cmp) +
+            sec(`그 사이 (${ymLabel(a)} 다음 ~ ${ymLabel(b)} 전)`, '두 달 사이에 바뀐 운전·설비 — 두 달 차이에 영향을 줬을 수 있는 변경', mid) +
+            (!cur.length ? `<div class="hint" style="margin-top:6px">이번 달(${ymLabel(ym)})에 적은 ${U.name} 관련 특이사항은 없습니다.</div>` : '');
+        })() : `<div class="hint">이 기간에 적은 ${U.name} 관련 특이사항이 없습니다. 원인 확인이 필요하면 <a href="#" onclick="showTabByName('notes');return false">특이사항</a>에 적어 두세요.</div>`);
     }
     function showTabByName(t) { const b = document.querySelector(`.tab-btn[data-tab="${t}"]`); if (b) b.click(); }
 
