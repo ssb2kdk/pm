@@ -233,6 +233,42 @@
     document.getElementById('pt-bar').hidden = false;
     const a = appEl(); if (a) a.hidden = false;
     if (!readyCalled && opts.onReady) { readyCalled = true; opts.onReady(Portal); }
+    if (prof.role !== 'partner' && (CFG.APPS || []).some(x => x.id === 'load' && x.ready)) loadAlarm(sb);
+  }
+
+  // ---------------- 설비 과부하 경보: 어느 화면에서든 기준 전류 110% 넘으면 위에 빨간 띠 ----------------
+  const ALARM_PCT = 1.1;
+  let alarmCfg = null, alarmCfgAt = 0, alarmTimer = null;
+  async function loadAlarm(sb) {
+    clearTimeout(alarmTimer);
+    try {
+      if (!alarmCfg || Date.now() - alarmCfgAt > 600000) {
+        const [p, c] = await Promise.all([sb.from('load_panels').select('id,name'), sb.from('load_channels').select('panel_id,ch,name,limit_a')]);
+        if (!p.error && !c.error) { alarmCfg = { P: Object.fromEntries((p.data || []).map(x => [x.id, x.name])), C: c.data || [] }; alarmCfgAt = Date.now(); }
+      }
+      const { data, error } = await sb.rpc('load_latest');
+      if (!error && alarmCfg) {
+        const L = Object.fromEntries((data || []).map(r => [r.panel_id, r])), now = Date.now(), over = [];
+        alarmCfg.C.forEach(c => { const r = L[c.panel_id], lim = Number(c.limit_a) || 0; if (!r || !lim) return; const age = (now - new Date(r.ts)) / 60000, a = Number(r['ch' + c.ch]);
+          if (age <= 5 && a >= lim * ALARM_PCT) over.push({ p: alarmCfg.P[c.panel_id] || c.panel_id, n: c.name || ('CH' + c.ch), a, lim, age }); });
+        showAlarm(over);
+      }
+    } catch (e) { }
+    alarmTimer = setTimeout(() => loadAlarm(sb), 60000);
+  }
+  function showAlarm(over) {
+    let el = document.getElementById('pt-alarm');
+    let snooze = 0; try { snooze = Number(sessionStorage.getItem('pt-alarm-snooze') || 0); } catch (e) { }
+    const base = document.title.replace(/^🚨 /, '');
+    if (!over.length || Date.now() < snooze) { if (el) el.remove(); document.title = base; return; }
+    document.title = '🚨 ' + base;
+    const loadApp = (CFG.APPS || []).find(x => x.id === 'load');
+    const html = `<span style="font-weight:700">🚨 과부하 경보</span> ` + over.map(o => `<span style="background:rgba(255,255,255,.18);border-radius:10px;padding:2px 8px;white-space:nowrap">${esc(o.p)} · ${esc(o.n)} <b>${o.a.toFixed(1)} A</b> (기준 ${o.lim} A · ${Math.round(o.a / o.lim * 100)}%)</span>`).join(' ') +
+      `<span style="margin-left:auto;display:flex;gap:6px">${loadApp ? `<a href="${Portal.appUrl(loadApp)}" style="color:#fff;border:1px solid rgba(255,255,255,.7);border-radius:12px;padding:2px 10px;text-decoration:none;font-size:12px">부하 모니터링 보기</a>` : ''}
+       <button type="button" id="pt-alarm-x" style="background:none;color:#fff;border:1px solid rgba(255,255,255,.7);border-radius:12px;padding:2px 10px;cursor:pointer;font-size:12px">10분 숨기기</button></span>`;
+    if (!el) { document.getElementById('pt-bar').insertAdjacentHTML('afterend', '<div id="pt-alarm" style="position:sticky;top:0;z-index:60;background:#c62828;color:#fff;font-size:13px;padding:7px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.2)"></div>'); el = document.getElementById('pt-alarm'); }
+    el.innerHTML = html;
+    document.getElementById('pt-alarm-x').onclick = () => { try { sessionStorage.setItem('pt-alarm-snooze', String(Date.now() + 600000)); } catch (e) { } el.remove(); document.title = base; };
   }
 
   const VIEWER_MSG = '보기 전용 계정은 저장·수정·삭제를 할 수 없습니다.';
@@ -242,7 +278,8 @@
       const q = new Proxy(function () {}, { get(_, k) { if (k === 'then' || k === 'catch' || k === 'finally') return p[k].bind(p); return () => q; }, apply() { return q; } }); return q; };
     const wrap = (obj, bad) => new Proxy(obj, { get(o, k) { if (bad.includes(k)) return deny; const v = o[k]; return typeof v === 'function' ? v.bind(o) : v; } });
     const from = sb.from.bind(sb); sb.from = t => wrap(from(t), ['insert', 'update', 'upsert', 'delete']);
-    sb.rpc = () => deny();
+    const rpc = sb.rpc.bind(sb), READ_RPC = /^(load_latest|load_series|load_day_get|load_run_get|load_runtime|load_energy|load_csv|usage_info)$/; // 읽기 전용 함수는 허용
+    sb.rpc = (n, a) => READ_RPC.test(n) ? rpc(n, a) : deny();
     if (sb.storage && sb.storage.from) { const sf = sb.storage.from.bind(sb.storage); sb.storage.from = b => wrap(sf(b), ['upload', 'remove', 'update', 'move', 'copy']); }
   }
   function renderBar() {
