@@ -189,6 +189,8 @@
     table.t.rep tr.sum td.key { background: #d3e2f7; }
     table.t.rep tr.subrow td { color: #666; font-size: 11.5px; }
     table.t.rep tr.subrow td.key { font-weight: normal; color: #1d3f73; }
+    table.t.rep tr.rgrp { cursor: pointer; } table.t.rep tr.rgrp:hover td { background: #f3f7fd; } table.t.rep tr.rgrp:hover td.key { background: #dce8f8; }
+    table.t.rep .tg { display: inline-block; width: 14px; color: #888; font-size: 10px; }
     @media print { table.t.rep td.key, table.t.rep th.key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
     /* 일일검침 */
@@ -5269,7 +5271,8 @@
     // =====================================================================
     // 회계보고 (월초 예상값 / 확정값)
     // =====================================================================
-    let reportYm = null, reportRows = [];
+    let reportYm = null, reportRows = [], REP_OPEN = new Set();
+    function repToggle(g) { if (g === 'all') { const all = ['전기', '가스', '용수']; if (all.every(x => REP_OPEN.has(x))) REP_OPEN.clear(); else all.forEach(x => REP_OPEN.add(x)); } else if (REP_OPEN.has(g)) REP_OPEN.delete(g); else REP_OPEN.add(g); renderReport(); }
     function shiftReportMonth(d) { reportYm = d > 0 ? UT.nextYm(reportYm) : UT.prevYm(reportYm); renderReport(); }
 
     // 전기: 전기요금계(부가세 제외) / 부가세 / 전력기금 / 연체료 나누기
@@ -5334,13 +5337,19 @@
       let h = (fc ? `<div class="fc-note no-print">🔮 아직 진행 중인 달이라 <b>${fc.forecast.asOf.slice(5).replace('-', '/')}까지 검침(${fc.forecast.days}일)으로 월말까지 추정한 예측값</b>입니다. 남은 날은 평일·주말 평균 사용량으로 채웠습니다.</div>` : '') +
         `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성일 ${todayStr}</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
+      let grp = '';
+      const hasSub = {}; reportRows.forEach((r, i) => { if (r[0] && r[0] !== '합계' && reportRows[i + 1] && !reportRows[i + 1][0]) hasSub[r[0]] = true; });
       reportRows.forEach(r => {
         const isSum = r[0] === '합계', isSub = !r[0] && !isSum;
-        h += `<tr class="${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''}"><td class="l">${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
+        if (r[0]) grp = r[0];
+        if (isSub && !REP_OPEN.has(grp)) return;   // 세부는 누르면 펼침
+        const tg = hasSub[r[0]] ? `<span class="tg">${REP_OPEN.has(r[0]) ? '▼' : '▶'}</span>` : (r[0] && !isSum ? '<span class="tg"></span>' : '');
+        h += `<tr class="${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''} ${hasSub[r[0]] ? 'rgrp' : ''}" ${hasSub[r[0]] ? `onclick="repToggle('${r[0]}')" title="눌러서 세부 ${REP_OPEN.has(r[0]) ? '접기' : '보기'}"` : ''}><td class="l">${tg}${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
           <td class="key">${r[4] === null ? '' : f0(r[4])}</td><td>${r[5] === null ? '' : f0(r[5])}</td>
           <td>${r[6] ? `<span class="st st-${r[6]}">${r[6]}</span>` : ''}</td></tr>`;
       });
       h += '</table></div>';
+      h += `<div class="hint no-print" style="margin-top:6px">▶ 구분(전기·가스·용수)을 누르면 세부가 펼쳐집니다 · <a href="#" onclick="repToggle('all');return false">모두 펼치기/접기</a></div>`;
       h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
       document.getElementById('report-body').innerHTML = h;
     }
