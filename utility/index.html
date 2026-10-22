@@ -3350,12 +3350,32 @@
       if (off === undefined) { o.bMiss = RET_FROM && d >= RET_FROM ? '레토르트 기록 없음 · 포장 종료 시각 필요' : '레토르트 기록 시작 전 · 포장 종료 시각 필요'; return; }
       if (off < on) off += 1440; const h = (off - on) / 60; if (h > 0 && h <= 24) { o.bOff = off; o.boilH = Math.round(h * 10) / 10; }
     }
+    // 쉘리(설비별 부하) 보일러 전류로 잰 실제 켠·끈 시각 — 이름에 「보일러」가 들어간 채널, 가동 기준 이상인 시간 (load_run_day)
+    let BSH = null;
+    async function loadBoilShelly() {
+      try {
+        const c = await sb.from('load_channels').select('panel_id,ch,name,on_a'); if (c.error) return null;
+        const B = (c.data || []).filter(x => /보일러/.test(x.name || '') && x.on_a !== null && x.on_a !== undefined); if (!B.length) return null;
+        let rows = [];
+        for (let o = 0; o < 20; o++) { const { data, error } = await sb.from('load_run_day').select('d,panel_id,ch,on_a,run_min,first_on,last_off').in('panel_id', [...new Set(B.map(x => x.panel_id))]).order('d').range(o * 1000, o * 1000 + 999); if (error) return null; rows = rows.concat(data || []); if (!data || data.length < 1000) break; }
+        const out = {}, min = (t, d) => { const x = new Date(t), ds = x.toLocaleDateString('sv-SE'); return (ds > d ? 1440 : 0) + x.getHours() * 60 + x.getMinutes(); };
+        rows.forEach(r => { const b = B.find(x => x.panel_id === r.panel_id && x.ch === r.ch); if (!b || Number(r.on_a) !== Number(b.on_a) || !(Number(r.run_min) > 0) || !r.first_on) return;
+          const o = out[r.d] = out[r.d] || { on: 1e9, off: -1, run: 0, names: [] }; o.on = Math.min(o.on, min(r.first_on, r.d)); o.off = Math.max(o.off, min(r.last_off || r.first_on, r.d)); o.run += Number(r.run_min); o.names.push(b.name); });
+        return out;
+      } catch (e) { return null; }
+    }
+    function boilerShelly(o, d) {
+      const x = BSH && BSH[d]; if (!x || x.off <= x.on) return;
+      o.bOn = x.on; o.bOff = x.off; o.boilH = Math.round((x.off - x.on) / 6) / 10; o.boilRunH = Math.round(x.run / 6) / 10; delete o.bMiss;
+      o.onSrc = o.offSrc = `보일러 전류 실측 (${x.names.join('·')}, 쉘리)`; o.bShelly = true;
+    }
     const hhmm = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
     function loadProdDaily() { if (PRODD) return Promise.resolve(PRODD); if (!PRODD_P) PRODD_P = loadProdDaily0().catch(e => { PRODD_P = null; throw e; }); return PRODD_P; }
     async function loadProdDaily0() {
       const base = 'https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/daily_summary';
       const out = {}; let tok = '';
       const btP = loadBoilerTimes().then(v => { BT = v; }).catch(e => { BT_ERR = errMsg(e); });
+      const bsP = loadBoilShelly().then(v => { BSH = v; });
       for (let i = 0; i < 20; i++) {
         const r = await fetch(`${base}?pageSize=300${tok ? '&pageToken=' + encodeURIComponent(tok) : ''}`, { method: 'GET', cache: 'no-store' });
         if (!r.ok) throw new Error('생산 대시보드 HTTP ' + r.status);
@@ -3375,11 +3395,11 @@
         });
         tok = j.nextPageToken; if (!tok) break;
       }
-      await btP;
+      await btP; await bsP;
       // 포장 생산량·완제품 중량 = 외포장 완료 EA (대시보드 월별 현황과 같은 기준) — 외포장 기록이 시작된 날부터. 일별요약의 포장 EA는 참고로 남김
       if (OPD && OP_FROM) { Object.keys(OPD).forEach(d => { if (!out[d]) out[d] = { d, rm: 0, prepH: 0, steamH: 0, steamKg: 0, crushH: 0, packH: 0, ea: 0, manH: 0, rmParts: {}, packItems: [], sumH: 0, maxH: 0, opOnly: true }; });
         const opStart = OP_FROM.slice(0, 7) + '-01'; Object.keys(out).forEach(d => { if (d < opStart) return; const o = out[d], L = (OPD[d] || []).filter(x => x.ea > 0); o.opAll = OPD[d] || []; o.eaDaily = o.ea; o.packItemsDaily = o.packItems; o.packItems = L; o.ea = L.reduce((a, x) => a + x.ea, 0); o.eaSrc = '외포장'; }); }
-      Object.keys(out).forEach(d => boilerTime(out[d], d));
+      Object.keys(out).forEach(d => { boilerTime(out[d], d); boilerShelly(out[d], d); }); // 쉘리 실측이 있는 날은 실측 켠·끈 시각, 없는 날은 생산 기록으로 추정
       return (PRODD = out);
     }
     const PD_UTIL = {
@@ -3689,7 +3709,7 @@
             <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
               return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
             <td>${p && (p.ea || (p.packItems || []).length) ? (() => { const k = pkgOf(p); return k.known ? `${f0(k.kg)}${k.known < k.all ? `<div class="hint" title="중량 모르는 제품 EA가 있음">${Math.round(k.known / k.all * 100)}%만</div>` : ''}` : '<span class="hint">?</span>'; })() : ''}</td>
-            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b><div class="hint" title="켠 시각: ${p.onSrc} · 끈 시각: ${p.offSrc}">${hhmm(p.bOn)}~${hhmm(p.bOff)}</div>${p.runH !== undefined ? `<div class="hint" title="자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 쉬는 틈을 뺀 시간">실가동 ${nf1.format(p.runH)}h</div>` : ''}` : p.bOn !== undefined ? `<span class="hint" title="${p.bMiss || ''}">${hhmm(p.bOn)}~?${p.runH !== undefined ? `<br>실가동 ${nf1.format(p.runH)}h` : ''}</span>` : `<span class="hint" title="자숙·레토르트 기록 없음">-</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
+            <td>${p ? nh(p.prepH) : ''}</td><td>${p ? nh(p.steamH) : ''}</td><td>${p ? nh(p.crushH) : ''}</td><td>${p ? nh(p.packH) : ''}</td><td class="dc-bh">${p && p.rm > 0 ? (p.boilH !== undefined ? `<b>${nf1.format(p.boilH)}h</b>${p.bShelly ? ' <span title="쉘리 보일러 전류로 잰 실측 시각" style="color:#1D9E75;font-size:10px">⚡실측</span>' : ''}<div class="hint" title="켠 시각: ${p.onSrc} · 끈 시각: ${p.offSrc}${p.boilRunH !== undefined ? ` · 실제 가동(기준 전류 이상) ${p.boilRunH}h` : ''}">${hhmm(p.bOn)}~${hhmm(p.bOff)}</div>${p.runH !== undefined ? `<div class="hint" title="자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 쉬는 틈을 뺀 시간">실가동 ${nf1.format(p.runH)}h</div>` : ''}` : p.bOn !== undefined ? `<span class="hint" title="${p.bMiss || ''}">${hhmm(p.bOn)}~?${p.runH !== undefined ? `<br>실가동 ${nf1.format(p.runH)}h` : ''}</span>` : `<span class="hint" title="자숙·레토르트 기록 없음">-</span>`) : ''}</td>${r.u.map(uv).map(x => `<td>${x}</td>`).join('')}<td class="l dc-note">${notesIn(r.ds, r.ds).map(n => `<div><span class="un-cat">${esc(n.cat)}</span> ${esc(n.text)}</div>`).join('')}${isAdmin() ? `<button class="btn secondary small" onclick="unWriteFor('${r.ds}')">+ 적기</button>` : ''}</td></tr>`; }).join('') +
         (() => { const pd = rows.filter(r => r.p && r.p.rm > 0), np = pd.length;
           const tot = `<tr class="dc-sum"><td>합계</td><td class="l">${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.keys(t).map(esc).join('<br>'); })()}</td>
             <td>${(() => { const t = {}; pd.forEach(r => Object.entries(r.p.rmParts || {}).forEach(([k, v]) => { t[k] = (t[k] || 0) + v; })); return Object.values(t).map(f0).join('<br>'); })()}</td>
