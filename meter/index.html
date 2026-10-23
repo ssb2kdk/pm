@@ -107,6 +107,37 @@
     .inote.need { border-color: var(--red); background: var(--red-bg); }
     .iremark { width: 100%; min-height: 54px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 8px; font-family: inherit; }
     .tab .cnt .ic { color: var(--blue); }
+    /* ---------- 출력 (A4) ---------- */
+    #print-area { display: none; }
+    .sheet { width: 190mm; margin: 0 auto 10mm; background: #fff; padding: 0; font-family: 'Malgun Gothic', sans-serif; color: #000; }
+    .sheet h1 { text-align: center; font-size: 22pt; margin: 0 0 6mm; letter-spacing: 4px; }
+    .sheet .top { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2mm; font-size: 11pt; }
+    .sheet .sign { border-collapse: collapse; font-size: 9pt; }
+    .sheet .sign td { border: 1px solid #000; width: 18mm; text-align: center; height: 5mm; }
+    .sheet .sign td.box { height: 14mm; }
+    .sheet table.f { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    .sheet table.f th, .sheet table.f td { border: 1px solid #000; padding: 1.3mm 1.5mm; }
+    .sheet table.f th { background: #e8e8e8; }
+    .sheet table.f td.c { text-align: center; }
+    .sheet table.f td.rs { text-align: center; font-size: 13pt; width: 13mm; }
+    .sheet .legend { font-size: 9pt; }
+    .sheet .remark { height: 32mm; vertical-align: top; white-space: pre-wrap; }
+    @media screen { .preview #print-area { display: block; background: #888; padding: 10mm 0; } .preview .sheet { padding: 10mm; box-shadow: 0 2px 8px rgba(0,0,0,.3); } }
+    @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      body { background: #fff; }
+      #app > :not(#print-area), .toast, .footer, #pt-bar, #pt-alarm, #pt-viewer, .pv-bar, .pm-ov { display: none !important; }
+      #print-area { display: block !important; }
+      .sheet { page-break-after: always; margin: 0; }
+      .sheet:last-child { page-break-after: auto; }
+    }
+    .pm-ov { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 12px; }
+    .pm { background: #fff; border-radius: 14px; padding: 16px; width: min(420px, 100%); }
+    .pm h3 { margin: 0 0 10px; font-size: 16px; } .pm .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .pm input[type=date] { font-size: 14px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; }
+    .pm .btn2 { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--primary); color: #fff; } .pm .btn2.sec { background: #fff; color: #333; border: 1px solid var(--border); }
+    .pv-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 70; background: #1a1a1a; color: #fff; display: none; gap: 8px; align-items: center; padding: 8px 12px; }
+    .preview .pv-bar { display: flex; } @media screen { .preview #print-area { padding-top: 64px !important; overflow-x: auto; } } .preview .wrap, .preview .footer { display: none; } .pv-bar button { padding: 8px 14px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -115,7 +146,7 @@
       <div class="head">
         <div class="head-row">
           <span class="title">📟 설비검침</span>
-          <span style="display:flex;gap:6px"><a class="btn-admin" href="table.html" style="text-decoration:none">📊 표</a><a class="btn-admin" href="../insp/" style="text-decoration:none" title="설비점검일지 출력·지난 날 보기">🖨 점검일지</a>
+          <span style="display:flex;gap:6px"><a class="btn-admin" href="table.html" style="text-decoration:none">📊 표</a><button class="btn-admin" onclick="pOpen()" title="설비점검일지 출력">🖨 점검일지</button>
           <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목</button></span>
         </div>
         <div class="date-row">
@@ -149,6 +180,16 @@
         <button class="save" id="save-btn" onclick="saveDay()">저장</button>
       </div>
     </div>
+    <div class="pv-bar"><b style="flex:1">설비점검일지 미리보기</b><button onclick="window.print()">🖨 인쇄</button><button style="background:#555;color:#fff" onclick="pvClose()">✕ 닫기</button></div>
+    <div id="print-area"></div>
+    <div class="pm-ov" id="pm" hidden onclick="if(event.target===this)this.hidden=true">
+      <div class="pm"><h3>🖨 설비점검일지 출력</h3>
+        <div class="row"><input type="date" id="p-from"> ~ <input type="date" id="p-to"></div>
+        <div class="row"><button class="btn-sm" onclick="pRange('day')">이 날짜</button><button class="btn-sm" onclick="pRange('week')">이번 주</button><button class="btn-sm" onclick="pRange('month')">이번 달</button><button class="btn-sm" onclick="pRange('prev')">지난달</button>
+          <label style="font-size:12px;color:var(--muted);margin-left:auto"><input type="checkbox" id="p-only" checked> 기록 있는 날만</label></div>
+        <div class="row" style="margin-top:12px"><button class="btn2 sec" onclick="buildPrint(true)">미리보기</button><button class="btn2" onclick="buildPrint(false)">🖨 인쇄</button></div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">· 하루씩 A4 한 장 · 인쇄 창에서 「PDF로 저장」도 가능<br>· 비고가 빈 「전일 사용량 비교」 항목은 검침값으로 사용량을 자동으로 적음<br>· 점검 항목 바꾸기: <a href="../insp/">설비점검일지 → 항목 관리</a> (관리자)</div>
+      </div></div>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -337,6 +378,64 @@
       return null;
     }
 
+    // ---------------- 설비점검일지 출력 (A4 · 설비점검일지 양식 그대로) ----------------
+    const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+    const korDate = ds => { const d = new Date(ds + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. (${WEEK[d.getDay()]})`; };
+    const addD = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+    function pOpen() { if (!document.getElementById('p-from').value) pRange('day'); document.getElementById('pm').hidden = false; }
+    function pRange(k) {
+      let a = curDate, b = curDate;
+      if (k === 'week') { const d = new Date(curDate + 'T00:00:00'), w = (d.getDay() + 6) % 7; a = addD(curDate, -w); b = addD(a, 6); }
+      if (k === 'month') { a = curDate.slice(0, 8) + '01'; const d = new Date(a + 'T00:00:00'); d.setMonth(d.getMonth() + 1); d.setDate(0); b = ymd(d); }
+      if (k === 'prev') { const d = new Date(curDate.slice(0, 8) + '01T00:00:00'); d.setDate(0); b = ymd(d); a = b.slice(0, 8) + '01'; }
+      document.getElementById('p-from').value = a; document.getElementById('p-to').value = b;
+    }
+    function readingOn(ds, ids, back) { for (let i = back ? 1 : 0; i <= 10; i++) { const d = addD(ds, -i), v = (DAYS[d] || {}).v; if (v && ids.every(k => v[k] !== undefined && v[k] !== null && v[k] !== '')) return { d, sum: ids.reduce((s2, k) => s2 + Number(v[k]), 0) }; } return null; }
+    function refText(key, ds) {
+      if (!key) return '';
+      if (key === 'elec') { const v = ((DAYS[ds] || {}).v || {})['전력사용량']; return v === undefined || v === null ? '' : `전력사용량 ${nf.format(v)} kWh`; }
+      const ids = key === 'water' ? ['상수도40A', '상수도50A'] : ['보일러1급수', '보일러2급수'];
+      const a = readingOn(ds, ids, false); if (!a || a.d !== ds) return ''; const b = readingOn(ds, ids, true); if (!b) return '';
+      return `전일 사용량 ${nf.format(Math.round((a.sum - b.sum) * 1000) / 1000)} ㎥`;
+    }
+    function sheetHtml(ds, r) {
+      r = r || { results: {}, notes: {}, remark: '', inspector: '' };
+      const rows = INSP_ITEMS.map(it => ({ it }));
+      rows.forEach((x, i) => {
+        if (i && rows[i - 1].it.area === x.it.area) x.areaSpan = 0; else { let n = 1; while (rows[i + n] && rows[i + n].it.area === x.it.area) n++; x.areaSpan = n; }
+        if (i && rows[i - 1].it.area === x.it.area && rows[i - 1].it.equipment === x.it.equipment) x.eqSpan = 0;
+        else { let n = 1; while (rows[i + n] && rows[i + n].it.area === x.it.area && rows[i + n].it.equipment === x.it.equipment) n++; x.eqSpan = n; }
+      });
+      const body = rows.map(({ it, areaSpan, eqSpan }) => `<tr>
+        ${areaSpan ? `<td class="c" rowspan="${areaSpan}"><b>${esc(it.area)}</b></td>` : ''}${eqSpan ? `<td class="c" rowspan="${eqSpan}">${esc(it.equipment)}</td>` : ''}
+        <td>${esc(it.content)}</td><td>${esc(it.standard)}</td><td class="rs">${esc((r.results || {})[it.id] || '')}</td>
+        <td style="font-size:8.5pt">${esc((r.notes || {})[it.id] || refText(it.ref_key, ds))}</td></tr>`).join('');
+      return `<div class="sheet"><h1>유틸리티 일일 점검일지</h1>
+        <div class="top"><div><b>점검일자 :</b> ${korDate(ds)}<br><span class="legend">양호 : ○ &nbsp; 불량 : Ⅹ &nbsp; 정비필요 : △ &nbsp; 정비완료 : ◎</span></div>
+          <table class="sign"><tr><td>점검자</td><td>확 인</td></tr><tr><td class="box">${esc(r.inspector || '')}</td><td class="box"></td></tr></table></div>
+        <table class="f"><colgroup><col style="width:15mm"><col style="width:24mm"><col><col style="width:38mm"><col style="width:13mm"><col style="width:34mm"></colgroup>
+          <tr><th>구 분</th><th>설 비</th><th>점검내용</th><th>기 준</th><th>결과</th><th>비 고</th></tr>${body}
+          <tr><th>특이사항</th><td colspan="5" class="remark">${esc(r.remark || '')}</td></tr></table></div>`;
+    }
+    function fitSheets() { const MAXH = 266 * 96 / 25.4; document.querySelectorAll('#print-area .sheet').forEach(sh => { sh.style.zoom = ''; const cs = getComputedStyle(sh), pd = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom), hh = sh.scrollHeight - pd; if (hh > MAXH) sh.style.zoom = (MAXH / hh).toFixed(3); }); }
+    window.addEventListener('beforeprint', () => { if (document.querySelector('#print-area .sheet')) fitSheets(); });
+    function pvClose() { document.body.classList.remove('preview'); document.getElementById('print-area').innerHTML = ''; }
+    async function buildPrint(previewOnly) {
+      if (!INSP_ITEMS.length) return alert('점검 항목이 없습니다.');
+      const from = document.getElementById('p-from').value, to = document.getElementById('p-to').value || from;
+      if (!from) return alert('날짜를 고르세요.'); if (to < from) return alert('끝 날짜가 시작 날짜보다 빠릅니다.');
+      const days = []; for (let d = from; d <= to; d = addD(d, 1)) days.push(d);
+      if (days.length > 62) return alert('한 번에 62일까지 인쇄할 수 있습니다.');
+      if (iDirty() && from <= curDate && curDate <= to && !confirm('이 날짜 점검을 아직 저장하지 않았습니다. 저장된 내용으로 인쇄할까요? (먼저 저장하려면 취소)')) return;
+      const { data, error } = await sb.from('insp_daily').select('*').gte('d', from).lte('d', to).order('d'); if (error) return alert('불러오기 실패: ' + errMsg(error));
+      const byD = Object.fromEntries((data || []).map(r => [r.d, r])), only = document.getElementById('p-only').checked, list = days.filter(d => !only || byD[d]);
+      if (!list.length) return alert('이 기간에 저장된 점검 기록이 없습니다. 「기록 있는 날만」을 끄면 빈 양식으로 인쇄합니다.');
+      document.getElementById('pm').hidden = true;
+      document.getElementById('print-area').innerHTML = list.map(d => sheetHtml(d, byD[d])).join('');
+      document.body.classList.add('preview'); fitSheets(); window.scrollTo(0, 0);
+      if (!previewOnly) setTimeout(() => window.print(), 150);
+    }
+
     // ---------------- 날짜 ----------------
     function confirmLeave() { return !(dirty.size || weatherDirty || iDirty()) || confirm('저장하지 않은 입력이 있습니다. 버리고 이동할까요?'); }
     function shiftDate(n) { const d = new Date(curDate + 'T00:00:00'); d.setDate(d.getDate() + n); changeDate(ymd(d)); }
@@ -473,7 +572,7 @@
       });
       if (irec && activeTab === 0 && iOthers().length) h += `<div class="sec">기타 점검</div>` + iGroupHtml({ key: 'etc', name: '기타 점검', eq: [] }, iOthers(), '');
       if (irec && iTabItems(t).length) h += `<div class="sec">점검 특이사항 · 점검자</div><textarea class="iremark" placeholder="설비점검일지 특이사항 (일지에 나옴)" oninput="irec.remark=this.value;renderFooter()">${esc(irec.remark)}</textarea>
-        <div class="fmeta" style="display:flex;gap:6px;align-items:center">점검자 <input style="font-size:14px;border:none;border-bottom:1px solid var(--border);padding:3px;width:120px" value="${esc(irec.inspector)}" oninput="irec.inspector=this.value;renderFooter()"> <a href="../insp/" style="margin-left:auto;font-size:12px">🖨 설비점검일지 출력 →</a></div>`;
+        <div class="fmeta" style="display:flex;gap:6px;align-items:center">점검자 <input style="font-size:14px;border:none;border-bottom:1px solid var(--border);padding:3px;width:120px" value="${esc(irec.inspector)}" oninput="irec.inspector=this.value;renderFooter()"> <a href="#" onclick="pOpen();return false" style="margin-left:auto;font-size:12px">🖨 설비점검일지 출력 →</a></div>`;
       c.innerHTML = h;
       c.querySelectorAll('input.val').forEach(inp => {
         inp.addEventListener('input', () => onInput(inp));
