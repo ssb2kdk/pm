@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>업무일지</title>
+  <title>현장 요청사항</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
   <script src="../config.js"></script>
   <script src="../common.js"></script>
@@ -31,31 +31,31 @@
     .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     .chip { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); cursor: pointer; color: #444; }
     .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
-    .chip.sh.on { background: var(--teal); border-color: var(--teal); }
     .btn { padding: 10px 18px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
     .btn.blue { background: var(--blue); } .btn.sec { background: #fff; color: #333; border: 1px solid var(--border); }
     .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; font-weight: 600; }
     .bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-    .bar input[type=search] { font-size: 13px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 16px; min-width: 160px; flex: 1; max-width: 260px; }
+    .bar input[type=search] { font-size: 13px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 16px; min-width: 140px; flex: 1; max-width: 240px; }
     .hint { font-size: 12px; color: var(--muted); }
     .grp { font-size: 13px; font-weight: 700; color: #444; margin: 8px 2px 0; display: flex; gap: 6px; align-items: center; }
     .grp.red { color: var(--red); }
     .it { display: flex; gap: 10px; align-items: flex-start; }
     .it .ck { width: 24px; height: 24px; border-radius: 7px; border: 2px solid #bbb; background: #fff; flex: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; margin-top: 1px; }
     .it .ck.on { background: var(--teal); border-color: var(--teal); }
-    .it .ck:disabled { cursor: default; }
+    .it .ck:disabled { cursor: default; opacity: .5; }
     .it .bd { flex: 1; min-width: 0; }
     .it .tt { font-size: 15px; font-weight: 700; word-break: break-all; }
     .it.done .tt { color: #999; text-decoration: line-through; }
     .it .tx { font-size: 13px; color: #444; margin-top: 4px; white-space: pre-wrap; word-break: break-all; }
     .it .mt { font-size: 12px; color: var(--muted); margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .who { font-size: 12px; color: #333; } .who .as { font-weight: 700; color: var(--blue); } .who .none { color: var(--amber); font-weight: 700; }
     .tag { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: #f0f0f0; color: #555; }
-    .tag.sh { background: var(--teal-bg); color: var(--teal); }
     .tag.hold { background: #eee; color: #777; }
     .dd { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: var(--blue-bg); color: var(--blue); }
     .dd.soon { background: var(--amber-bg); color: var(--amber); } .dd.over { background: var(--red); color: #fff; } .dd.ok { background: var(--teal-bg); color: var(--teal); }
-    .acts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-    .card.over { border-color: var(--red); }
+    .acts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+    .acts select { font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px; }
+    .card.over { border-color: var(--red); } .card.mine { box-shadow: inset 4px 0 0 var(--blue); }
     .empty, .loading { padding: 30px; text-align: center; color: var(--muted); font-size: 14px; }
     .toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 80; }
     .toast.show { opacity: 1; }
@@ -64,10 +64,11 @@
 <body>
   <div id="app" hidden>
     <div class="head"><div class="wrap head-row">
-      <div class="title">📝 업무일지</div>
+      <div class="title">📌 현장 요청사항</div>
       <div class="vtabs">
-        <button class="vtab on" data-v="mine">내 일지 <span class="n" id="n-mine" hidden></span></button>
-        <button class="vtab" data-v="shared">시설 공유 <span class="n" id="n-sh" hidden></span></button>
+        <button class="vtab on" data-v="all">전체 <span class="n" id="n-all" hidden></span></button>
+        <button class="vtab" data-v="mine">내 담당 <span class="n" id="n-mine" hidden></span></button>
+        <button class="vtab" data-v="req">내가 요청한 것</button>
       </div>
     </div></div>
     <div class="wrap content" id="body"><div class="loading">불러오는 중...</div></div>
@@ -75,9 +76,8 @@
   </div>
 <script>
 const esc = Portal.esc;
-let sb = null, me = null, view = 'mine', L = [], F = null, EDIT = null;
-let mFilter = 'open', mSort = 'date', mQ = '', sFilter = 'open', sWho = '', sQ = '';
-const p2 = n => String(n).padStart(2, '0');
+let sb = null, me = null, view = 'all', L = [], PEOPLE = [], F = null, EDIT = null, showForm = false;
+let fSt = 'open', fWho = '', fQ = '';
 const today = () => new Date().toLocaleDateString('sv-SE');
 const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
 const dayDiff = (a, b) => Math.round((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
@@ -85,18 +85,25 @@ const wk = s => '일월화수목금토'[new Date(s + 'T00:00:00').getDay()];
 const md = s => `${Number(s.slice(5, 7))}/${Number(s.slice(8))}(${wk(s)})`;
 const canWrite = () => Portal.me && ['admin', 'user'].includes(Portal.me.role);
 const errMsg = e => (e && (e.message || e.error_description)) || String(e);
-const mine = r => Portal.me && r.owner === Portal.me.id;
+const myId = () => Portal.me && Portal.me.id, myName = () => (me && (me.name || me.username)) || '';
+const canEdit = r => canWrite() && (r.owner === myId() || r.assignee === myId() || Portal.isAdmin());
+const canDel = r => canWrite() && (r.owner === myId() || Portal.isAdmin());
 function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
-const blank = () => ({ d: today(), title: '', body: '', cat: '', due: '', shared: false, status: '진행' });
+const blank = () => ({ d: today(), title: '', body: '', place: '', cat: '', due: '', assignee: '' });
 
 async function load() {
   let out = [];
   for (let o = 0; o < 20; o++) { const { data, error } = await sb.from('work_log').select('*').order('d', { ascending: false }).order('id', { ascending: false }).range(o * 1000, o * 1000 + 999); if (error) throw error; out = out.concat(data || []); if (!data || data.length < 1000) break; }
   L = out; badges();
 }
+async function loadPeople() {
+  const { data } = await sb.from('profiles').select('id,name,username,role,active').eq('active', true);
+  PEOPLE = (data || []).filter(p => p.role === 'admin' || p.role === 'user').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+}
 function badges() {
-  const t = today(), my = L.filter(r => mine(r) && r.status === '진행' && r.due && r.due <= t).length, sh = L.filter(r => r.shared && r.status === '진행' && r.due && r.due < t).length;
-  const a = document.getElementById('n-mine'), b = document.getElementById('n-sh'); a.textContent = my; a.hidden = !my; a.title = '마감 오늘·지남'; b.textContent = sh; b.hidden = !sh; b.title = '공유 중 마감 지남';
+  const t = today(), over = L.filter(r => r.status === '진행' && r.due && r.due < t).length, mine = L.filter(r => r.assignee === myId() && r.status === '진행').length;
+  const a = document.getElementById('n-all'), b = document.getElementById('n-mine');
+  a.textContent = over; a.hidden = !over; a.title = `마감 지난 요청 ${over}건`; b.textContent = mine; b.hidden = !mine; b.title = `내가 맡은 진행 중 ${mine}건`;
   if (Portal.navBadges) Portal.navBadges();
 }
 function ddTag(r) {
@@ -105,103 +112,95 @@ function ddTag(r) {
   const n = dayDiff(r.due, today());
   return n < 0 ? `<span class="dd over">${-n}일 지남 (${md(r.due)})</span>` : n === 0 ? '<span class="dd over">오늘까지</span>' : `<span class="dd ${n <= 3 ? 'soon' : ''}">D-${n} · ${md(r.due)}</span>`;
 }
+const pplOpts = sel => `<option value="">— 담당자 미정 —</option>` + PEOPLE.map(p => `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${esc(p.name || p.username)}${p.id === myId() ? ' (나)' : ''}</option>`).join('');
 
 // ---------------- 입력 칸 ----------------
 function formHtml() {
-  const X = EDIT || F || (F = blank()), cats = [...new Set(L.filter(mine).map(r => r.cat).filter(Boolean))];
-  const dueChips = [['오늘', today()], ['내일', addDays(today(), 1)], ['이번 주 금', (() => { const d = new Date(); const k = (5 - d.getDay() + 7) % 7; return addDays(today(), k); })()], ['다음 주', addDays(today(), 7)], ['한 달', addDays(today(), 30)]];
+  if (!canWrite()) return '';
+  if (!showForm && !EDIT) return `<button class="btn blue" style="padding:13px" onclick="showForm=true;render();document.getElementById('f-title').focus()">＋ 새 요청 적기</button>`;
+  const X = EDIT || F || (F = blank()), cats = [...new Set(L.map(r => r.cat).filter(Boolean))], places = [...new Set(L.map(r => r.place).filter(Boolean))];
+  const fri = (() => { const d = new Date(); return addDays(today(), (5 - d.getDay() + 7) % 7); })();
+  const dueChips = [['오늘', today()], ['내일', addDays(today(), 1)], ['이번 주 금', fri], ['다음 주', addDays(today(), 7)], ['한 달', addDays(today(), 30)]];
   return `<div class="card form" id="frm">
-    ${EDIT ? `<div style="margin-bottom:6px"><b>고치기</b> <span class="hint">${md(EDIT.d)} 일지</span></div>` : ''}
-    <div class="r"><input type="date" id="f-d" value="${esc(X.d)}" title="업무 날짜"><input class="ti" id="f-title" value="${esc(X.title)}" placeholder="무슨 일? (예: 2번 컴프레셔 오일 교체, 냉동창고 도어 수리 업체 연락)" onkeydown="if(event.key==='Enter'&&!event.isComposing)save()"></div>
-    <textarea id="f-body" rows="2" placeholder="내용·진행 상황·메모 (선택)">${esc(X.body)}</textarea>
-    <div class="r" style="margin-top:8px"><label class="l">완료 예정일</label><input type="date" id="f-due" value="${esc(X.due || '')}">
+    <div style="margin-bottom:6px"><b>${EDIT ? '요청 고치기' : '새 요청'}</b></div>
+    <div class="r"><input type="date" id="f-d" value="${esc(X.d)}" title="요청 날짜"><input class="ti" id="f-title" value="${esc(X.title)}" placeholder="무엇을 해 주세요? (예: 내포장실 형광등 교체, 2번 문 닫힘 불량)" onkeydown="if(event.key==='Enter'&&!event.isComposing)save()"></div>
+    <textarea id="f-body" rows="2" placeholder="자세한 내용 (선택)">${esc(X.body)}</textarea>
+    <div class="r" style="margin-top:8px"><label class="l">위치·설비</label><input id="f-place" list="f-places" value="${esc(X.place)}" placeholder="예: 내포장실" style="width:150px"><datalist id="f-places">${places.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+      <label class="l">담당자</label><select id="f-as">${pplOpts(X.assignee)}</select></div>
+    <div class="r"><label class="l">완료 예정일</label><input type="date" id="f-due" value="${esc(X.due || '')}">
       <span class="chips">${dueChips.map(([n, v]) => `<button class="chip" type="button" onclick="document.getElementById('f-due').value='${v}'">${n}</button>`).join('')}<button class="chip" type="button" onclick="document.getElementById('f-due').value=''">없음</button></span></div>
-    <div class="r"><label class="l">분류</label><input id="f-cat" list="f-cats" value="${esc(X.cat)}" placeholder="예: 설비 수리, 업체, 보고" style="width:160px"><datalist id="f-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
-      <button class="chip sh ${X.shared ? 'on' : ''}" type="button" id="f-sh" onclick="this.classList.toggle('on')">🌐 시설 공유 ${X.shared ? '켜짐' : ''}</button>
-      <span style="margin-left:auto;display:flex;gap:6px">${EDIT ? '<button class="btn sec" onclick="EDIT=null;render()">취소</button>' : ''}<button class="btn blue" onclick="save()">${EDIT ? '저장' : '+ 적기'}</button></span></div>
-    <div class="hint">🌐 시설 공유를 켜면 「시설 공유」 목록에 올라가 시설팀 모두가 봅니다. 끄면 나만 봅니다 (관리자도 못 봄).</div></div>`;
+    <div class="r"><label class="l">분류</label><input id="f-cat" list="f-cats" value="${esc(X.cat)}" placeholder="예: 전기, 설비 수리, 시설" style="width:150px"><datalist id="f-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn sec" onclick="cancelForm()">취소</button><button class="btn blue" onclick="save()">${EDIT ? '저장' : '요청 올리기'}</button></span></div></div>`;
 }
-function grab() { const X = EDIT || F, v = id => document.getElementById(id); if (!X || !v('f-title')) return; X.d = v('f-d').value || today(); X.title = v('f-title').value.trim(); X.body = v('f-body').value.trim(); X.due = v('f-due').value; X.cat = v('f-cat').value.trim(); X.shared = v('f-sh').classList.contains('on'); }
+function cancelForm() { EDIT = null; F = null; showForm = false; render(); }
+function grab() { const X = EDIT || F, v = id => document.getElementById(id); if (!X || !v('f-title')) return; X.d = v('f-d').value || today(); X.title = v('f-title').value.trim(); X.body = v('f-body').value.trim(); X.place = v('f-place').value.trim(); X.cat = v('f-cat').value.trim(); X.due = v('f-due').value; X.assignee = v('f-as').value; }
 async function save() {
-  grab(); const X = EDIT || F; if (!X.title) { alert('무슨 일인지(제목) 적어 주세요'); document.getElementById('f-title').focus(); return; }
-  const row = { d: X.d, title: X.title, body: X.body, cat: X.cat, due: X.due || null, shared: !!X.shared, updated_at: new Date().toISOString() };
+  grab(); const X = EDIT || F; if (!X.title) { alert('무엇을 요청하는지 적어 주세요'); document.getElementById('f-title').focus(); return; }
+  const p = PEOPLE.find(q => q.id === X.assignee);
+  const row = { d: X.d, title: X.title, body: X.body, place: X.place, cat: X.cat, due: X.due || null, assignee: X.assignee || null, assignee_name: p ? (p.name || p.username) : '', shared: true, updated_at: new Date().toISOString() };
   try {
     if (EDIT) { const { error } = await sb.from('work_log').update(row).eq('id', EDIT.id); if (error) throw error; }
-    else { row.owner_name = (me && (me.name || me.username)) || ''; row.owner = Portal.me.id; const { error } = await sb.from('work_log').insert(row); if (error) throw error; }
-    const was = !!EDIT; EDIT = null; F = null; await load(); toast(was ? '고쳤습니다' : '적었습니다'); render();
-  } catch (e) { alert('저장 실패: ' + errMsg(e) + '\n(35번 SQL을 실행했는지 확인)'); }
+    else { row.owner_name = myName(); row.owner = myId(); const { error } = await sb.from('work_log').insert(row); if (error) throw error; }
+    const was = !!EDIT; EDIT = null; F = null; showForm = false; await load(); toast(was ? '고쳤습니다' : '요청을 올렸습니다'); render();
+  } catch (e) { alert('저장 실패: ' + errMsg(e) + '\n(35·36번 SQL을 실행했는지 확인)'); }
 }
 
-// ---------------- 한 줄 ----------------
-function itemHtml(r, showOwner) {
-  const my = mine(r) && canWrite(), done = r.status === '완료', t = today(), over = r.status === '진행' && r.due && r.due < t;
-  return `<div class="card ${over ? 'over' : ''}"><div class="it ${done ? 'done' : ''}">
-    <button class="ck ${done ? 'on' : ''}" ${my ? `onclick="toggleDone(${r.id})" title="${done ? '완료 취소' : '완료로 표시'}"` : 'disabled'}>${done ? '✓' : ''}</button>
+// ---------------- 한 건 ----------------
+function itemHtml(r) {
+  const ed = canEdit(r), done = r.status === '완료', t = today(), over = r.status === '진행' && r.due && r.due < t, mineA = r.assignee && r.assignee === myId();
+  return `<div class="card ${over ? 'over' : ''} ${mineA && !done ? 'mine' : ''}"><div class="it ${done ? 'done' : ''}">
+    <button class="ck ${done ? 'on' : ''}" ${ed ? `onclick="toggleDone(${r.id})" title="${done ? '완료 취소' : '완료로 표시'}"` : 'disabled title="쓴 사람·담당자·관리자만"'}>${done ? '✓' : ''}</button>
     <div class="bd"><div class="tt">${esc(r.title)}</div>${r.body ? `<div class="tx">${esc(r.body)}</div>` : ''}
-      <div class="mt">${showOwner ? `<b style="color:#333">${esc(r.owner_name || '')}</b>` : ''}<span>${md(r.d)}</span>${r.cat ? `<span class="tag">${esc(r.cat)}</span>` : ''}${ddTag(r)}
-        ${r.status === '보류' ? '<span class="tag hold">⏸ 보류</span>' : ''}${!showOwner && r.shared ? '<span class="tag sh">🌐 공유 중</span>' : ''}${done && r.done_at ? `<span>완료 ${md(r.done_at.slice(0, 10))}</span>` : ''}</div>
-      ${my ? `<div class="acts"><button class="btn sm sec" onclick="editIt(${r.id})">고치기</button><button class="btn sm sec" onclick="toggleShare(${r.id})">${r.shared ? '🌐 공유 끄기' : '🌐 시설 공유'}</button>
-        ${r.status !== '완료' ? `<button class="btn sm sec" onclick="setStatus(${r.id},'${r.status === '보류' ? '진행' : '보류'}')">${r.status === '보류' ? '▶ 다시 진행' : '⏸ 보류'}</button>` : ''}
-        <button class="btn sm sec" style="color:var(--red)" onclick="delIt(${r.id})">삭제</button></div>` : ''}
+      <div class="mt"><span class="who">요청 ${esc(r.owner_name || '')} → ${r.assignee ? `<span class="as">담당 ${esc(r.assignee_name || '')}${mineA ? ' (나)' : ''}</span>` : '<span class="none">담당자 미정</span>'}</span>
+        ${r.place ? `<span class="tag">📍 ${esc(r.place)}</span>` : ''}${r.cat ? `<span class="tag">${esc(r.cat)}</span>` : ''}${ddTag(r)}${r.status === '보류' ? '<span class="tag hold">⏸ 보류</span>' : ''}
+        <span>${md(r.d)}</span>${done && r.done_at ? `<span>완료 ${md(r.done_at.slice(0, 10))}${r.done_by ? ' · ' + esc(r.done_by) : ''}</span>` : ''}</div>
+      ${canWrite() ? `<div class="acts">
+        ${!r.assignee && r.status !== '완료' ? `<button class="btn sm blue" onclick="setAs(${r.id},'${myId()}')">🙋 내가 맡기</button>` : ''}
+        ${ed ? `<select onchange="setAs(${r.id},this.value)" title="담당자 바꾸기">${pplOpts(r.assignee || '')}</select>
+          <button class="btn sm sec" onclick="editIt(${r.id})">고치기</button>
+          ${r.status !== '완료' ? `<button class="btn sm sec" onclick="setStatus(${r.id},'${r.status === '보류' ? '진행' : '보류'}')">${r.status === '보류' ? '▶ 다시 진행' : '⏸ 보류'}</button>` : ''}` : ''}
+        ${canDel(r) ? `<button class="btn sm sec" style="color:var(--red)" onclick="delIt(${r.id})">삭제</button>` : ''}</div>` : ''}
     </div></div></div>`;
 }
 async function patch(id, p, msg) { p.updated_at = new Date().toISOString(); const { error } = await sb.from('work_log').update(p).eq('id', id); if (error) { alert('저장 실패: ' + errMsg(error)); return; } await load(); if (msg) toast(msg); render(); }
-function toggleDone(id) { const r = L.find(x => x.id === id); if (!r) return; patch(id, r.status === '완료' ? { status: '진행', done_at: null } : { status: '완료', done_at: new Date().toISOString() }, r.status === '완료' ? '다시 진행으로' : '완료 ✓'); }
+function toggleDone(id) { const r = L.find(x => x.id === id); if (!r) return; patch(id, r.status === '완료' ? { status: '진행', done_at: null, done_by: '' } : { status: '완료', done_at: new Date().toISOString(), done_by: myName() }, r.status === '완료' ? '다시 진행으로' : '완료 ✓'); }
 function setStatus(id, s) { patch(id, { status: s, done_at: null }, s === '보류' ? '보류로 바꿨습니다' : '다시 진행'); }
-function toggleShare(id) { const r = L.find(x => x.id === id); if (!r) return; patch(id, { shared: !r.shared }, r.shared ? '공유를 껐습니다 (나만 봄)' : '시설 공유에 올렸습니다'); }
-function editIt(id) { const r = L.find(x => x.id === id); if (!r) return; grab(); EDIT = { id, d: r.d, title: r.title, body: r.body, cat: r.cat, due: r.due || '', shared: r.shared }; view = 'mine'; tabs(); render(); window.scrollTo(0, 0); document.getElementById('f-title').focus(); }
-async function delIt(id) { const r = L.find(x => x.id === id); if (!r || !confirm(`「${r.title}」을(를) 지울까요?`)) return; const { error } = await sb.from('work_log').delete().eq('id', id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; } await load(); toast('지웠습니다'); render(); }
+function setAs(id, uid) { const p = PEOPLE.find(q => q.id === uid); patch(id, { assignee: uid || null, assignee_name: p ? (p.name || p.username) : '' }, p ? `담당: ${p.name || p.username}` : '담당자를 비웠습니다'); }
+function editIt(id) { const r = L.find(x => x.id === id); if (!r) return; EDIT = { id, d: r.d, title: r.title, body: r.body, place: r.place || '', cat: r.cat, due: r.due || '', assignee: r.assignee || '' }; render(); window.scrollTo(0, 0); }
+async function delIt(id) { const r = L.find(x => x.id === id); if (!r || !confirm(`「${r.title}」 요청을 지울까요?`)) return; const { error } = await sb.from('work_log').delete().eq('id', id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; } await load(); toast('지웠습니다'); render(); }
 
 // ---------------- 목록 ----------------
-const matchQ = (r, q) => !q || (r.title + ' ' + r.body + ' ' + r.cat + ' ' + (r.owner_name || '')).toLowerCase().includes(q.toLowerCase());
-function groupHtml(A, showOwner) {
-  const t = today(), open = A.filter(r => r.status !== '완료');
-  if (mSort === 'due' || showOwner) { // 예정일 순: 지남 → 오늘 → 이번 주 → 나중 → 예정일 없음 → 보류 → 완료
-    const g = [['⚠ 마감 지남', r => r.status === '진행' && r.due && r.due < t, 'red'], ['오늘까지', r => r.status === '진행' && r.due === t, 'red'], ['7일 안', r => r.status === '진행' && r.due && r.due > t && r.due <= addDays(t, 7)],
-      ['그 뒤', r => r.status === '진행' && r.due && r.due > addDays(t, 7)], ['예정일 없음', r => r.status === '진행' && !r.due], ['⏸ 보류', r => r.status === '보류'], ['✓ 완료', r => r.status === '완료']];
-    return g.map(([n, f, c]) => { const X = A.filter(f).sort((a, b) => n === '✓ 완료' ? ((a.done_at || '') < (b.done_at || '') ? 1 : -1) : ((a.due || '9') < (b.due || '9') ? -1 : (a.due || '9') > (b.due || '9') ? 1 : a.d < b.d ? 1 : -1));
-      return X.length ? `<div class="grp ${c || ''}">${n} <span class="hint">${X.length}</span></div>` + X.map(r => itemHtml(r, showOwner)).join('') : ''; }).join('');
-  }
-  const ds = [...new Set(A.map(r => r.d))].sort().reverse(); // 날짜별 일지
-  return ds.map(d => `<div class="grp">${d === t ? '오늘 · ' : d === addDays(t, -1) ? '어제 · ' : ''}${d.slice(0, 4)}. ${md(d)}</div>` + A.filter(r => r.d === d).map(r => itemHtml(r, showOwner)).join('')).join('');
+const matchQ = (r, q) => !q || [r.title, r.body, r.cat, r.place, r.owner_name, r.assignee_name].join(' ').toLowerCase().includes(q.toLowerCase());
+function groupHtml(A) {
+  const t = today();
+  const g = [['⚠ 마감 지남', r => r.status === '진행' && r.due && r.due < t, 'red'], ['오늘까지', r => r.status === '진행' && r.due === t, 'red'], ['7일 안', r => r.status === '진행' && r.due && r.due > t && r.due <= addDays(t, 7)],
+    ['그 뒤', r => r.status === '진행' && r.due && r.due > addDays(t, 7)], ['예정일 없음', r => r.status === '진행' && !r.due], ['⏸ 보류', r => r.status === '보류'], ['✓ 완료', r => r.status === '완료']];
+  return g.map(([n, f, c]) => { const X = A.filter(f).sort((a, b) => n === '✓ 완료' ? ((a.done_at || '') < (b.done_at || '') ? 1 : -1) : ((a.due || '9') < (b.due || '9') ? -1 : (a.due || '9') > (b.due || '9') ? 1 : a.d < b.d ? 1 : -1));
+    return X.length ? `<div class="grp ${c || ''}">${n} <span class="hint">${X.length}</span></div>` + X.map(itemHtml).join('') : ''; }).join('');
 }
-function renderMine() {
-  const el = document.getElementById('body');
-  if (!canWrite()) { view = 'shared'; tabs(); return renderShared(); }
-  const my = L.filter(mine), t = today();
-  const A = my.filter(r => (mFilter === 'open' ? r.status !== '완료' : mFilter === 'done' ? r.status === '완료' : true) && matchQ(r, mQ));
-  const nOver = my.filter(r => r.status === '진행' && r.due && r.due < t).length, nToday = my.filter(r => r.status === '진행' && r.due === t).length, nOpen = my.filter(r => r.status !== '완료').length;
+function base() { return view === 'mine' ? L.filter(r => r.assignee === myId()) : view === 'req' ? L.filter(r => r.owner === myId()) : L; }
+function filtered() { return base().filter(r => (fSt === 'open' ? r.status !== '완료' : fSt === 'done' ? r.status === '완료' : true) && (view !== 'all' || !fWho || (fWho === '-' ? !r.assignee : r.assignee === fWho)) && matchQ(r, fQ)); }
+function render() {
+  const el = document.getElementById('body'), B = base(), A = filtered();
+  const whoList = [...new Map(L.filter(r => r.assignee && r.status !== '완료').map(r => [r.assignee, r.assignee_name])).entries()], nNone = L.filter(r => !r.assignee && r.status !== '완료').length;
   el.innerHTML = formHtml() +
-    `<div class="bar"><span class="chips">${[['open', `진행 중 ${nOpen}`], ['done', '완료'], ['all', '전체']].map(([k, n]) => `<button class="chip ${mFilter === k ? 'on' : ''}" onclick="grab();mFilter='${k}';render()">${n}</button>`).join('')}</span>
-      <span class="chips" style="margin-left:6px">${[['date', '📅 날짜별 일지'], ['due', '⏰ 예정일 순']].map(([k, n]) => `<button class="chip ${mSort === k ? 'on' : ''}" onclick="grab();mSort='${k}';render()">${n}</button>`).join('')}</span>
-      <input type="search" placeholder="찾기" value="${esc(mQ)}" oninput="mQ=this.value;grab();renderList()" style="margin-left:auto"></div>
-    ${nOver || nToday ? `<div class="hint" style="color:var(--red)">⚠ ${nOver ? `마감 지난 일 ${nOver}건` : ''}${nOver && nToday ? ' · ' : ''}${nToday ? `오늘까지 ${nToday}건` : ''}</div>` : ''}
-    <div id="lst">${A.length ? groupHtml(A, false) : `<div class="empty">${mFilter === 'open' ? '진행 중인 일이 없습니다 👍' : '기록이 없습니다'}</div>`}</div>`;
+    `<div class="bar"><span class="chips">${[['open', `진행 중 ${B.filter(r => r.status !== '완료').length}`], ['done', '완료'], ['all', '전체']].map(([k, n]) => `<button class="chip ${fSt === k ? 'on' : ''}" onclick="grab();fSt='${k}';render()">${n}</button>`).join('')}</span>
+      <input type="search" placeholder="찾기" value="${esc(fQ)}" oninput="fQ=this.value;document.getElementById('lst').innerHTML=filtered().length?groupHtml(filtered()):'<div class=\\'empty\\'>찾는 요청이 없습니다</div>'" style="margin-left:auto"></div>
+    ${view === 'all' ? `<div class="bar"><span class="hint">담당</span><span class="chips"><button class="chip ${!fWho ? 'on' : ''}" onclick="grab();fWho='';render()">모두</button>${whoList.map(([id, n]) => `<button class="chip ${fWho === id ? 'on' : ''}" onclick="grab();fWho='${id}';render()">${esc(n)}${id === myId() ? ' (나)' : ''} <span class="hint">${L.filter(r => r.assignee === id && r.status !== '완료').length}</span></button>`).join('')}${nNone ? `<button class="chip ${fWho === '-' ? 'on' : ''}" onclick="grab();fWho='-';render()">미정 <span class="hint">${nNone}</span></button>` : ''}</span></div>` : ''}
+    <div id="lst">${A.length ? groupHtml(A) : `<div class="empty">${view === 'mine' ? '내가 맡은 요청이 없습니다' : fSt === 'open' ? '진행 중인 요청이 없습니다 👍' : '요청이 없습니다'}</div>`}</div>`;
 }
-function renderList() { const A = L.filter(mine).filter(r => (mFilter === 'open' ? r.status !== '완료' : mFilter === 'done' ? r.status === '완료' : true) && matchQ(r, mQ)); document.getElementById('lst').innerHTML = A.length ? groupHtml(A, false) : '<div class="empty">찾는 기록이 없습니다</div>'; }
-function renderShared() {
-  const el = document.getElementById('body'), S = L.filter(r => r.shared), who = [...new Set(S.map(r => r.owner_name || '?'))].sort();
-  const A = S.filter(r => (sFilter === 'open' ? r.status !== '완료' : sFilter === 'done' ? r.status === '완료' : true) && (!sWho || (r.owner_name || '?') === sWho) && matchQ(r, sQ));
-  el.innerHTML = `<div class="hint">시설팀이 「🌐 시설 공유」로 올린 일만 보입니다 · 마감 지난 것 → 오늘 → 예정일 가까운 순 · 고치기·완료 표시는 쓴 사람만</div>
-    <div class="bar"><span class="chips">${[['open', '진행 중'], ['done', '완료'], ['all', '전체']].map(([k, n]) => `<button class="chip ${sFilter === k ? 'on' : ''}" onclick="sFilter='${k}';render()">${n}</button>`).join('')}</span>
-      <span class="chips" style="margin-left:6px"><button class="chip ${!sWho ? 'on' : ''}" onclick="sWho='';render()">모두</button>${who.map(w => `<button class="chip ${sWho === w ? 'on' : ''}" onclick="sWho=${JSON.stringify(w).replace(/"/g, '&quot;')};render()">${esc(w)} <span class="hint">${S.filter(r => (r.owner_name || '?') === w && r.status !== '완료').length}</span></button>`).join('')}</span>
-      <input type="search" placeholder="찾기" value="${esc(sQ)}" oninput="sQ=this.value;renderSharedList()" style="margin-left:auto"></div>
-    <div id="slst">${A.length ? groupHtml(A, true) : '<div class="empty">공유된 일이 없습니다.</div>'}</div>`;
-}
-function renderSharedList() { const S = L.filter(r => r.shared), A = S.filter(r => (sFilter === 'open' ? r.status !== '완료' : sFilter === 'done' ? r.status === '완료' : true) && (!sWho || (r.owner_name || '?') === sWho) && matchQ(r, sQ)); document.getElementById('slst').innerHTML = A.length ? groupHtml(A, true) : '<div class="empty">찾는 기록이 없습니다</div>'; }
-
 function tabs() { document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === view)); }
-function render() { if (view === 'mine') renderMine(); else renderShared(); }
 document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => { grab(); view = b.dataset.v; tabs(); render(); }));
 
 Portal.start({
   appId: 'log',
-  title: '업무일지',
+  title: '현장 요청사항',
   onReady: async P => {
     sb = P.sb; me = P.me; document.getElementById('app').hidden = false;
-    try { await load(); } catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 35번 SQL(35_work_log.sql)을 실행했는지 확인해 주세요.</div>`; return; }
-    if (!canWrite() || new URLSearchParams(location.search).has('shared')) view = 'shared';
+    try { await Promise.all([load(), loadPeople()]); } catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 35·36번 SQL을 실행했는지 확인해 주세요.</div>`; return; }
+    if (new URLSearchParams(location.search).has('mine')) view = 'mine';
     tabs(); render();
+    setInterval(async () => { if (document.hidden || showForm || EDIT) return; try { await load(); render(); } catch (e) { } }, 120000);
   }
 });
 </script>

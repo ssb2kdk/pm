@@ -244,12 +244,12 @@
     clearTimeout(navTimer);
     try {
       const lg = (CFG.APPS || []).find(x => x.id === 'log' && x.ready);
-      if (lg && Portal.me && ['admin', 'user'].includes(Portal.me.role)) { // 업무일지: 내 일 중 마감 오늘·지남
-        const t = new Date().toLocaleDateString('sv-SE'), { data, error } = await sb.from('work_log').select('id,due').eq('owner', Portal.me.id).eq('status', '진행').lte('due', t);
+      if (lg && Portal.me && ['admin', 'user'].includes(Portal.me.role)) { // 현장 요청사항: 내가 담당인 진행 중 요청
+        const t = new Date().toLocaleDateString('sv-SE'), { data, error } = await sb.from('work_log').select('id,due').eq('assignee', Portal.me.id).eq('status', '진행');
         const link = [...document.querySelectorAll('#pt-bar .pt-apps a')].find(a => a.getAttribute('href') === Portal.appUrl(lg));
         if (link && !error) { let b = link.querySelector('.pt-nb'); const n = (data || []).length;
           if (!n) { if (b) b.remove(); } else { if (!b) { link.insertAdjacentHTML('beforeend', '<span class="pt-nb"></span>'); b = link.querySelector('.pt-nb'); }
-            b.textContent = n; b.title = `내 일 중 마감 오늘·지남 ${n}건`;
+            const ov = (data || []).filter(x => x.due && x.due <= t).length; b.textContent = ov ? `${n}·⚠${ov}` : n; b.title = `내 담당 진행 중 ${n}건${ov ? ` (마감 오늘·지남 ${ov})` : ''}`;
             b.style.cssText = 'display:inline-block;margin-left:5px;min-width:18px;padding:0 6px;border-radius:9px;background:#e5534b;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center'; } }
       }
       const app = (CFG.APPS || []).find(x => x.id === 'mat' && x.ready);
