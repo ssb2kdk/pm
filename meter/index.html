@@ -233,7 +233,7 @@
       { key: 'pump', name: '저수조·급수펌프 점검', eq: ['저수조', '급수펌프'], after: ['부스타펌프압력'] },
       { key: 'hot', name: '온수탱크 점검', eq: ['온수탱크'], after: ['전기온수기온도', '전기온수기압력'] },
       { key: 'elec', name: '수변전 점검', eq: ['변압기', '큐비클', '계량기'], after: ['역률', '최대전력', '심야지침'] },
-      { key: 'odu', name: '옥외 실외기 점검', eq: ['옥외 실외기'], after: ['파쇄냉장유압', '파쇄냉장저압'], after2: ['내포장실유압', '내포장실저압'], both: true }
+      { key: 'odu', name: '옥외 실외기 점검', eq: ['옥외 실외기'], after: [], both: true /* 실외기 섹션이 있는 모든 탭의 마지막 실외기 칸 아래 */ }
     ];
     // 검침하면 같이 ○ 되는 점검: 관련 검침값이 다 들어가고 정상 범위면 자동 ○ (직접 누른 건 안 건드림)
     const INSP_AUTO = [
@@ -286,7 +286,7 @@
       const cls = st.bad.length ? 'bad' : st.warn.length ? 'warn' : st.done === st.n ? 'ok' : '';
       const chip = st.bad.length ? `<span class="ist bad">Ⅹ ${st.bad.length}</span>` : st.warn.length ? `<span class="ist warn">△ ${st.warn.length}</span>`
         : st.done === st.n ? `<span class="ist ok">✓ 정상</span>` : `<span class="ist todo" onclick="event.stopPropagation();iAllGood('${g.key}')">모두 ○</span>`;
-      const sub = issues.length ? issues.join(' · ') : `${st.n}항목${st.done && st.done < st.n ? ` · ${st.done}개 체크` : ''}${items.some(i => iAuto.has(i.id)) ? ' · 검침으로 자동 ○ 포함' : ''}${g.both ? ' · 기계실·외곽 실외기 전체' : ''}`;
+      const sub = issues.length ? issues.join(' · ') : `${st.n}항목${st.done && st.done < st.n ? ` · ${st.done}개 체크` : ''}${items.some(i => iAuto.has(i.id)) ? ' · 검침으로 자동 ○ 포함' : ''}${g.both ? ' · 모든 실외기 (기계실·외곽·공장동 어디서 체크해도 같음)' : ''}`;
       let h = `<div class="ig ${cls}" id="ig-${gid}"><div class="ig-h" onclick="iToggle('${gid}')"><span class="ic">🔍</span><div class="t"><b>${esc(g.name)}</b><small>${sub}</small></div>${chip}<span class="ar">${open ? '▾' : '›'}</span></div>`;
       if (open) h += `<div class="ig-b">${items.map(it => { const v = R[it.id] || '', need = v === 'Ⅹ' || v === '△';
         return `<div class="ir"><div class="t">${g.eq.length > 1 ? `<div class="eq">${esc(it.equipment)}</div>` : ''}${esc(it.content)}${iAuto.has(it.id) && v === '○' ? ' <span class="au">검침 자동</span>' : ''}<small>기준: ${esc(it.standard)}</small></div>
@@ -305,9 +305,14 @@
       if (!irec) return; const g = INSP_GROUPS.find(x => x.key === key), items = g ? iGroupItems(g) : iOthers();
       items.forEach(i => { if (!irec.results[i.id]) irec.results[i.id] = '○'; }); renderTabs(); renderContent(); renderFooter();
     }
+    function anchorOf(g, t) { // 이 탭에서 점검 묶음을 붙일 검침 칸
+      if (!t) return null;
+      if (g.both) { const ss = t.sections.filter(x => /실외기/.test(x.name) && x.fields.length); return ss.length ? ss[ss.length - 1].fields[ss[ss.length - 1].fields.length - 1].id : null; }
+      const ids = new Set(t.sections.flatMap(x => x.fields.map(f => f.id))); return g.after.find(id => ids.has(id)) || null;
+    }
     function iTabItems(t) { // 이 탭에 붙는 점검 항목 (실외기처럼 두 탭에 같은 묶음이면 양쪽에 셈)
       const ids = new Set(t.sections.flatMap(s => s.fields.map(f => f.id))), out = [];
-      INSP_GROUPS.forEach(g => { const a = g.after.find(id => ids.has(id)), b = g.after2 && g.after2.find(id => ids.has(id)); if (a || b) out.push(...iGroupItems(g)); });
+      INSP_GROUPS.forEach(g => { if (anchorOf(g, t)) out.push(...iGroupItems(g)); });
       if (t === TABS[0]) out.push(...iOthers().filter(i => !INSP_GROUPS.some(g => iGroupItems(g).includes(i))));
       return [...new Set(out)];
     }
@@ -462,9 +467,7 @@
               value="${esc(v)}" data-id="${esc(f.id)}">
           </div>`;
           if (irec || iLoadFail) INSP_GROUPS.forEach(g => { // 이 검침 칸 바로 아래에 붙는 점검 묶음
-            const ids = new Set(t.sections.flatMap(s2 => s2.fields.map(x => x.id)));
-            if (g.after.find(id => ids.has(id)) === f.id) h += iGroupHtml(g, iGroupItems(g), '');
-            if (g.after2 && g.after2.find(id => ids.has(id)) === f.id) h += iGroupHtml(g, iGroupItems(g), '2');
+            if (anchorOf(g, t) === f.id) h += iGroupHtml(g, iGroupItems(g), '');
           });
         });
       });
@@ -504,7 +507,7 @@
 
     function refreshGroups() { // 입력 중 포커스를 잃지 않게 점검 묶음 줄만 다시 그림
       const t = TABS[activeTab]; if (!t) return; const ids = new Set(t.sections.flatMap(s => s.fields.map(f => f.id)));
-      INSP_GROUPS.forEach(g => [['', g.after], ['2', g.after2]].forEach(([pos, af]) => { if (!af || !af.find(id => ids.has(id))) return; const el = document.getElementById('ig-' + g.key + pos); if (el) el.outerHTML = iGroupHtml(g, iGroupItems(g), pos); }));
+      INSP_GROUPS.forEach(g => { if (!anchorOf(g, t)) return; const el = document.getElementById('ig-' + g.key); if (el) el.outerHTML = iGroupHtml(g, iGroupItems(g), ''); });
     }
     function renderFooter() {
       let total = 0, filled = 0;
