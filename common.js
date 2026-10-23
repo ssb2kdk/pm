@@ -243,6 +243,15 @@
   async function navBadges(sb) {
     clearTimeout(navTimer);
     try {
+      const lg = (CFG.APPS || []).find(x => x.id === 'log' && x.ready);
+      if (lg && Portal.me && ['admin', 'user'].includes(Portal.me.role)) { // 업무일지: 내 일 중 마감 오늘·지남
+        const t = new Date().toLocaleDateString('sv-SE'), { data, error } = await sb.from('work_log').select('id,due').eq('owner', Portal.me.id).eq('status', '진행').lte('due', t);
+        const link = [...document.querySelectorAll('#pt-bar .pt-apps a')].find(a => a.getAttribute('href') === Portal.appUrl(lg));
+        if (link && !error) { let b = link.querySelector('.pt-nb'); const n = (data || []).length;
+          if (!n) { if (b) b.remove(); } else { if (!b) { link.insertAdjacentHTML('beforeend', '<span class="pt-nb"></span>'); b = link.querySelector('.pt-nb'); }
+            b.textContent = n; b.title = `내 일 중 마감 오늘·지남 ${n}건`;
+            b.style.cssText = 'display:inline-block;margin-left:5px;min-width:18px;padding:0 6px;border-radius:9px;background:#e5534b;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center'; } }
+      }
       const app = (CFG.APPS || []).find(x => x.id === 'mat' && x.ready);
       if (app) {
         const { data, error } = await sb.from('mat_req').select('id,urgent').in('status', ['요청', '확인']);
