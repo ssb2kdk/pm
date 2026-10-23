@@ -21,7 +21,7 @@
     .wrap { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
     .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 14px; }
     .head-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
-    .title { font-size: 17px; font-weight: 700; }
+    .title { font-size: 17px; font-weight: 700; white-space: nowrap; }
     .btn-admin { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
     .btn-admin.on { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); }
     .date-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
@@ -83,6 +83,30 @@
     .addrow button { padding: 8px 12px; border: 1px solid var(--blue); border-radius: 8px; background: var(--blue-bg); color: var(--blue); cursor: pointer; font-size: 13px; white-space: nowrap; }
     .month-alert { margin: 8px 12px 0; background: #fff4e5; border: 1px solid #ffb74d; color: #7a4300; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.5; }
     .card.must { border: 2px solid #ffb74d; }
+    /* 이상해 보이는 값 */
+    .card.odd { border-color: var(--amber); background: #fffaf2; } .val.odd { color: var(--amber); border-bottom-color: var(--amber); } .fmeta .odd { color: var(--amber); font-weight: 600; }
+    /* 설비점검 (검침 사이에 접힌 한 줄) */
+    .ig { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+    .ig.bad { border-color: var(--red); } .ig.warn { border-color: var(--amber); } .ig.ok { border-color: #b8e0cf; }
+    .ig-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; }
+    .ig-h .ic { font-size: 16px; } .ig-h .t { flex: 1; min-width: 0; } .ig-h .t b { font-size: 14px; } .ig-h .t small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .ig-h .t small .bd { color: var(--red); font-weight: 600; } .ig-h .t small .wn { color: var(--amber); font-weight: 600; }
+    .ig-h .ar { color: #bbb; font-size: 14px; }
+    .ist { font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 14px; white-space: nowrap; border: 1px solid transparent; }
+    .ist.ok { background: var(--teal-bg); color: var(--teal); } .ist.todo { background: #fff; border-color: var(--teal); color: var(--teal); cursor: pointer; }
+    .ist.bad { background: var(--red); color: #fff; } .ist.warn { background: var(--amber-bg); color: var(--amber); }
+    .ig-b { border-top: 1px dashed var(--border); padding: 4px 12px 10px; }
+    .ir { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #f0f0f0; } .ir:last-child { border-bottom: none; }
+    .ir .t { flex: 1; min-width: 0; font-size: 13px; } .ir .t .eq { font-size: 10px; color: var(--muted); } .ir .t small { display: block; color: #999; font-size: 11px; } .ir .t .au { color: var(--teal); font-size: 10px; font-weight: 700; }
+    .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: none; }
+    .seg button { width: 34px; height: 32px; border: none; border-left: 1px solid var(--border); background: #fff; font-size: 14px; color: #aaa; cursor: pointer; padding: 0; }
+    .seg button:first-child { border-left: none; }
+    .seg button.on.m0 { background: var(--teal); color: #fff; font-weight: 700; } .seg button.on.m1 { background: var(--red); color: #fff; font-weight: 700; }
+    .seg button.on.m2 { background: var(--amber); color: #fff; font-weight: 700; } .seg button.on.m3 { background: var(--blue); color: #fff; font-weight: 700; }
+    .inote { width: 100%; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; margin: 0 0 4px; }
+    .inote.need { border-color: var(--red); background: var(--red-bg); }
+    .iremark { width: 100%; min-height: 54px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 8px; font-family: inherit; }
+    .tab .cnt .ic { color: var(--blue); }
   </style>
 </head>
 <body>
@@ -91,8 +115,8 @@
       <div class="head">
         <div class="head-row">
           <span class="title">📟 설비검침</span>
-          <span style="display:flex;gap:6px"><a class="btn-admin" href="table.html" style="text-decoration:none">📊 표로 보기</a>
-          <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목 관리</button></span>
+          <span style="display:flex;gap:6px"><a class="btn-admin" href="table.html" style="text-decoration:none">📊 표</a><a class="btn-admin" href="../insp/" style="text-decoration:none" title="설비점검일지 출력·지난 날 보기">🖨 점검일지</a>
+          <button class="btn-admin" id="admin-btn" hidden onclick="toggleAdmin()">⚙ 항목</button></span>
         </div>
         <div class="date-row">
           <button onclick="shiftDate(-1)">◀</button>
@@ -163,10 +187,12 @@
     }
 
     async function loadAll() {
-      const [f, d] = await Promise.all([
+      const [f, d, it] = await Promise.all([
         fetchAll('meter_fields', '*', 'sort'),
-        fetchAll('meter_daily', 'd, weather, temp_min, temp_max, v', 'd')
+        fetchAll('meter_daily', 'd, weather, temp_min, temp_max, v', 'd'),
+        fetchAll('insp_items', '*', 'sort').catch(() => [])
       ]);
+      INSP_ITEMS = (it || []).filter(x => x.active);
       ALLFIELDS = f;
       FIELDS = f.filter(x => x.active);
       DAYS = Object.fromEntries(d.map(r => [r.d, r]));
@@ -195,8 +221,119 @@
       return null;
     }
 
+    // ---------------- 설비점검일지 (검침 사이에 접힌 한 줄로) ----------------
+    // 점검 결과는 설비점검일지(insp_daily)에 그대로 저장 → 출력은 설비점검일지 메뉴에서 지금 양식 그대로
+    const MARKS = [['○', '양호'], ['Ⅹ', '불량'], ['△', '정비필요'], ['◎', '정비완료']];
+    // 점검 묶음: 설비 이름으로 묶고, 그 묶음을 붙일 검침 칸(그 칸 바로 아래). 실외기는 기계실·외곽 두 곳에 같은 묶음
+    const INSP_GROUPS = [
+      { key: 'water', name: '수도 계량기 점검', eq: ['수도 계량기'], after: ['상수도50A', '상수도40A'] },
+      { key: 'gasreg', name: '가스 정압기 점검', eq: ['가스 정압기'], after: ['가스식당', '가스보일러'] },
+      { key: 'boiler', name: '보일러 점검', eq: ['관류 보일러', '보일러 연수기', '보일러 청관제', '열수탱크'], after: ['보일러2급수', '보일러1급수'] },
+      { key: 'comp', name: '컴프레셔 점검', eq: ['컴프레셔'], after: ['컴프레셔2운전', '컴프레셔1운전'] },
+      { key: 'pump', name: '저수조·급수펌프 점검', eq: ['저수조', '급수펌프'], after: ['부스타펌프압력'] },
+      { key: 'hot', name: '온수탱크 점검', eq: ['온수탱크'], after: ['전기온수기온도', '전기온수기압력'] },
+      { key: 'elec', name: '수변전 점검', eq: ['변압기', '큐비클', '계량기'], after: ['역률', '최대전력', '심야지침'] },
+      { key: 'odu', name: '옥외 실외기 점검', eq: ['옥외 실외기'], after: ['파쇄냉장유압', '파쇄냉장저압'], after2: ['내포장실유압', '내포장실저압'], both: true }
+    ];
+    // 검침하면 같이 ○ 되는 점검: 관련 검침값이 다 들어가고 정상 범위면 자동 ○ (직접 누른 건 안 건드림)
+    const INSP_AUTO = [
+      { eq: '수도 계량기', ids: ['상수도40A', '상수도50A'], cum: true },
+      { eq: '관류 보일러', ct: '급수', ids: ['보일러1급수', '보일러2급수'], cum: true },
+      { eq: '급수펌프', ids: ['부스타펌프압력'], range: [3.7, 4.7] },
+      { eq: '온수탱크', ids: ['전기온수기압력', '전기온수기온도'], range: [3.7, 4.7] },
+      { eq: '계량기', ids: ['전력사용량'] }
+    ];
+    let INSP_ITEMS = [], irec = null, isaved = null, iAuto = new Set(), iOpen = new Set(), iLoadFail = false;
+    const iDirty = () => !!(irec && isaved && JSON.stringify(irec) !== JSON.stringify(isaved));
+    function iGroupItems(g) { return INSP_ITEMS.filter(it => g.eq.includes(it.equipment)); }
+    function iOthers() { const used = new Set(INSP_GROUPS.flatMap(g => iGroupItems(g).map(i => i.id))); return INSP_ITEMS.filter(i => !used.has(i.id)); }
+    async function loadInsp() {
+      irec = null; isaved = null; iAuto = new Set(); iLoadFail = false;
+      if (!INSP_ITEMS.length) return;
+      const ds = curDate, { data, error } = await sb.from('insp_daily').select('*').eq('d', ds).maybeSingle();
+      if (ds !== curDate) return;
+      if (error) { iLoadFail = true; return; }
+      const r = data || {};
+      irec = { results: { ...(r.results || {}) }, notes: { ...(r.notes || {}) }, remark: r.remark || '', inspector: r.inspector || '' };
+      isaved = JSON.parse(JSON.stringify(irec));
+      if (!irec.inspector && me) { irec.inspector = me.name; isaved.inspector = me.name; }
+      applyAuto();
+    }
+    const has = id => values[id] !== undefined && values[id] !== '' && !isNaN(values[id]);
+    function autoOk(a) {
+      if (!a.ids.every(has)) return false;
+      if (a.range && !(Number(values[a.ids[0]]) >= a.range[0] && Number(values[a.ids[0]]) <= a.range[1])) return false;
+      if (a.cum) for (const id of a.ids) { const p = prevValue(id, curDate); if (p && Number(values[id]) < p.v) return false; }
+      return !a.ids.some(id => oddOf(FIELDS.find(f => f.id === id)));
+    }
+    function applyAuto() { // 검침값이 들어가 정상이면 ○, 지워지거나 이상해지면 자동으로 넣었던 ○만 뺌
+      if (!irec) return;
+      INSP_AUTO.forEach(a => INSP_ITEMS.filter(it => it.equipment === a.eq && (!a.ct || it.content.includes(a.ct))).forEach(it => {
+        const ok = autoOk(a), cur = irec.results[it.id];
+        if (ok && !cur) { irec.results[it.id] = '○'; iAuto.add(it.id); }
+        else if (!ok && iAuto.has(it.id) && cur === '○') { delete irec.results[it.id]; iAuto.delete(it.id); }
+      }));
+    }
+    function iStat(items) {
+      const R = irec ? irec.results : {}, n = items.length, done = items.filter(i => R[i.id]).length, bad = items.filter(i => R[i.id] === 'Ⅹ'), warn = items.filter(i => R[i.id] === '△');
+      return { n, done, bad, warn };
+    }
+    function iGroupHtml(g, items, pos) {
+      if (!items.length) return '';
+      if (!irec) return iLoadFail ? `<div class="ig"><div class="ig-h"><span class="ic">🔍</span><div class="t"><b>${esc(g.name)}</b><small>점검 기록을 불러오지 못했습니다</small></div></div></div>` : '';
+      const st = iStat(items), gid = g.key + (pos || ''), open = iOpen.has(gid), R = irec.results, N = irec.notes;
+      const issues = items.filter(i => R[i.id] === 'Ⅹ' || R[i.id] === '△').map(i => `<span class="${R[i.id] === 'Ⅹ' ? 'bd' : 'wn'}">${esc(i.content.replace(/\s*(여부|상태)?\s*(확인|점검)$/, ''))} ${R[i.id]}${N[i.id] ? ` 「${esc(N[i.id])}」` : ''}</span>`);
+      const cls = st.bad.length ? 'bad' : st.warn.length ? 'warn' : st.done === st.n ? 'ok' : '';
+      const chip = st.bad.length ? `<span class="ist bad">Ⅹ ${st.bad.length}</span>` : st.warn.length ? `<span class="ist warn">△ ${st.warn.length}</span>`
+        : st.done === st.n ? `<span class="ist ok">✓ 정상</span>` : `<span class="ist todo" onclick="event.stopPropagation();iAllGood('${g.key}')">모두 ○</span>`;
+      const sub = issues.length ? issues.join(' · ') : `${st.n}항목${st.done && st.done < st.n ? ` · ${st.done}개 체크` : ''}${items.some(i => iAuto.has(i.id)) ? ' · 검침으로 자동 ○ 포함' : ''}${g.both ? ' · 기계실·외곽 실외기 전체' : ''}`;
+      let h = `<div class="ig ${cls}" id="ig-${gid}"><div class="ig-h" onclick="iToggle('${gid}')"><span class="ic">🔍</span><div class="t"><b>${esc(g.name)}</b><small>${sub}</small></div>${chip}<span class="ar">${open ? '▾' : '›'}</span></div>`;
+      if (open) h += `<div class="ig-b">${items.map(it => { const v = R[it.id] || '', need = v === 'Ⅹ' || v === '△';
+        return `<div class="ir"><div class="t">${g.eq.length > 1 ? `<div class="eq">${esc(it.equipment)}</div>` : ''}${esc(it.content)}${iAuto.has(it.id) && v === '○' ? ' <span class="au">검침 자동</span>' : ''}<small>기준: ${esc(it.standard)}</small></div>
+          <div class="seg">${MARKS.map(([m, l], k) => `<button class="m${k} ${v === m ? 'on' : ''}" title="${l}" onclick="iMark('${esc(it.id)}','${m}','${gid}')">${m}</button>`).join('')}</div></div>
+          ${need || N[it.id] ? `<input class="inote ${need && !N[it.id] ? 'need' : ''}" placeholder="비고 — 무엇이 문제인지 (일지에 나옴)" value="${esc(N[it.id] || '')}" oninput="irec.notes['${esc(it.id)}']=this.value;this.classList.toggle('need',!this.value);renderFooter()">` : ''}`; }).join('')}
+        <div style="text-align:right;margin-top:6px"><button class="btn-sm" onclick="iAllGood('${g.key}')">남은 것 모두 ○</button></div></div>`;
+      return h + '</div>';
+    }
+    function iToggle(gid) { iOpen.has(gid) ? iOpen.delete(gid) : iOpen.add(gid); renderContent(); }
+    function iMark(id, m, gid) {
+      if (!irec) return; irec.results[id] = irec.results[id] === m ? '' : m; if (!irec.results[id]) delete irec.results[id]; iAuto.delete(id);
+      if (m === 'Ⅹ' || m === '△') iOpen.add(gid);
+      renderTabs(); renderContent(); renderFooter();
+    }
+    function iAllGood(key) {
+      if (!irec) return; const g = INSP_GROUPS.find(x => x.key === key), items = g ? iGroupItems(g) : iOthers();
+      items.forEach(i => { if (!irec.results[i.id]) irec.results[i.id] = '○'; }); renderTabs(); renderContent(); renderFooter();
+    }
+    function iTabItems(t) { // 이 탭에 붙는 점검 항목 (실외기처럼 두 탭에 같은 묶음이면 양쪽에 셈)
+      const ids = new Set(t.sections.flatMap(s => s.fields.map(f => f.id))), out = [];
+      INSP_GROUPS.forEach(g => { const a = g.after.find(id => ids.has(id)), b = g.after2 && g.after2.find(id => ids.has(id)); if (a || b) out.push(...iGroupItems(g)); });
+      if (t === TABS[0]) out.push(...iOthers().filter(i => !INSP_GROUPS.some(g => iGroupItems(g).includes(i))));
+      return [...new Set(out)];
+    }
+    // 이상해 보이는 값: 누적 지침은 하루 사용량이 평소(최근 7번 중앙값)의 2배 넘거나 1/3 아래, 그 밖의 값은 기준값 ±15% 또는 평소 값과 크게 다름
+    const median = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? (b.length % 2 ? b[(b.length - 1) / 2] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2) : null; };
+    function history(fid, n) { const out = []; for (let i = SORTED_DAYS.length - 1; i >= 0 && out.length < n; i--) { const d = SORTED_DAYS[i]; if (d >= curDate) continue; const v = (DAYS[d].v || {})[fid]; if (v !== undefined && v !== null && v !== '') out.push({ d, v: Number(v) }); } return out; }
+    const dayGap = (a, b) => Math.round((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 864e5);
+    function oddOf(f) {
+      if (!f) return null; const v = values[f.id]; if (v === undefined || v === '' || isNaN(v)) return null; const x = Number(v);
+      if (f.cumulative) {
+        const H = history(f.id, 9); if (H.length < 4) return null; const p = H[0], gap = Math.max(1, dayGap(curDate, p.d)), u = (x - p.v) / gap; if (u < 0) return null;
+        const per = []; for (let i = 0; i < H.length - 1; i++) { const g2 = Math.max(1, dayGap(H[i].d, H[i + 1].d)), q = (H[i].v - H[i + 1].v) / g2; if (q >= 0) per.push(q); }
+        const m = median(per); if (!m || m <= 0) return null;
+        if (u > m * 2) return `평소 하루 ${nf.format(m)}의 ${nf.format(Math.round(u / m * 10) / 10)}배`;
+        if (u < m / 3 && gap === 1) return `평소 하루 ${nf.format(m)}보다 아주 적음`;
+        return null;
+      }
+      if (f.std_value !== null && f.std_value !== undefined && f.std_value !== 0 && Math.abs(x - f.std_value) > Math.abs(f.std_value) * 0.15) return `기준 ${nf.format(f.std_value)}에서 벗어남`;
+      const H = history(f.id, 7).map(h => h.v); if (H.length < 4) return null; const m = median(H), dev = Math.abs(x - m);
+      const minAbs = /MPa|bar/i.test(f.unit || '') ? 0.1 : /°C|℃/.test(f.unit || '') ? 3 : /%/.test(f.unit || '') ? 5 : 0;
+      if (dev > Math.abs(m) * 0.3 && dev > minAbs) return `평소 ${nf.format(m)} → 오늘 ${nf.format(x)}`;
+      return null;
+    }
+
     // ---------------- 날짜 ----------------
-    function confirmLeave() { return !(dirty.size || weatherDirty) || confirm('저장하지 않은 입력이 있습니다. 버리고 이동할까요?'); }
+    function confirmLeave() { return !(dirty.size || weatherDirty || iDirty()) || confirm('저장하지 않은 입력이 있습니다. 버리고 이동할까요?'); }
     function shiftDate(n) { const d = new Date(curDate + 'T00:00:00'); d.setDate(d.getDate() + n); changeDate(ymd(d)); }
     function changeDate(ds) {
       if (!ds) return;
@@ -215,7 +352,9 @@
       if (!r.weather && r.temp_min == null) fetchWeather(false);
       else showWeatherCard(r.weather, r.temp_min, r.temp_max, '저장된 값');
       renderMonthAlert();
+      irec = null; isaved = null;
       renderTabs(); renderContent(); renderFooter();
+      loadInsp().then(() => { renderTabs(); renderContent(); renderFooter(); });
     }
     // ---------------- 월초 검침 알림 ----------------
     // 폐수동·공조냉동 한 달 사용량 = 매월 1일 지침 차이 → 1일이 쉬는 날이면 마지막 출근일·첫 출근일에 꼭 검침
@@ -280,7 +419,8 @@
     function renderTabs() {
       document.getElementById('tabs').innerHTML = TABS.map((t, i) => {
         const c = tabCount(t);
-        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span></div>`;
+        const ii = irec ? iTabItems(t) : [], is = iStat(ii);
+        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span>${ii.length ? `<span class="cnt ${is.done === is.n ? 'done' : ''}" title="설비점검"> · <span class="ic">점검</span> ${is.bad.length || is.warn.length ? `<b style="color:var(--red)">${is.bad.length + is.warn.length}!</b> ` : ''}${is.done}/${is.n}</span>` : ''}</div>`;
       }).join('') + (adminMode ? `<div class="tab" onclick="addTab()">＋ 탭</div>` : '');
     }
     function switchTab(i) { activeTab = i; renderTabs(); renderContent(); renderFooter(); window.scrollTo({ top: 0 }); }
@@ -298,6 +438,7 @@
           parts.push(u < 0 ? `<span class="neg">⚠ 전보다 ${nf.format(-u)} 작음</span>` : `<span class="use">사용 ${nf.format(u)}</span>`);
         }
       }
+      const od = oddOf(f); if (od) parts.push(`<span class="odd">⚠ ${od}</span>`);
       return parts.join(' · ');
     }
     function prevDay(ds) { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() - 1); return ymd(d); }
@@ -314,14 +455,22 @@
           const v = values[f.id] ?? '';
           const p = prevValue(f.id, curDate);
           const warn = f.cumulative && v !== '' && p && Number(v) < p.v;
-          const must = monthAlertOn && MONTH_METERS.includes(f.id);
-          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''} ${must ? 'must' : ''}" id="card-${esc(f.id)}">
+          const must = monthAlertOn && MONTH_METERS.includes(f.id), od = oddOf(f);
+          h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''} ${must ? 'must' : ''} ${od ? 'odd' : ''}" id="card-${esc(f.id)}">
             <div class="info"><div class="fname">${must ? '📌 ' : ''}${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
-            <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
+            <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''} ${od && !warn ? 'odd' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
               value="${esc(v)}" data-id="${esc(f.id)}">
           </div>`;
+          if (irec || iLoadFail) INSP_GROUPS.forEach(g => { // 이 검침 칸 바로 아래에 붙는 점검 묶음
+            const ids = new Set(t.sections.flatMap(s2 => s2.fields.map(x => x.id)));
+            if (g.after.find(id => ids.has(id)) === f.id) h += iGroupHtml(g, iGroupItems(g), '');
+            if (g.after2 && g.after2.find(id => ids.has(id)) === f.id) h += iGroupHtml(g, iGroupItems(g), '2');
+          });
         });
       });
+      if (irec && activeTab === 0 && iOthers().length) h += `<div class="sec">기타 점검</div>` + iGroupHtml({ key: 'etc', name: '기타 점검', eq: [] }, iOthers(), '');
+      if (irec && iTabItems(t).length) h += `<div class="sec">점검 특이사항 · 점검자</div><textarea class="iremark" placeholder="설비점검일지 특이사항 (일지에 나옴)" oninput="irec.remark=this.value;renderFooter()">${esc(irec.remark)}</textarea>
+        <div class="fmeta" style="display:flex;gap:6px;align-items:center">점검자 <input style="font-size:14px;border:none;border-bottom:1px solid var(--border);padding:3px;width:120px" value="${esc(irec.inspector)}" oninput="irec.inspector=this.value;renderFooter()"> <a href="../insp/" style="margin-left:auto;font-size:12px">🖨 설비점검일지 출력 →</a></div>`;
       c.innerHTML = h;
       c.querySelectorAll('input.val').forEach(inp => {
         inp.addEventListener('input', () => onInput(inp));
@@ -345,29 +494,38 @@
       inp.classList.toggle('filled', v !== '');
       const f = FIELDS.find(x => x.id === id);
       const p = prevValue(id, curDate);
-      inp.classList.toggle('warn', !!(f.cumulative && v !== '' && p && Number(v) < p.v));
+      const wn = !!(f.cumulative && v !== '' && p && Number(v) < p.v), od = oddOf(f);
+      inp.classList.toggle('warn', wn); inp.classList.toggle('odd', !!od && !wn);
       document.getElementById('meta-' + id).innerHTML = metaHtml(f);
-      inp.closest('.card').classList.toggle('dirty', changed);
+      inp.closest('.card').classList.toggle('dirty', changed); inp.closest('.card').classList.toggle('odd', !!od);
+      if (irec) { const before = JSON.stringify(irec.results); applyAuto(); if (JSON.stringify(irec.results) !== before) refreshGroups(); }
       renderTabs(); renderFooter();
     }
 
+    function refreshGroups() { // 입력 중 포커스를 잃지 않게 점검 묶음 줄만 다시 그림
+      const t = TABS[activeTab]; if (!t) return; const ids = new Set(t.sections.flatMap(s => s.fields.map(f => f.id)));
+      INSP_GROUPS.forEach(g => [['', g.after], ['2', g.after2]].forEach(([pos, af]) => { if (!af || !af.find(id => ids.has(id))) return; const el = document.getElementById('ig-' + g.key + pos); if (el) el.outerHTML = iGroupHtml(g, iGroupItems(g), pos); }));
+    }
     function renderFooter() {
       let total = 0, filled = 0;
       TABS.forEach(t => { const c = tabCount(t); total += c.total; filled += c.filled; });
       document.getElementById('prog-fill').style.width = (total ? Math.round(filled / total * 100) : 0) + '%';
-      document.getElementById('prog-text').textContent = `전체 ${filled} / ${total}`;
+      const is = irec ? iStat(INSP_ITEMS) : null;
+      document.getElementById('prog-text').textContent = `검침 ${filled} / ${total}` + (is ? ` · 점검 ${is.done} / ${is.n}` : '');
       const btn = document.getElementById('save-btn');
       if (btn.classList.contains('saving')) return;
-      const n = dirty.size;
-      btn.className = 'save' + (n || weatherDirty ? ' has' : '');
-      btn.textContent = adminMode ? '✓ 항목 구성 저장' : (n ? `저장 (${n}개 변경)` : (weatherDirty ? '저장 (날씨)' : '저장'));
+      const n = dirty.size, idt = iDirty();
+      btn.className = 'save' + (n || weatherDirty || idt ? ' has' : '');
+      btn.textContent = adminMode ? '✓ 항목 구성 저장' : (n ? `저장 (${n}개 변경${idt ? ' + 점검' : ''})` : idt ? '저장 (점검)' : (weatherDirty ? '저장 (날씨)' : '저장'));
     }
 
     const addDaysStr = (ds, n) => { const d = new Date(ds + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     async function saveDay() {
       if (adminMode) return saveStructure();
       const btn = document.getElementById('save-btn');
-      if (!dirty.size && !weatherDirty) { toast('바뀐 값이 없습니다'); return; }
+      if (!dirty.size && !weatherDirty && !iDirty()) { toast('바뀐 값이 없습니다'); return; }
+      const needNote = irec ? INSP_ITEMS.filter(i => (irec.results[i.id] === 'Ⅹ' || irec.results[i.id] === '△') && !(irec.notes[i.id] || '').trim()) : [];
+      if (needNote.length && !confirm(`Ⅹ·△ 점검 ${needNote.length}개에 비고가 비어 있습니다 (${needNote.map(i => i.equipment).join(', ')}). 그대로 저장할까요?`)) return;
       const patch = {};
       for (const id of dirty) {
         const v = values[id];
@@ -377,6 +535,13 @@
       }
       const num = id => { const x = document.getElementById(id).value; return x === '' ? null : Number(x); };
       btn.classList.add('saving'); btn.textContent = '저장 중...';
+      if (iDirty()) { // 설비점검일지 같이 저장
+        const notes = Object.fromEntries(Object.entries(irec.notes).filter(([, v]) => v && v.trim()));
+        const ir = await sb.from('insp_daily').upsert({ d: curDate, results: irec.results, notes, remark: irec.remark, inspector: irec.inspector }, { onConflict: 'd' });
+        if (ir.error) { btn.classList.remove('saving'); btn.textContent = '저장 실패 — 다시 누르기'; toast('⚠ 점검 저장 실패: ' + errMsg(ir.error)); return; }
+        irec.notes = notes; isaved = JSON.parse(JSON.stringify(irec));
+      }
+      if (!dirty.size && !weatherDirty) { btn.classList.remove('saving'); btn.className = 'save done'; btn.textContent = '✓ 저장 완료'; toast(`${curDate.slice(5).replace('-', '/')} 점검 저장됨`); setTimeout(renderFooter, 1800); renderTabs(); renderContent(); return; }
       const { data, error } = await sb.rpc('meter_save', {
         p_d: curDate, p_weather: document.getElementById('w-sel').value, p_tmin: num('t-min'), p_tmax: num('t-max'), p_patch: patch
       });
@@ -407,7 +572,7 @@
       adminMode = !adminMode;
       const b = document.getElementById('admin-btn');
       b.classList.toggle('on', adminMode);
-      b.textContent = adminMode ? '✕ 관리 닫기' : '⚙ 항목 관리';
+      b.textContent = adminMode ? '✕ 닫기' : '⚙ 항목';
       if (!adminMode) { buildTabsFromEdit(); }
       renderTabs(); renderContent(); renderFooter();
     }
@@ -517,7 +682,7 @@
     }
 
     // ---------------- 시작 ----------------
-    window.addEventListener('beforeunload', e => { if (dirty.size || weatherDirty) { e.preventDefault(); e.returnValue = ''; } });
+    window.addEventListener('beforeunload', e => { if (dirty.size || weatherDirty || iDirty()) { e.preventDefault(); e.returnValue = ''; } });
     Portal.start({
       appId: 'meter',
       title: '설비검침',
