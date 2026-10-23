@@ -156,8 +156,11 @@
       if (error) { el.innerHTML = `<div class="hint">불러오기 실패: ${esc(error.message)}<br>Supabase에 27번 SQL(27_usage_info.sql)을 실행했는지 확인해 주세요.</div>`; return; }
       const st = (u.storage || []).reduce((a, b) => a + Number(b.bytes || 0), 0), tb = u.tables || [], ld = tb.find(t => t.name === 'load_readings');
       let grow = '';
-      if (ld && ld.rows > 0 && u.load_day > 0) { const perDay = ld.bytes / ld.rows * u.load_day, left = LIM.db - u.db;
-        grow = `부하 기록이 하루 약 ${mb(perDay)}씩 늘고 있습니다 (하루 ${Number(u.load_day).toLocaleString()}건) → 이 속도면 약 <b>${left > 0 ? Math.floor(left / perDay / 30) : 0}개월</b> 뒤 한도에 닿습니다.`; }
+      // 계속 쌓이는 것 = 하루 요약·10분 요약·1분 원본 보관본 (1분 기록 표는 오늘 것만 남고 매일 비워짐) → 계산된 날수로 나눠 하루 증가량
+      const T = n => tb.find(t => t.name === n) || { bytes: 0, rows: 0 }, keep = ['load_raw_day', 'load_hist', 'load_day', 'load_run_day', 'load_gap'].reduce((a, n) => a + Number(T(n).bytes), 0), nd = Number(T('load_day_done').rows) || 0;
+      if (nd >= 3 && keep > 0) { const perDay = keep / nd, left = LIM.db - u.db, yrs = left / perDay / 365;
+        grow = `부하 기록(요약·압축 보관본)이 하루 약 ${mb(perDay)}씩 쌓입니다 (${nd}일 치 ${mb(keep)}) → 이 속도면 약 <b>${yrs >= 2 ? Math.floor(yrs) + '년' : Math.floor(yrs * 12) + '개월'}</b> 뒤 한도에 닿습니다.`;
+        if (ld && ld.bytes > 20 * 1048576) grow += `<br>⚠ 「설비 부하 기록(1분)」 표가 ${mb(ld.bytes)} — 정리한 빈 공간이 아직 반납 안 됨 → SQL Editor에서 <code>vacuum full public.load_readings;</code> 한 번 실행하면 줄어듭니다.`; }
       el.innerHTML = ubar('🗄️ 데이터베이스 (표·기록)', u.db, LIM.db, grow) +
         ubar('🖼️ 사진 저장소 (Storage)', st, LIM.st, (u.storage || []).map(b => `${esc(b.bucket)}: ${mb(Number(b.bytes))} · ${Number(b.files).toLocaleString()}장`).join(' / ') || '사진 없음') +
         `<details><summary class="hint" style="cursor:pointer">표별 크기 보기</summary><table class="ut"><tr><th class="l">표</th><th>건수(대략)</th><th>크기</th><th>비율</th></tr>` +
