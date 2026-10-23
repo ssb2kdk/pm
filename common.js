@@ -234,6 +234,26 @@
     const a = appEl(); if (a) a.hidden = false;
     if (!readyCalled && opts.onReady) { readyCalled = true; opts.onReady(Portal); }
     if (prof.role !== 'partner' && (CFG.APPS || []).some(x => x.id === 'load' && x.ready)) loadAlarm(sb);
+    if (prof.role !== 'partner') navBadges(sb);
+  }
+
+  // 위 메뉴 숫자 표시: 자재 발주 요청 처리 대기 건수 (2분마다)
+  let navTimer = null;
+  Portal.navBadges = () => Portal.sb && navBadges(Portal.sb);
+  async function navBadges(sb) {
+    clearTimeout(navTimer);
+    try {
+      const app = (CFG.APPS || []).find(x => x.id === 'mat' && x.ready);
+      if (app) {
+        const { data, error } = await sb.from('mat_req').select('id,urgent').in('status', ['요청', '확인']);
+        const link = [...document.querySelectorAll('#pt-bar .pt-apps a')].find(a => a.getAttribute('href') === Portal.appUrl(app));
+        if (link && !error) { let b = link.querySelector('.pt-nb'); const n = (data || []).length, u = (data || []).filter(x => x.urgent).length;
+          if (!n) { if (b) b.remove(); } else { if (!b) { link.insertAdjacentHTML('beforeend', '<span class="pt-nb"></span>'); b = link.querySelector('.pt-nb'); }
+            b.textContent = u ? `${n}·🚨${u}` : n; b.title = `처리 대기 ${n}건${u ? ` (급함 ${u})` : ''}`;
+            b.style.cssText = 'display:inline-block;margin-left:5px;min-width:18px;padding:0 6px;border-radius:9px;background:#e5534b;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center'; } }
+      }
+    } catch (e) { }
+    navTimer = setTimeout(() => navBadges(sb), 120000);
   }
 
   // ---------------- 설비 과부하 경보: 어느 화면에서든 기준 전류 110% 넘으면 위에 빨간 띠 ----------------

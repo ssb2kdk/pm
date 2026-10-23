@@ -15,14 +15,14 @@ window.APP_CONFIG = {
   APPS: [
     { id: 'pm',      icon: '🔧', name: '예방정비 점검일정관리',     desc: '연간·월간·주간·일일 점검/정비 일정, 완료 기록, 월간 점검표 출력', path: 'pm/',      ready: true },
     { id: 'meter',   icon: '📟', name: '설비검침',                  desc: '현장 검침값 입력 (핸드폰) · 유틸리티 분석과 자동 연결',            path: 'meter/',   ready: true },
-    { id: 'hook',    icon: '🔌', name: '후크메타 부하 측정',        desc: '분전반 차단기별 R·S·T 전류를 가끔 재서 설비 가동 부하(kW) 기록 · 절감 포인트 찾기', path: 'hook/',    ready: true },
     { id: 'insp',    icon: '📋', name: '설비점검일지',              desc: '유틸리티 일일 점검 ○Ⅹ△◎ 입력 (핸드폰) · 점검일지 출력',            path: 'insp/',    ready: true },
     { id: 'env',     icon: '🌿', name: '환경일지',                  desc: '다온산업 장부 입력 · 폐수일지 · 대기일지 출력',                     path: 'env/',     ready: true, partner: true },
+    { id: 'mat',     icon: '🛒', name: '자재 발주 요청',            desc: '소모품이 모자라면 사진·규격 올려 요청 → 담당자 확인·구매 → 구매 완료 체크', path: 'mat/',     ready: true },
+    { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: true },
     { id: 'utility', icon: '📊', name: '유틸리티 분석',             desc: '전기·가스·용수·폐수 현황 · 지표 분석 · 원인 찾기 · 목표·예산 · 월간보고서',   path: 'utility/', ready: true },
     { id: 'bill',    icon: '🧾', name: '유틸리티 마감',             desc: '고지서 입력·확정 · 회계보고 · 지출결의 자료 (시설팀 누구나)',  path: 'utility/?bill', ready: true },
-    { id: 'audit',   icon: '🕘', name: '변경 기록',                 desc: '누가·언제·무엇을 바꿨는지 (바뀌기 전 값 포함) — 관리자만', path: 'audit/',   ready: true, admin: true },
-    { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: true },
-    { id: 'mat',     icon: '🛒', name: '자재 발주 요청',            desc: '소모품이 모자라면 사진·규격 올려 요청 → 담당자 확인·구매 → 구매 완료 체크', path: 'mat/',     ready: true }
+    { id: 'hook',    icon: '🔌', name: '후크메타 부하 측정',        desc: '분전반 차단기별 R·S·T 전류를 가끔 재서 설비 가동 부하(kW) 기록 · 절감 포인트 찾기', path: 'hook/',    ready: true },
+    { id: 'audit',   icon: '🕘', name: '변경 기록',                 desc: '누가·언제·무엇을 바꿨는지 (바뀌기 전 값 포함) — 관리자만', path: 'audit/',   ready: true, admin: true }
   ],
   // 홈 화면 '바로가기' (다른 사이트 — 새 창으로 열림, 협력업체 계정에는 안 보임)
   LINKS: [
