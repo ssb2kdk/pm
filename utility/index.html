@@ -1664,6 +1664,11 @@
       let h = `<h4 style="margin:0 0 4px">③ 고른 지표: ${F.length ? F.map(facName).join(' + ') : '-'}</h4>`;
       if (R.err) return h + `<div class="warn">⚠ ${R.err}</div>`;
       h += `<div>${U.part} = ${F.map((f, i) => `${facName(f)} ${facUnit(f) ? facUnit(f) + '당 ' : '× '}<b>${cf(R.c[i])}</b>`).join(' + ')}${uk === 'gas' ? ' <span class="hint">+ 식당 가스(실측)</span>' : ''}</div>
+        <details style="margin-top:4px"><summary class="hint" style="cursor:pointer">🔢 이 숫자(계수)는 어떻게 나왔나 · 달마다 식에 넣어 보기 ${Portal.tip('coef')}</summary>
+          <div class="tbl-wrap" style="margin-top:4px"><table class="t"><tr><th>달</th>${F.map(f => `<th>${facName(f)}<br><span class="hint">값 × ${cf(R.c[F.indexOf(f)])}</span></th>`).join('')}${uk === 'gas' ? '<th>식당<br><span class="hint">실측</span></th>' : ''}<th>식으로 계산</th><th>실제</th><th>차이</th></tr>` +
+          R.rs.map((r, k) => { const terms = F.map((f, i) => { const v = facOf(r.ym, f); return [v, v * R.c[i]]; }), calc = R.pred[k] + r.p.fixed, d = (calc - r.p.all) / r.p.all * 100;
+            return `<tr><td>${r.ym.slice(2).replace('-', '.')}</td>${terms.map(([v, t], i) => `<td>${f0(t)}<br><span class="hint">${Math.abs(v) >= 100 ? f0(v) : nf1.format(v)} ${esc(facUnit(F[i]) || '')}</span></td>`).join('')}${uk === 'gas' ? `<td>${f0(r.p.fixed)}</td>` : ''}<td><b>${f0(calc)}</b></td><td>${f0(r.p.all)}</td><td class="${Math.abs(d) >= 5 ? 'warn' : ''}">${d >= 0 ? '+' : ''}${nf1.format(d)}%</td></tr>`; }).join('') +
+          `</table></div><div class="hint">계수는 위 기준 달 ${R.rs.length}개 모두에서 「식으로 계산」과 「실제」의 차이(제곱)가 가장 작아지도록 컴퓨터가 한 번에 정한 값입니다 (최소제곱법). 고정값(절편)은 따로 없고, 「달력 날수」를 넣으면 그게 하루 기본 사용량 몫을 맡습니다.</div></details>
         <div style="margin-top:4px">월 평균 오차 <b class="${R.mape < 5 ? 'good' : R.mape >= 10 ? 'warn' : ''}">±${nf1.format(R.mape)}%</b> · 교차검증 오차 <b>±${R.cv === null ? '-' : nf1.format(R.cv)}%</b> <span class="hint">(기준 달 ${R.rs.length}개 · ${Portal.tip('ols')})</span></div>` +
         (R.warn.length ? `<div class="warn" style="margin-top:4px">${R.warn.map(w => '⚠ ' + w).join('<br>')}</div>` : '<div class="good" style="margin-top:4px">✔ 계수 모두 플러스 · 지표끼리 겹침 없음</div>') +
         `<div class="chart-box" style="height:240px;margin-top:8px"><canvas id="chart-ind"></canvas></div><div class="hint">막대 = 실제 사용량 · <b>검은 선 = 고른 지표로 계산한 값</b>(위 식에 그 달 지표 값을 넣은 것) — 막대 끝과 선이 가까울수록 이 지표로 잘 설명됨</div>
