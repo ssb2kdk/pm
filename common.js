@@ -121,7 +121,7 @@
     isAdmin: () => !!(Portal.me && Portal.me.role === 'admin'),
     isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
     isViewer: () => !!(Portal.me && Portal.me.role === 'viewer'),
-    visibleApps: () => (CFG.APPS || []).filter(a => (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만
+    visibleApps: () => (CFG.APPS || []).filter(a => !a.hidden && (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만 · hidden: true 는 메뉴·홈에서 숨김 (주소로는 열림)
     appUrl: app => ROOT + app.path,
     start,
     callAdmin,
