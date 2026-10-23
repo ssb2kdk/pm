@@ -425,7 +425,7 @@
       document.getElementById('tabs').innerHTML = TABS.map((t, i) => {
         const c = tabCount(t);
         const ii = irec ? iTabItems(t) : [], is = iStat(ii);
-        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span>${ii.length ? `<span class="cnt ${is.done === is.n ? 'done' : ''}" title="설비점검"> · <span class="ic">점검</span> ${is.bad.length || is.warn.length ? `<b style="color:var(--red)">${is.bad.length + is.warn.length}!</b> ` : ''}${is.done}/${is.n}</span>` : ''}</div>`;
+        return `<div class="tab ${i === activeTab ? 'active' : ''}" onclick="switchTab(${i})">${esc(t.name)}<span class="cnt ${c.filled === c.total ? 'done' : ''}">${c.filled}/${c.total}</span>${is.bad.length || is.warn.length ? `<b style="color:var(--red);font-size:11px" title="점검 이상 ${is.bad.length + is.warn.length}건"> !</b>` : ''}</div>`;
       }).join('') + (adminMode ? `<div class="tab" onclick="addTab()">＋ 탭</div>` : '');
     }
     function switchTab(i) { activeTab = i; renderTabs(); renderContent(); renderFooter(); window.scrollTo({ top: 0 }); }
