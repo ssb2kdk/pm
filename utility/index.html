@@ -430,7 +430,7 @@
         </div>
         <div class="card" id="cz-day">
           <h3>② 일별 사용량 — 평소와 비교 <span class="pt-tip" tabindex="0" role="button" data-tip="anom" title="눌러서 설명 보기">ⓘ</span> <span class="sub" id="anom-chart-title"></span></h3>
-          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 원인을 알면 아래 표 「+ 적기」로 특이사항에 남겨 두세요.</div>
+          <div class="hint" style="margin:-6px 0 8px">막대 = 그날 사용량, 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 원인을 알면 아래 표 「+ 적기」로 특이사항에 남겨 두세요.</div>
           <div class="chart-box"><canvas id="chart-anom"></canvas></div>
           <div class="tbl-wrap" id="cz-anom" style="margin-top:8px"></div>
           <div hidden><span class="chips" id="anom-chips"></span><div id="anom-table"></div><div id="pd-body"></div></div>
@@ -2381,11 +2381,11 @@
       mdl.feats.forEach((f, i) => { if (r[f] === null || r0[f] === null) return; const v = mdl.coef[i] * (r[f] - r0[f]); by[grp[f]] = (by[grp[f]] || 0) + v; });
       const explained = Object.values(by).reduce((a, b) => a + b, 0);
       // 이상 사용일: 평소보다 더 쓴 양 (이번 달 − 비교 달)
-      const an = monthAnoms(ym, uk), an0 = monthAnoms(ym0, uk);
+      const an = [], an0 = []; // 이상 사용일 구분 안 함 → 운전·관리 차이에 포함
       const ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
       const anomPart = ex(an) - ex(an0);
       const rest = out.diff - explained - anomPart;
-      out.parts = ['폐수동 (실측)', '공조냉동 (실측)', '식당 가스 (실측)', '부하 변동 (생산동·기타)', '생산일', '달력 날수', '원육 투입량', '날씨 (기온)'].filter(g => g in by && !(g === '부하 변동 (생산동·기타)' && Math.abs(by[g]) < 0.5)).map(g => [g, by[g]]).concat([['이상 사용일', anomPart], ['운전·관리 차이', rest]]);
+      out.parts = ['폐수동 (실측)', '공조냉동 (실측)', '식당 가스 (실측)', '부하 변동 (생산동·기타)', '생산일', '달력 날수', '원육 투입량', '날씨 (기온)'].filter(g => g in by && !(g === '부하 변동 (생산동·기타)' && Math.abs(by[g]) < 0.5)).map(g => [g, by[g]]).concat([['운전·관리 차이', rest]]);
       out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
       return out;
     }
@@ -2403,9 +2403,9 @@
       out.fac = F.map((f, i) => ({ f, x0: x0[i], x1: x1[i], c: m.coef[i], v: m.coef[i] * (x1[i] - x0[i]) }));
       out.fac.forEach(o => by.push([facName(o.f), o.v]));
       const explained = by.reduce((a, b) => a + b[1], 0);
-      const an = monthAnoms(ym, uk), an0 = monthAnoms(ym0, uk), ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
+      const an = [], an0 = [], ex = list => list.reduce((s2, a) => s2 + dailyToMonthly(ym, uk, a.v - (a.base || 0)), 0);
       const anomPart = ex(an) - ex(an0), rest = out.diff - explained - anomPart;
-      out.parts = by.concat([['이상 사용일', anomPart], ['운전·관리 차이', rest]]); out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
+      out.parts = by.concat([['운전·관리 차이', rest]]); out.an = an; out.an0 = an0; out.explained = explained; out.rest = rest;
       return out;
     }
     function causeSentences(ym, ym0, uk, D, short) {
@@ -2447,13 +2447,12 @@
       if (D.mdl.hall && (D.mdl.Tb !== null || D.mdl.Tc !== null) && uk === 'elec') rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'}${D.mdl.Tb !== null ? ` · 생산동 계량기 없는 냉방(칠러·실외기 등) 몫<br><span class="calc">= ${D.mdl.Tb}℃ 넘는 기온 합 ${f0(r0.wx)} → ${f0(r.wx)} (℃·일) × ${cf(D.mdl.coef[2])} kWh</span>` : ''}${D.mdl.Tc !== null ? `<br>· 현장 온수 전기보일러 몫<br><span class="calc">= ${D.mdl.Tc}℃ 아래 기온 합 ${f0(r0.cx)} → ${f0(r.cx)} (℃·일) × ${cf(D.mdl.coef[3])} kWh</span>` : ''}<br><span class="hint">· 냉동·냉장·공조 12곳은 위 공조냉동 실측에 들어 있습니다</span>`, P['날씨 (기온)'] || 0]);
       else if (((D.mdl.idle && !(D.mdl.idle.b || D.mdl.idle.c)) || D.mdl.hall) && uk === 'elec') rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'}<br><span class="hint">· 기온에 따른 차이는 위 공조냉동 실측에 들어 있습니다 (계량기 없는 나머지 부하는 기온과 관계없이 일정)</span>`, 0]);
       else if (D.mdl.idle) rows.push(['날씨 (기온)', `평균기온 ${r0.tmean == null ? '-' : nf1.format(r0.tmean) + '℃'} → ${r.tmean == null ? '-' : nf1.format(r.tmean) + '℃'} · 실외기 등 기온 영향 ${f0(r0.wx)} → ${f0(r.wx)} ${un}${r.wxGuess || r0.wxGuess ? ' · 기온 기록 부족해 평년값 사용' : ''}<br><span class="calc">= 휴무일 식(${D.mdl.idle.Tb}℃ 넘는 1℃마다 하루 ${cf(D.mdl.idle.b)} ${un}${D.mdl.idle.c ? `, ${D.mdl.idle.Tc}℃ 아래 1℃마다 하루 ${cf(D.mdl.idle.c)}` : ''})으로 날마다 계산해 더한 차이</span>`, P['날씨 (기온)'] || 0]);
-      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
       rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
       let ref = '';
       const tol = D.mdl.mape || 5, restPct = D.act ? D.rest / D.act * 100 : 0;
       const big = rows.filter(x => !x[3]).filter(x => Math.abs(x[2]) > 0.5).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2])).slice(0, 2);
       let concl = big.length ? `가장 크게 작용한 건 <b>${big.map(x => `${x[0]}(${fx(x[2])})`).join(', ')}</b>입니다. ` : '';
-      concl += Math.abs(restPct) <= tol ? `${uk === 'elec' ? '실측(폐수동·공조냉동)·' : ''}생산일·원육·날씨·이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
+      concl += Math.abs(restPct) <= tol ? `${uk === 'elec' ? '실측(폐수동·공조냉동)·' : ''}생산일·원육·날씨를 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
         : D.rest < 0 ? `그걸 빼고도 <b class="down">${f0(-D.rest)} ${un} (${nf1.format(-restPct)}%) 덜 썼습니다 → 실제 절감</b>으로 볼 수 있습니다.`
         : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
       const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` +
@@ -2480,12 +2479,11 @@
       if ('부하 변동 (생산동·기타)' in P) rows.push(['부하 변동 (생산동·기타)', `특이사항 ⚡ 부하 변동 ${f0(r0.eq)} → ${f0(r.eq)} ${un}`, P['부하 변동 (생산동·기타)']]);
       if ('식당 가스 (실측)' in P) rows.push(['식당 가스 (실측)', `식당(기숙사) 가스 ${f0(r0.grest)} → ${f0(r.grest)} ${un} · 실측 그대로`, P['식당 가스 (실측)']]);
       D.fac.forEach(o => { const u = facUnit(o.f), d = o.x1 - o.x0; rows.push([facName(o.f), `${fv(o.x0, o.f)} → ${fv(o.x1, o.f)} ${u} (${d >= 0 ? '+' : '−'}${fv(Math.abs(d), o.f)})<br><span class="calc">= ${d >= 0 ? '+' : '−'}${fv(Math.abs(d), o.f)} ${u} × ${cf(o.c)} ${un}/${u || '단위'}</span>`, o.v]); });
-      rows.push(['이상 사용일', `이번 ${D.an.length}일 / 비교 달 ${D.an0.length}일`, P['이상 사용일']]);
       rows.push(['운전·관리 차이', '위 요인을 모두 뺀 나머지 = 실제로 아끼거나 더 쓴 몫', D.rest, true]);
       const tol = D.mdl.mape || 5, restPct = D.act ? D.rest / D.act * 100 : 0;
       const big = rows.filter(x => !x[3]).filter(x => Math.abs(x[2]) > 0.5).sort((a, b) => Math.abs(b[2]) - Math.abs(a[2])).slice(0, 2);
       let concl = big.length ? `가장 크게 작용한 건 <b>${big.map(x => `${x[0]}(${fx(x[2])})`).join(', ')}</b>입니다. ` : '';
-      concl += Math.abs(restPct) <= tol ? `기준 식으로 설명되는 몫과 이상 사용일을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
+      concl += Math.abs(restPct) <= tol ? `기준 식으로 설명되는 몫을 빼면 운전·관리 차이는 ${fx(D.rest)} (${nf1.format(restPct)}%)로 <b>예상 오차(±${nf1.format(tol)}%) 안 — 큰 변화 없음</b>.`
         : D.rest < 0 ? `그걸 빼고도 <b class="down">${f0(-D.rest)} ${un} (${nf1.format(-restPct)}%) 덜 썼습니다 → 실제 절감</b>으로 볼 수 있습니다.` : `그걸 빼고도 <b class="up">${f0(D.rest)} ${un} (${nf1.format(restPct)}%) 더 썼습니다 → 원인 확인 필요</b> (설비 운전시간·누수·미차단 등).`;
       concl += `<div class="hint" style="margin-top:4px">※ 지표 몫은 📐 기준 식(${D.std.src === 'lock' ? '확정한 식' : '직접 고른 지표'}, 월 평균 오차 ±${nf1.format(tol)}%)으로 계산한 추정값입니다.</div>`;
       const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` + rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
@@ -2549,7 +2547,7 @@
       // 이상 사용일 + 메모
       const W = ['일', '월', '화', '수', '목', '금', '토'];
       const an = monthAnoms(ym, uk), DU = UT.DAILY_UTILS.find(u => u.k === uk);
-      { const za = document.getElementById('cz-anom'); if (za) za.innerHTML = ''; } // 이상 사용일 표는 뺌 (그래프의 빨간 막대로 봄)
+      { const za = document.getElementById('cz-anom'); if (za) za.innerHTML = ''; } // 이상 사용일 표시는 하지 않음
 
       // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
       const cmt = (yd(y).comments || {})[ym] || '';
@@ -2592,8 +2590,7 @@
     function czAutoText() {
       const ym = causeYm, y = Number(ym.slice(0, 4)), ym0 = causeCmp === 'prev' ? UT.prevYm(ym) : UT.ym(y - 1, Number(ym.slice(5)));
       const lines = UT.UTILS.map(u => { if (S(ym)[u.k].usage === null) return null; const F = causeFacts(ym, ym0, u.k);
-        const notes = monthAnoms(ym, u.k).map(a => anomNote(a.d, a.u)).filter(Boolean);
-        return '· ' + F.plain + (notes.length ? ` (이상 사용: ${notes.join(' / ')})` : ''); }).filter(Boolean);
+        return '· ' + F.plain; }).filter(Boolean);
       const ta = document.getElementById('cz-memo-ta');
       ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + lines.join('\n');
       document.getElementById('cz-memo-st').textContent = '문장을 넣었습니다. 고친 뒤 [저장]을 누르세요.';
@@ -2702,9 +2699,8 @@
       document.getElementById('anom-chart-title').textContent = `${U.name} 일 사용량 (${U.unit})${anomMonth ? ' · ' + ymLabel(anomMonth) : ''}`;
       const vals = days.map(d => UT.dailyUsage(DAILY, d)[uk]);
       const base = days.map(d => UT.baseline(DAILY, d, uk));
-      const flagged = new Set(anomList.filter(a => a.u === uk).map(a => a.d));
       mkChart('chart-anom', { type: 'bar', data: { labels: days.map(d => d.slice(5).replace('-', '/')), datasets: [
-        { label: '사용량', data: vals, backgroundColor: days.map(d => flagged.has(d) ? '#d93025' : (d === anomFocus ? '#333' : U.color + 'aa')), maxBarThickness: 18 },
+        { label: '사용량', data: vals, backgroundColor: U.color + 'aa', maxBarThickness: 18 },
         { type: 'line', label: '평소', data: base, borderColor: '#333', borderDash: [4, 3], borderWidth: 1.5, pointRadius: 0, stepped: false }
       ] }, options: (() => { const o = baseOpts(U.unit); o.plugins.legend.display = true; o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.autoSkip = true;
         o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f1(c.raw)} ${U.unit}`; return o; })() });
@@ -2738,12 +2734,6 @@
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
         `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
       h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
-      // 이상 사용 요약
-      const first = UT.dateStr(brYm, 1), last = UT.dateStr(brYm, UT.daysIn(brYm));
-      const an = UT.anomalies(DAILY, first, last < todayStr ? last : UT.addDays(todayStr, -1), { ratio: 1.4 }).filter(a => a.kind === '과다');
-      h += `<div class="br-sec">이상 사용 (평소보다 40% 이상 많이 쓴 날)</div><div class="br-txt">${!an.length ? '없음' :
-        UT.DAILY_UTILS.map(u => { const l = an.filter(a => a.u === u.k); return l.length ? `${u.name} ${l.length}건 (${l.slice(0, 4).map(a => a.d.slice(8) + '일 ' + (a.pct === null ? '(평소 0)' : '+' + nf0.format(a.pct) + '%')).join(', ')}${l.length > 4 ? ' …' : ''})` : ''; }).filter(Boolean).join(' / ')}` +
-        (() => { const ns = an.filter(a => anomNote(a.d, a.u)); return ns.length ? '<br>' + ns.map(a => `· ${Number(a.d.slice(5, 7))}/${Number(a.d.slice(8))} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}: ${esc(anomNote(a.d, a.u))}`).join('<br>') : ''; })() + `</div>`;
       const cmt = (yd(y).comments || {})[brYm] || '';
       h += `<div class="br-sec">특이사항 및 조치 계획</div>` + (isAdmin()
         ? `<textarea id="br-comment" class="br-comment" placeholder="예) 9월 가스 사용 증가: 자숙 설비 증설 시운전 영향 / 10월 보일러 공기비 조정 예정">${esc(cmt)}</textarea><div class="no-print" style="text-align:right;margin-top:4px"><button class="btn secondary" onclick="saveBriefComment()">코멘트 저장</button> <span class="hint" id="br-cmt-st"></span></div><div class="print-only br-txt" id="br-comment-print">${esc(cmt)}</div>`
