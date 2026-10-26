@@ -430,7 +430,7 @@
         </div>
         <div class="card" id="cz-day">
           <h3>② 일별 사용량 — 평소와 비교 <span class="pt-tip" tabindex="0" role="button" data-tip="anom" title="눌러서 설명 보기">ⓘ</span> <span class="sub" id="anom-chart-title"></span></h3>
-          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 전기 사용량으로 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 아래 표에서 줄을 누르면 그 항목 그래프로 바뀝니다.</div>
+          <div class="hint" style="margin:-6px 0 8px">빨간 막대 = 평소보다 많이 쓴 날. 점선 = 평소 (최근 4주 같은 종류 날의 중앙값 — 생산일·쉬는 날을 자동 구분해 주말 특근도 반영). 원인을 알면 아래 표 「+ 적기」로 특이사항에 남겨 두세요.</div>
           <div class="chart-box"><canvas id="chart-anom"></canvas></div>
           <div class="tbl-wrap" id="cz-anom" style="margin-top:8px"></div>
           <div hidden><span class="chips" id="anom-chips"></span><div id="anom-table"></div><div id="pd-body"></div></div>
@@ -2549,12 +2549,7 @@
       // 이상 사용일 + 메모
       const W = ['일', '월', '화', '수', '목', '금', '토'];
       const an = monthAnoms(ym, uk), DU = UT.DAILY_UTILS.find(u => u.k === uk);
-      document.getElementById('cz-anom').innerHTML = !DU ? '' : !an.length ? `<div class="empty">${ymLabel(ym)}에 ${U.name} 이상 사용일이 없습니다 👍</div>` :
-        `<table class="t"><tr><th>날짜</th><th>그날 사용량</th><th>평소</th><th>더 쓴 양</th><th class="l">구분</th><th class="l" style="min-width:240px">원인·조치 메모</th></tr>` +
-        an.map(a => `<tr><td>${a.d.slice(5).replace('-', '/')} (${W[new Date(a.d + 'T00:00:00').getDay()]})</td><td>${f1(a.v)} ${DU.unit}</td><td>${a.base === null ? '-' : f1(a.base)}</td><td class="up">+${f1(a.v - (a.base || 0))} ${DU.unit}</td>
-          <td class="l">${a.work ? '생산일 과다' : '쉬는 날 사용'}</td><td class="l">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="원인·조치를 적어 주세요">` : esc(anomNote(a.d, a.u)) || '-'}</td></tr>`).join('') + '</table>' +
-        (uk === 'gas' ? '<div class="hint" style="margin-top:4px">가스 하루 사용량은 ㎥, 위 계산에서는 열량(MJ)으로 바꿔 합칩니다.</div>' : '');
-      bindAnomNotes('#cz-anom');
+      { const za = document.getElementById('cz-anom'); if (za) za.innerHTML = ''; } // 이상 사용일 표는 뺌 (그래프의 빨간 막대로 봄)
 
       // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
       const cmt = (yd(y).comments || {})[ym] || '';
@@ -3773,7 +3768,7 @@
       if (!dcYm) dcYm = thisYm;
       try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
       const W = ['일', '월', '화', '수', '목', '금', '토'], n = UT.daysIn(dcYm), nh = v => v ? nf1.format(v) : '';
-      const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p = PRODD[ds] || null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); }
+      const rows = []; for (let i = 1; i <= n; i++) { const ds = UT.dateStr(dcYm, i); if (ds > todayStr) break; const p0 = PRODD[ds] || null, p = p0 ? { ...p0, packItems: p0.packItemsDaily && p0.packItemsDaily.length ? p0.packItemsDaily : p0.packItems, ea: p0.eaDaily !== undefined ? p0.eaDaily : p0.ea } : null; rows.push({ ds, p, u: DC_U.map(u => u[4](ds)) }); } // 날마다는 생산 대시보드 일별 요약 그대로(내포장 기준) — 외포장 완료는 다음 날로 넘어가기도 해서
       const uv = v => v === null || v === undefined || isNaN(v) ? '<span class="hint">-</span>' : (Math.abs(v) >= 100 ? f0(v) : nf1.format(v));
       const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
       let h = `<div class="toolbar"><div class="month-nav"><button onclick="dcYm=UT.prevYm(dcYm);renderDayCmp()">◀</button><span>${ymLabel(dcYm)}</span><button onclick="dcYm=UT.nextYm(dcYm);renderDayCmp()">▶</button></div>
@@ -3807,8 +3802,8 @@
             <div class="tbl-wrap" style="margin-top:6px"><table class="t"><tr><th class="l">제품</th><th>완제품 EA<br><span class="hint">외포장 (+ 잔량, 5월~)</span></th><th>1개 중량</th><th>완제품 중량 (kg)</th><th>기록 수</th><th>외포장 EA</th><th>외포장 박스</th><th>잔량 EA</th><th>잔량 박스</th><th>내포장 EA</th><th>불량</th><th>샘플</th></tr>` +
             L.map(([k, o]) => { const g = prodGram(k); return `<tr><td class="l">${esc(k)}${o.test ? ` <span class="hint">(시험 생산 ${f0(o.test)} 포함)</span>` : ''}</td><td>${f0(o.ea)}</td><td>${g ? f0(g.g) + 'g' : '<span class="warn">?</span>'}</td><td>${g ? nf1.format(o.ea * g.g / 1000) : '-'}</td><td>${o.n}</td><td>${f0(o.outer)}</td><td>${f0(o.boxes)}</td><td>${f0(o.remain)}</td><td>${f0(o.remainB)}</td><td>${f0(o.inner)}</td><td>${f0(o.defect)}</td><td>${f0(o.sample)}</td></tr>`; }).join('') +
             `<tr class="dc-sum"><td class="l">합계</td><td>${f0(tot.ea)}</td><td></td><td>${nf1.format(tot.kg)}</td><td colspan="8"></td></tr></table></div></details>`; })() +
-        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 포장 제품·EA는 <b>완제품 EA = 외포장 EA + 잔량</b>(26년 5월부터, 3·4월은 외포장 EA만) 기준(생산 대시보드 월별 현황의 「완제품 EA」와 같음, 시험 생산 제외)입니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4) · 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
-      h += prodGHtml() + dcCorrHtml();
+        `<div class="hint" style="margin-top:4px">생산 자료는 생산 대시보드 일별 요약(읽기만). 원육 kg은 그날 전처리 투입량이고 월 공식값(원육 투입량)과는 마지막 수정분만큼 다를 수 있습니다. 날마다의 포장 제품·EA는 <b>생산 대시보드 일별 요약 그대로</b>(그날 포장한 수량)이고, 아래 「제품별 완제품 EA·중량」·지표 분석의 월 합계는 <b>외포장 완료 EA(+ 잔량)</b> 기준이라 며칠 차이가 날 수 있습니다. 완제품 kg = 포장 EA × 제품 1개 중량 (아래 「제품 1개 중량」 표). 사용량은 그날 아침 → 다음날 아침 검침 차이입니다 (전기는 파워플래너 일별값). <b>보일러 켠 시간</b> = <b>⚡실측</b> 표시 날은 쉘리 보일러 전류로 잰 처음 켠 시각 ~ 마지막 끈 시각 · 실측이 없는 날(쉘리 설치 전·기록 누락)만 추정: 첫 전처리 시작 ~ 레토르트 마지막 회차 배출 완료(t4), 레토르트 없는 날은 내포장 마지막 종료 + 1시간 (FC 3kg + 2시간). <b>실가동</b> = 자숙·레토르트(가동 시작~가열 종료) 구간을 합치고 사이 틈을 뺀 시간. 「~?」는 끈 시각을 아직 못 정한 날.</div>` + (BT_ERR ? `<div class="hint" style="color:#b3261e;margin-top:4px">⚠ 자숙·레토르트 기록을 읽지 못해 보일러 켠 시간을 계산하지 못했습니다: ${esc(BT_ERR)}</div>` : '');
+      h += prodGHtml(); // 하루 단위 연관성(상관계수)은 뺌 — 지표 분석(관리자)에서 봄
       el.innerHTML = h;
       const U = DC_U.find(u => u[0] === dcU), PP = DC_P.find(x => x[0] === dcP);
       mkChart('dc-chart', { data: { labels: rows.map(r => Number(r.ds.slice(8)) + '일'), datasets: [
