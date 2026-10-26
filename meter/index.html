@@ -590,7 +590,7 @@
     }
 
     // 갤럭시 숫자 자판엔 「－」가 없거나 막히는 경우가 있어 ± 버튼으로 붙이고 뗌 · 쉼표·공백은 빼고 받음
-    const NEG_OK = f => /°C|℃|온도|MPa|bar|kPa/.test((f.unit || '') + (f.name || ''));
+    const NEG_OK = f => /냉동창고/.test((f.name || '') + (f.id || '')) && /온도|저압|°C|℃/.test((f.name || '') + (f.unit || '')); // 영하가 나오는 칸만: 냉동창고 온도 · 냉동창고 실외기 저압
     const cleanNum = v => String(v).replace(/[,\s]/g, '').replace(/[−–—ㅡ]/g, '-').replace(/^\+/, '');
     function flipSign(inp) { if (!inp) return; let v = cleanNum(inp.value); v = v.startsWith('-') ? v.slice(1) : '-' + v; inp.value = v; inp.dispatchEvent(new Event('input')); inp.focus(); }
     function onInput(inp) {
