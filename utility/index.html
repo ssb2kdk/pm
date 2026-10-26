@@ -24,7 +24,7 @@
     .nav-step { font-size: 11px; color: rgba(255,255,255,.75); margin: 0 0 0 8px; white-space: nowrap; } .nav-step:first-child { margin-left: 0; }
     .lockbar { border: 1px solid #f0d58a; background: #fff8e1; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; line-height: 1.6; } .lockbar.on { border-color: #9cc5a4; background: #eef8f0; }
     .lock-b { display: inline-block; font-size: 12px; background: #e3f3e6; color: #1e6b33; border: 1px solid #9cc5a4; border-radius: 10px; padding: 0 8px; margin-left: 6px; }
-    .un-loadsw { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 6px; padding: 6px 10px; } .un-loadbox { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: #fffdf4; border: 1px dashed #e6c65c; border-radius: 6px; padding: 8px 10px; }
+    .un-loadsw { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 6px; padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; } .un-form .un-loadsw label.un-chk { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: #333; cursor: pointer; } .un-f { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #555; } .un-loadbox { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: #fffdf4; border: 1px dashed #e6c65c; border-radius: 6px; padding: 8px 10px; }
     .un-cat.eq { background: #fff1c2; color: #8a5a00; } .hidden-f { display: none !important; } tr.eq-row td { background: #fffdf4; }
     .pick-box { border: 1px solid #c9d8ee; background: #f6f9fd; border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
     .pick-box .chip.on { background: #1f5fae; color: #fff; border-color: #1f5fae; } .pick-box .warn { color: #b3261e; } .pick-box .good { color: #1e7d32; }
@@ -392,7 +392,7 @@
           <div id="tg-kpi"><div class="loading">생산 실적 불러오는 중...</div></div>
         </div>
         <div class="card">
-          <h3>① 예상 사용량 기준선 <span class="pt-tip" tabindex="0" role="button" data-tip="simpletg" title="눌러서 설명 보기">ⓘ</span> <span class="sub">원육 투입량이 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
+          <h3>① 예상 사용량 기준선 <span class="pt-tip" tabindex="0" role="button" data-tip="simpletg" title="눌러서 설명 보기">ⓘ</span> <span class="sub">그 달 원육 투입량(+ 설비 부하 변경)이면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
           <div id="tg-model"></div>
         </div>
         <div class="card">
@@ -1974,26 +1974,22 @@
     // =====================================================================
     const EQ_DEFAULT = [
       { d: '2026-06-04', area: '폐수동', name: '터보블로워', kw: 11.2, hours: 16, note: '배관 분리, 2대 모두 20분 가동·40분 정지' },
-      { d: '2026-07-14', area: '폐수동', name: '터보블로워', kw: 11.2, hours: 24, note: '자동밸브 설치, 1대 24시간 (집수·유량조·슬러지저류조 24시간, 폭기조 밸브로 10분/50분)' }
+      { d: '2026-07-14', area: '폐수동', name: '터보블로워', kw: 11.2, hours: 8, note: '(16h → 24h, 하루 +8h) 자동밸브 설치, 1대 24시간 (집수·유량조·슬러지저류조 24시간, 폭기조 밸브로 10분/50분)' }
     ];
     const equipList = () => { const e = (YEARDATA[9999] || {}).equip; return Array.isArray(e) ? e : EQ_DEFAULT; };
     // 그 날 그 설비의 하루 전력 (가장 최근 이력)
-    function equipDay(ds, areas) {
-      const by = {};
-      equipList().filter(x => eqUt(x) === 'elec' && x.d <= ds && (!areas || areas.includes(x.area))).sort((a, b) => a.d < b.d ? -1 : 1).forEach(x => { by[x.area + '|' + x.name] = x; });
-      return Object.values(by).reduce((a, x) => a + (Number(x.kw) || 0) * (Number(x.hours) || 0), 0);
+    function equipDay(ds, areas) { // 그 날까지 적은 전기 하루 증감량 합 (신설 +, 반출 −)
+      return equipList().filter(x => eqUt(x) === 'elec' && x.d <= ds && (!areas || areas.includes(x.area))).reduce((a, x) => a + eqDelta(x), 0);
     }
     function equipKwh(ym, areas) { let s = 0; for (let d = 1; d <= UT.daysIn(ym); d++) s += equipDay(UT.dateStr(ym, d), areas); return s; }
     // ---- 설비 부하 변경 (단순 방식 목표): 그날부터 하루 (변경 후 − 변경 전) 만큼 늘거나 줄어듦 · 전기 kWh, 가스 ㎥(→MJ), 용수·폐수 ㎥ ----
     const eqUt = x => x.ut || 'elec';
-    const eqAfter = x => (x.after !== undefined && x.after !== null && x.after !== '') ? Number(x.after) || 0 : (Number(x.kw) || 0) * (Number(x.hours) || 0);
-    function eqBefore(x) { // 적은 값이 없으면 같은 설비의 바로 앞 기록의 「변경 후」, 그것도 없으면 0
-      if (x.before !== undefined && x.before !== null && x.before !== '') return Number(x.before) || 0;
-      const p = equipList().filter(z => z !== x && eqUt(z) === eqUt(x) && (z.area || '') === (x.area || '') && (z.name || '') === (x.name || '') && z.d < x.d).sort((a, b) => a.d < b.d ? 1 : -1)[0];
-      return p ? eqAfter(p) : 0; }
+    // 하루 증감량 (+ 늘어남 / − 줄어듦): 새 기록은 delta, 예전 기록은 kW × h 를 그대로 증감으로 봄 (신설 +, 반출 −, 재입고 +)
+    const eqDelta = x => (x.delta !== undefined && x.delta !== null && x.delta !== '') ? Number(x.delta) || 0
+      : (x.after !== undefined && x.after !== null && x.after !== '') ? (Number(x.after) || 0) - (Number(x.before) || 0) : (Number(x.kw) || 0) * (Number(x.hours) || 0);
     let GAS_HEAT = null; const gasHeat = () => GAS_HEAT || (GAS_HEAT = Number(UT.effective(lastCompleteYm(), MONTHLY, DAILY, {}).gas_heat) || 43);
     const eqToUsage = (uk, v) => uk === 'gas' ? v * gasHeat() : v; // 가스는 ㎥로 적고 MJ로 계산
-    function loadAdjDay(ds, uk) { return equipList().filter(x => eqUt(x) === uk && x.d <= ds).reduce((a, x) => a + eqToUsage(uk, eqAfter(x) - eqBefore(x)), 0); }
+    function loadAdjDay(ds, uk) { return equipList().filter(x => eqUt(x) === uk && x.d <= ds).reduce((a, x) => a + eqToUsage(uk, eqDelta(x)), 0); }
     function loadAdjMonth(ym, uk) { if (!equipList().some(x => eqUt(x) === uk)) return 0; let t = 0; for (let d = 1; d <= UT.daysIn(ym); d++) t += loadAdjDay(UT.dateStr(ym, d), uk); return t; }
 
     // ---- 폐수동 전력: 기본(날수) + 블로워(운전 이력) + 방류량 + 슬러지 처리량 ----
@@ -2104,7 +2100,7 @@
       if (SIMPLE) {
         const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
         const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
-        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 절감 목표(②)는 <b>예상 사용량 전체</b>에 겁니다 (기본분·생산분 모두 — 쉬는 날 공조·폐수·대기전력도 절감 대상)</div>`;
+        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 그날부터 계속되는 설비 신설·반출·운전 변경은 특이사항 탭 「⚡ 설비 부하 변경」에 하루 증감량을 적으면 예상 사용량에 더하거나 뺍니다<br>· 절감 목표(②)는 <b>예상 사용량 전체</b>에 겁니다 (기본분·생산분 모두 — 쉬는 날 공조·폐수·대기전력도 절감 대상)</div>`;
         h += `<div class="hint" style="margin-bottom:6px">기준 달 — 항목마다 따로 고름 (${ro ? '관리자만 바꿀 수 있음' : '눌러서 넣기/빼기'}) · 뺀 이유는 오른쪽 칸에 적어 두세요.</div><table class="t tg" style="width:100%"><tr><th class="l" style="width:70px">항목</th><th class="l">기준 달</th><th class="l" style="width:34%">뺀 이유 메모</th></tr>` +
           UT.UTILS.map(u => { const sel = baseFor(t, y, u.k), note = (t.baseNote || {})[u.k] ?? (!(t.baseU && t.baseU[u.k]) && exclOf(t, u.k).length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? EXCL_WHY[u.k] : '');
             return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b><br><span class="hint">${sel.length}개월</span></td><td class="l"><span class="chips">${cands.map(ym => `<button class="chip mini ${sel.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBaseU('${u.k}','${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('')}</span></td>
@@ -2117,7 +2113,7 @@
           return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? '<th>설비 부하 변경</th>' : ''}<th>그 달 원단위</th><th class="l">식</th><th>식으로 계산</th><th>차이</th></tr>` +
             m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}${m.rows.some(x => Math.abs(x.adj) >= 0.5) ? `<td>${Math.abs(r.adj) >= 0.5 ? (r.adj > 0 ? '+' : '−') + f0(Math.abs(r.adj)) : '-'}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td class="l hint" style="white-space:nowrap">${m.BD ? `${f0(r.base / r.days)} × ${r.days}일 + ` : ''}${Number(m.unit.toPrecision(5))} × ${f0(r.prod)}${Math.abs(r.adj) >= 0.5 ? ` ${r.adj > 0 ? '+' : '−'} ${f0(Math.abs(r.adj))}` : ''}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
             `</table><div class="hint" style="margin-top:4px"><b>원단위</b> = ${m.BD ? '생산분' : m.rows.some(r => Math.abs(r.adj) >= 0.5) ? '(실제 − 설비 부하 변경)' : '실제'} 합 ${f0(m.rows.reduce((a, r) => a + r.var, 0))} ÷ 원육 합 ${f0(m.rows.reduce((a, r) => a + r.prod, 0))} = <b>${Number(m.unit.toPrecision(5))}</b> ${u.unit}/kg (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)<br>
-              <b>식으로 계산</b> = ${m.BD ? '계절 하루 기본 × 그 달 날수 + ' : ''}원단위 × 그 달 원육${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? ' + 설비 부하 변경(특이사항 탭 ⚡) — 원단위를 구할 때는 실제에서 이 몫을 먼저 뺌' : ''} · <b>차이</b> = (식 − 실제) ÷ 실제 — ＋면 그 달은 식보다 덜 쓴 달, −면 더 쓴 달</div></details>`; }).join('');
+              <b>식으로 계산</b> = ${m.BD ? '계절 하루 기본 × 그 달 날수 + ' : ''}원단위 × 그 달 원육 + 설비 부하 변경 (특이사항 탭 ⚡ 하루 증감량 × 날수${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? ' — 원단위를 구할 때는 실제에서 이 몫을 먼저 뺌' : ' — 기준 달엔 없음'}) · <b>차이</b> = (식 − 실제) ÷ 실제 — ＋면 그 달은 식보다 덜 쓴 달, −면 더 쓴 달</div></details>`; }).join('');
         if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.${models.elec.BD._skip.length ? `<br>· <b>뺀 달: ${models.elec.BD._skip.map(x => x.slice(2).replace('-', '.')).join(', ')}</b> — 생산 대시보드에 일별 생산 입력이 없어 생산 없는 날을 가릴 수 없음 (원단위 계산에는 그대로 씀)` : ''}</div>` +
           ['spring', 'summer', 'fall', 'winter'].map(k => D[k].length ? `<div style="margin:4px 0"><b>${SEASON_NAME[k]}</b> <span class="hint">${D[k].length}일 · 평균 ${f0(D[k].reduce((a, x) => a + x.u, 0) / D[k].length)}</span><div class="hint">${D[k].map(x => `${x.ds.slice(5).replace('-', '/')} ${f0(x.u)}`).join(' · ')}</div></div>` : '').join('') + '</details>'; }
         document.getElementById('tg-model').innerHTML = h;
@@ -2191,7 +2187,7 @@
       }
       const ys = sumE(ev); if (ys) { ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0); ys.op = ev.filter(Boolean).reduce((a, e) => a + e.op, 0); }
       ht += er(`<b>${y}년 누적</b>${ys ? ` <span class="hint">(${ys.n}개월)</span>` : ''}`, ys, 'sum') + '</table>';
-      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. ${SIMPLE ? '예상 사용량 = 기본분(전기만) + 원단위 × 그 달 실제 원육 투입량 · 「예상 대비」 = 1 − 실제 ÷ 예상 · 목표 = 예상 사용량 × (1 − 절감률)' : '예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값'}. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
+      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. ${SIMPLE ? '예상 사용량 = 기본분(전기만) + 원단위 × 그 달 실제 원육 투입량 + 설비 부하 변경 · 「예상 대비」 = 1 − 실제 ÷ 예상 · 목표 = 예상 사용량 × (1 − 절감률)' : '예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값'}. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
       document.getElementById('target-table').innerHTML = ht;
       // 전 항목 요약
       document.getElementById('tg-summary').innerHTML = `<table class="t"><tr><th class="l">항목</th><th>목표 절감률</th><th>${y}년 누적 예상</th><th>누적 실제</th><th>예상 대비</th><th>판정</th></tr>` +
@@ -2746,7 +2742,7 @@
         tile('원육 kg당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))} · 전년 ${pctTxt(uc(s), uc(ly))}`) +
         tile(`${y}년 누적 (1~${m}월)`, man(yt.total), `원단위 ${f0(ratio(yt.total, yt.production))} 원/kg`) +
         `</div>`;
-      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">원육·기온 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
+      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">원육·설비 부하 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
         UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production), e = fc ? null : evalFor(brYm, u.k);
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${fU(un, u.k)} <span class="hint">${u.unit}/kg</span></td>
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
@@ -3615,7 +3611,7 @@
     const eqKey = (x, i) => x.id || `eqi${i}|${x.d}|${x.area}|${x.name}`;
     const eqAll = () => equipList().map((x, i) => ({ ...x, _k: eqKey(x, i) }));
     const eqUnit = x => eqUt(x) === 'elec' ? 'kWh' : '㎥';
-    const eqAmt = x => { const a = eqAfter(x), b = eqBefore(x), d = a - b; return `하루 ${f0(b)} → ${f0(a)} ${eqUnit(x)} (${d >= 0 ? '+' : '−'}${f0(Math.abs(d))})`; };
+    const eqAmt = x => { const d = eqDelta(x); return `하루 <b>${d >= 0 ? '+' : '−'}${nf1.format(Math.abs(d))} ${eqUnit(x)}</b>`; };
     const eqLine = x => `<span class="un-cat eq">⚡ 설비 부하 변경</span> <b>${Number(x.d.slice(5, 7))}/${Number(x.d.slice(8))}</b> [${eqUt(x) === 'elec' ? esc(x.area || '') : (UT.UTILS.find(u => u.k === eqUt(x)) || {}).name}${x.name ? ' · ' + esc(x.name) : ''}] ${esc(x.note || '')} <span class="hint">→ 그날부터 ${eqAmt(x)}</span>`;
     function renderNotes() {
       if (!unYm && unYm !== '') unYm = thisYm;
@@ -3631,15 +3627,14 @@
           <label>설비·장소 <input id="un-eq" value="${esc(E ? E.eq || '' : X ? X.name || '' : '')}" placeholder="예: 레토르트 2호기, 터보블로워, 보일러"></label>
           <label class="wide">내용 <textarea id="un-text" rows="2" placeholder="예: 레토르트 2호기 스팀 트랩 누설 / 보일러 2대 → 1대 운전으로 변경">${esc(E ? E.text : X ? X.note || '' : '')}</textarea></label>
           <label class="wide ${load ? 'hidden-f' : ''}">조치 <input id="un-act" value="${esc(E ? E.act || '' : '')}" placeholder="예: 트랩 교체, 타이머 재설정"></label>
-          <div class="wide un-loadsw"><label><input type="checkbox" id="un-load" ${load ? 'checked' : ''} ${E || X ? 'disabled' : ''} onchange="unLoadOn=this.checked;unKeepDraft();renderNotes()"> <b>⚡ 설비 부하 변경</b></label>
-            <span class="hint">— 그날부터 계속 이어지는 변화만 (설비 추가·운전 대수·가동시간 변경) · 한 번 있었던 일(고장·누설)은 체크 안 함</span></div>
-          ${load ? (() => { const fk = X ? eqUt(X) : UN_CAT_K[unFormCat] || 'elec', un = fk === 'elec' ? 'kWh' : '㎥', bef = X ? eqBefore(X) : null, aft = X ? eqAfter(X) : null;
+          <div class="wide un-loadsw"><label class="un-chk"><input type="checkbox" id="un-load" ${load ? 'checked' : ''} ${E || X ? 'disabled' : ''} onchange="unLoadOn=this.checked;unKeepDraft();renderNotes()"> <b>⚡ 설비 부하 변경</b></label>
+            <span class="hint">그날부터 계속 이어지는 변화만 (설비 신설·반출·운전 대수·가동시간 변경) · 한 번 있었던 일(고장·누설)은 체크 안 함</span></div>
+          ${load ? (() => { const fk = X ? eqUt(X) : UN_CAT_K[unFormCat] || 'elec', un = fk === 'elec' ? 'kWh' : '㎥', dv = X ? Math.round(eqDelta(X) * 10) / 10 : '';
             return `<div class="wide un-loadbox">
-            ${fk === 'elec' ? `<label>구역 <select id="un-area">${EQ_AREAS.map(a => `<option ${X && X.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>` : ''}
-            <label>변경 전 하루 <input id="un-before" type="number" step="0.1" style="width:90px" value="${X && X.before !== undefined && X.before !== '' && X.before !== null ? X.before : ''}" placeholder="${bef !== null ? f0(bef) : '같은 설비 앞 기록'}"> ${un}</label>
-            <label>→ 변경 후 하루 <input id="un-after" type="number" step="0.1" style="width:90px" value="${aft !== null ? Math.round(aft * 10) / 10 : ''}"> ${un}</label>
-            ${fk === 'elec' ? `<label class="hint">계산 도우미: <input id="un-kw" type="number" step="0.1" style="width:64px" placeholder="kW" value="${X ? X.kw ?? '' : ''}" oninput="unKwCalc()"> kW × <input id="un-hours" type="number" step="0.5" style="width:56px" placeholder="h" value="${X ? X.hours ?? '' : ''}" oninput="unKwCalc()"> h/일 · 전류 <input id="un-amp" type="number" step="0.1" style="width:56px" oninput="const a=Number(this.value);if(a){document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1);unKwCalc()}"> A (3상 380V·역률 0.85)</label>` : ''}
-            <div class="hint" style="flex-basis:100%">· 그날부터 매일 <b>(변경 후 − 변경 전)</b>만큼 예상 사용량에 더하거나 뺌 — 목표 ①·원인 분석에 들어감${fk === 'gas' ? ' · 가스는 ㎥로 적으면 MJ로 바꿔 계산 (열량계수 ' + nf1.format(gasHeat()) + ')' : ''}<br>· 변경 전을 비워 두면 같은 설비의 바로 앞 기록 「변경 후」 값을 씀 (처음 적는 설비면 0 → 통째로 늘어난 것으로 봄)</div></div>`; })()
+            ${fk === 'elec' ? `<span class="un-f">구역 <select id="un-area">${EQ_AREAS.map(a => `<option ${X && X.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select></span>` : ''}
+            <span class="un-f"><b>하루 증감량</b> <input id="un-delta" type="number" step="0.1" style="width:100px" value="${dv}" placeholder="+ 늘어남 / − 줄어듦"> ${un}/일</span>
+            ${fk === 'elec' ? `<span class="un-f hint">계산 도우미: <input id="un-kw" type="number" step="0.1" style="width:70px" placeholder="kW" value="${X ? X.kw ?? '' : ''}" oninput="unKwCalc()"> kW × <input id="un-hours" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.hours ?? '' : ''}" oninput="unKwCalc()"> h/일 &nbsp;·&nbsp; 전류 <input id="un-amp" type="number" step="0.1" style="width:60px" placeholder="A" oninput="const a=Number(this.value);if(a){document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1);unKwCalc()}"> A → kW (3상 380V·역률 0.85) &nbsp;·&nbsp; 줄어들면 kW를 − 로</span>` : ''}
+            <div class="hint" style="flex-basis:100%">· 그날부터 매일 이만큼 <b>예상 사용량</b>에 더하거나 뺌 (목표·예산 ①③④, 현황 「예상 대비」, 월간보고서) · 원인 분석 ③에는 기록으로 나옴<br>· 예) 설비 신설 +14 · 수리하러 반출 −64 → 재입고 +64 (둘 합이 0이 되게)${fk === 'gas' ? ' · 가스는 ㎥로 적으면 MJ로 바꿔 계산 (열량계수 ' + nf1.format(gasHeat()) + ')' : ''}</div></div>`; })()
             : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 분석에 나옵니다</span></div>`}
           <div><button class="btn" onclick="unSave()">${E || X ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E || X ? ` <button class="btn secondary" onclick="unEditId=null;unLoadOn=false;renderNotes()">취소</button>` : ''}</div>
         </div></div>`;
@@ -3665,7 +3660,7 @@
       if (unYm) causeYm = unYm; else if (!causeYm) causeYm = lastCompleteYm();
     }
     let unLoadOn = false, unDraft = null, unFormCat = '전기';
-    function unKwCalc() { const k = Number(document.getElementById('un-kw').value), h = Number(document.getElementById('un-hours').value); if (k && h) document.getElementById('un-after').value = Math.round(k * h * 10) / 10; }
+    function unKwCalc() { const k = Number(document.getElementById('un-kw').value), h = Number(document.getElementById('un-hours').value); if (k && h) document.getElementById('un-delta').value = Math.round(k * h * 10) / 10; }
     function unKeepDraft() { const g = id => { const e = document.getElementById(id); return e ? e.value : ''; }; unDraft = { d: g('un-d'), eq: g('un-eq'), text: g('un-text') }; setTimeout(() => { if (!unDraft) return; ['d', 'eq', 'text'].forEach(k => { const e = document.getElementById('un-' + k); if (e && unDraft[k]) e.value = unDraft[k]; }); unDraft = null; }, 0); }
     async function eqPut(fn) { // 부하 변동: 저장 직전 최신 목록을 다시 읽어서 고침
       const cur = await freshYear(9999); const list = (Array.isArray(cur.equip) ? cur.equip : EQ_DEFAULT).map((x, i) => ({ ...x, _k: eqKey(x, i) }));
@@ -3690,10 +3685,10 @@
       const isEq = typeof id === 'string' && id.startsWith('EQ:'), load = isEq || (document.getElementById('un-load') || {}).checked;
       if (load) {
         const X0 = isEq ? eqAll().find(z => z._k === id.slice(3)) : null, ut = X0 ? eqUt(X0) : (UN_CAT_K[g('un-cat')] || 'elec');
-        const area = ut === 'elec' ? g('un-area') : '', kw = Number(g('un-kw')) || 0, hours = Number(g('un-hours')) || 0, after = g('un-after'), before = g('un-before');
+        const area = ut === 'elec' ? g('un-area') : '', kw = Number(g('un-kw')) || 0, hours = Number(g('un-hours')) || 0, delta = g('un-delta');
         if (!d || !(eq || text)) { alert('날짜와 설비·장소(또는 내용)를 넣어 주세요.'); return; }
-        if (after === '') { alert('변경 후 하루 사용량을 넣어 주세요.'); return; }
-        const rec = { d, ut, area, name: eq, kw, hours, after: Number(after), before: before === '' ? null : Number(before), note: text };
+        if (delta === '' || isNaN(Number(delta))) { alert('하루 증감량을 넣어 주세요. (늘어나면 +, 줄어들면 −)'); return; }
+        const rec = { d, ut, area, name: eq, kw, hours, delta: Number(delta), after: null, before: null, note: text };
         try { await eqPut(L => { if (isEq) { const x = L.find(z => z._k === id.slice(3)); if (x) Object.assign(x, rec, { edited: now }); return L; }
           return L.concat([{ id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec, by: (me && (me.name || me.username)) || '', at: now }]); }); }
         catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
@@ -3717,7 +3712,7 @@
       const a = ym0 < ym ? ym0 : ym, b = ym0 < ym ? ym : ym0;
       const L = notesIn(UT.dateStr(a, 1), UT.dateStr(b, UT.daysIn(b)), uk);
       const U = UT.UTILS.find(u => u.k === uk), from = UT.dateStr(a, 1), to = UT.dateStr(b, UT.daysIn(b));
-      const EQ = eqAll().filter(x => x.d >= from && x.d <= to && (eqUt(x) === uk || (uk === 'gas' && eqUt(x) === 'elec' && !eqAfter(x) && /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))));
+      const EQ = eqAll().filter(x => x.d >= from && x.d <= to && (eqUt(x) === uk || (uk === 'gas' && eqUt(x) === 'elec' && !eqDelta(x) && /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))));
       L.push(...EQ.map(x => ({ d: x.d, _eq: x }))); L.sort((p, q) => p.d < q.d ? -1 : 1);
       return `<h3>③ 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
         (L.length ? (() => { // 이번 달 / 비교 달 / 그 사이로 나눠 보여 줌
