@@ -52,6 +52,8 @@
     .fmeta .std { color: var(--blue); } .fmeta .use { color: var(--teal); font-weight: 600; } .fmeta .neg { color: #E53935; font-weight: 600; }
     .val { width: 120px; text-align: right; font-size: 18px; font-weight: 700; border: none; border-bottom: 1.5px solid var(--border); background: transparent; color: var(--text); padding: 4px; outline: none; font-variant-numeric: tabular-nums; }
     .val:focus { border-bottom-color: var(--primary); }
+    .neg-btn { flex: none; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 16px; font-weight: 700; color: var(--blue); cursor: pointer; padding: 0; }
+    .neg-btn:active { background: var(--blue-bg); }
     .val.filled { border-bottom-color: var(--teal); }
     .val.warn { color: #E53935; border-bottom-color: #E53935; }
     .footer { background: var(--card); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; }
@@ -166,8 +168,8 @@
             <option>맑음</option><option>구름 조금</option><option>구름 많음</option><option>흐림</option>
             <option>비</option><option>눈</option><option>안개</option><option>소나기</option><option>뇌우</option><option>이슬비</option>
           </select>
-          <input type="number" id="t-min" placeholder="최저°C" step="0.1" inputmode="decimal" oninput="markDirty()">
-          <input type="number" id="t-max" placeholder="최고°C" step="0.1" inputmode="decimal" oninput="markDirty()">
+          <button type="button" class="neg-btn" title="－ 붙이기/떼기" onmousedown="event.preventDefault()" onclick="flipSign(document.getElementById('t-min'))">±</button><input type="text" id="t-min" placeholder="최저°C" inputmode="decimal" oninput="markDirty()">
+          <button type="button" class="neg-btn" title="－ 붙이기/떼기" onmousedown="event.preventDefault()" onclick="flipSign(document.getElementById('t-max'))">±</button><input type="text" id="t-max" placeholder="최고°C" inputmode="decimal" oninput="markDirty()">
         </div>
       </div>
       <div id="month-alert" class="month-alert" hidden></div>
@@ -562,7 +564,7 @@
           const must = monthAlertOn && MONTH_METERS.includes(f.id), od = oddOf(f);
           h += `<div class="card ${dirty.has(f.id) ? 'dirty' : ''} ${must ? 'must' : ''} ${od ? 'odd' : ''}" id="card-${esc(f.id)}">
             <div class="info"><div class="fname">${must ? '📌 ' : ''}${esc(f.name)}</div><div class="fmeta" id="meta-${esc(f.id)}">${metaHtml(f)}</div></div>
-            <input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''} ${od && !warn ? 'odd' : ''}" type="number" step="any" inputmode="decimal" placeholder="—"
+            ${NEG_OK(f) ? `<button type="button" class="neg-btn" title="－(영하) 붙이기/떼기" onmousedown="event.preventDefault()" onclick="flipSign(this.nextElementSibling)">±</button>` : ''}<input class="val ${v !== '' ? 'filled' : ''} ${warn ? 'warn' : ''} ${od && !warn ? 'odd' : ''}" type="text" inputmode="decimal" autocomplete="off" placeholder="—"
               value="${esc(v)}" data-id="${esc(f.id)}">
           </div>`;
           if (irec || iLoadFail) INSP_GROUPS.forEach(g => { // 이 검침 칸 바로 아래에 붙는 점검 묶음
@@ -587,8 +589,12 @@
       });
     }
 
+    // 갤럭시 숫자 자판엔 「－」가 없거나 막히는 경우가 있어 ± 버튼으로 붙이고 뗌 · 쉼표·공백은 빼고 받음
+    const NEG_OK = f => /°C|℃|온도|MPa|bar|kPa/.test((f.unit || '') + (f.name || ''));
+    const cleanNum = v => String(v).replace(/[,\s]/g, '').replace(/[−–—ㅡ]/g, '-').replace(/^\+/, '');
+    function flipSign(inp) { if (!inp) return; let v = cleanNum(inp.value); v = v.startsWith('-') ? v.slice(1) : '-' + v; inp.value = v; inp.dispatchEvent(new Event('input')); inp.focus(); }
     function onInput(inp) {
-      const id = inp.dataset.id, v = inp.value.trim();
+      const id = inp.dataset.id; if (inp.value !== cleanNum(inp.value)) inp.value = cleanNum(inp.value); const v = inp.value.trim();
       const orig = ((DAYS[curDate] || {}).v || {})[id];
       values[id] = v;
       const changed = String(orig ?? '') !== v;
@@ -632,10 +638,10 @@
       for (const id of dirty) {
         const v = values[id];
         if (v === '' || v === undefined) patch[id] = null;
-        else if (isNaN(Number(v))) { toast('숫자가 아닌 값이 있습니다'); return; }
+        else if (v === '-' || isNaN(Number(v))) { const f = FIELDS.find(x => x.id === id); toast(`숫자가 아닌 값: ${f ? f.name : id} 「${v}」`); return; }
         else patch[id] = Number(v);
       }
-      const num = id => { const x = document.getElementById(id).value; return x === '' ? null : Number(x); };
+      const num = id => { const x = cleanNum(document.getElementById(id).value); return x === '' || x === '-' || isNaN(Number(x)) ? null : Number(x); };
       btn.classList.add('saving'); btn.textContent = '저장 중...';
       if (iDirty()) { // 설비점검일지 같이 저장
         const notes = Object.fromEntries(Object.entries(irec.notes).filter(([, v]) => v && v.trim()));
