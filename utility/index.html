@@ -380,7 +380,7 @@
 
       <!-- ================= 목표 ================= -->
       <div id="tab-target" class="tab">
-        <div class="story no-print"><b>3단계 · 목표·예산</b> — KPI 지표 검토 → ① 고른 지표로 만든 예상 사용량 식 → ② 절감률 → ③ 월별 평가 → ④ 연간 계획(예산) 순서로 봅니다.</div>
+        <div class="story no-print"><b>3단계 · 목표·예산</b> — ① 기본 사용량(전기) + 원육 kg당 사용량(원단위) → ② 절감률 → ③ 월별 평가 → ④ 연간 계획(예산) 순서로 봅니다.</div>
         <div class="toolbar">
           <div class="month-nav"><button onclick="shiftTargetYear(-1)">◀</button><span id="target-year"></span><button onclick="shiftTargetYear(1)">▶</button></div>
           <button class="btn secondary" id="target-fill" hidden onclick="fillTargets()"></button>
@@ -392,7 +392,7 @@
           <div id="tg-kpi"><div class="loading">생산 실적 불러오는 중...</div></div>
         </div>
         <div class="card">
-          <h3>① 예상 사용량 기준선 <span class="pt-tip" tabindex="0" role="button" data-tip="baseline" title="눌러서 설명 보기">ⓘ</span> <span class="sub" style="margin-left:0">계수 계산</span><span class="pt-tip" tabindex="0" role="button" data-tip="ols" title="눌러서 설명 보기">ⓘ</span> <span class="sub" style="margin-left:0">몫 나누기</span><span class="pt-tip" tabindex="0" role="button" data-tip="share" title="눌러서 설명 보기">ⓘ</span> <span class="sub">원육 투입량·날씨가 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
+          <h3>① 예상 사용량 기준선 <span class="pt-tip" tabindex="0" role="button" data-tip="simpletg" title="눌러서 설명 보기">ⓘ</span> <span class="sub">원육 투입량이 같다면 이만큼 쓴다 — 이 값 대비 얼마나 줄였는지가 목표 평가 기준</span></h3>
           <div id="tg-model"></div>
         </div>
         <div class="card">
@@ -1361,7 +1361,37 @@
       if (okA) return Object.assign(a, { hddDropped: !!b });
       return a || b;
     }
+    // ---------------- 간단 방식 목표 (기본): 사용량 = 기본 사용량(전기만, 생산 없는 날 계절별 하루 평균 × 날수) + 원육 kg당 사용량 × 원육 투입량 ----------------
+    const modeOf = t => t && t.mode === 'model' ? 'model' : 'simple';
+    const SEASON = m => m >= 3 && m <= 5 ? 'spring' : m >= 6 && m <= 8 ? 'summer' : m >= 9 && m <= 11 ? 'fall' : 'winter';
+    const SEASON_NAME = { spring: '봄(3~5월)', summer: '여름(6~8월)', fall: '가을(9~11월)', winter: '겨울(12~2월)' };
+    function isIdleDay(ds) { // 생산 없는 날: 생산 실적(원육·포장) 없음 — 생산 실적을 못 불러왔으면 보일러 가스 하루 50㎥ 이하
+      if (PRODD) { const p = PRODD[ds]; return !(p && ((p.rm || 0) > 0 || (p.ea || 0) > 0)); }
+      const g = UT.diffReading(DAILY, ds, ['gas_boiler']); return g === null ? null : g <= 50;
+    }
+    function elecBaseDay(months) { // 기준 달 안의 생산 없는 날 전기 하루 사용량 → 계절별 평균
+      const by = { spring: [], summer: [], fall: [], winter: [] }, all = [];
+      months.forEach(ym => { for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d); if (isIdleDay(ds) !== true) continue; const u = UT.dailyUsage(DAILY, ds).elec; if (u === null || u <= 0) continue; by[SEASON(Number(ym.slice(5)))].push({ ds, u }); all.push(u); } });
+      const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null, out = {};
+      Object.keys(by).forEach(k => { out[k] = by[k].length >= 3 ? { v: avg(by[k].map(x => x.u)), n: by[k].length, src: '' } : null; });
+      const fb = { spring: 'fall', fall: 'spring', summer: 'spring', winter: 'fall' };
+      Object.keys(by).forEach(k => { if (!out[k]) { const o = out[fb[k]] || (all.length >= 3 ? { v: avg(all), n: all.length } : null); out[k] = o ? { v: o.v, n: o.n, src: out[fb[k]] ? `${SEASON_NAME[fb[k]].split('(')[0]} 값으로 대신` : '전체 평균으로 대신' } : { v: 0, n: 0, src: '생산 없는 날 기록 없음' }; } });
+      out._days = by; return out;
+    }
+    function simpleModel(t, y, uk) {
+      const months = baseFor(t, y, uk), rows = months.map(monthRow).filter(r => r[uk] !== null && r[uk] !== undefined && r.prod > 0);
+      const BD = uk === 'elec' ? elecBaseDay(months) : null, baseOf = ym => BD ? BD[SEASON(Number(ym.slice(5)))].v : 0;
+      rows.forEach(r => { r.days = r.days || UT.daysIn(r.ym); r.base = baseOf(r.ym) * r.days; r.var = r[uk] - r.base; });
+      const sp = rows.reduce((a, r) => a + r.prod, 0); if (!rows.length || !sp) return null;
+      const unit = rows.reduce((a, r) => a + r.var, 0) / sp;
+      const split = r => { const days = r.days || UT.daysIn(r.ym); return { base: baseOf(r.ym) * days, var: unit * (r.prod || 0) }; };
+      rows.forEach(r => { r.pred = r.base + unit * r.prod; r.err = (r.pred / r[uk] - 1) * 100; });
+      const mape = rows.reduce((a, r) => a + Math.abs(r.err), 0) / rows.length;
+      return { simple: true, uk, BD, unit, rows, n: rows.length, mape, r2: null, feats: [], coef: [], split,
+        predict: r => { if (r.prod === null || r.prod === undefined) return null; const q = split(r); return Math.max(0, q.base + q.var); } };
+    }
     function fitModels(t, y, autoOnly) {
+      if (!autoOnly && modeOf(t) === 'simple') { const o = {}; UT.UTILS.forEach(u => { o[u.k] = simpleModel(t, y, u.k); }); return o; }
       const out = {};
       UT.UTILS.forEach(u => { out[u.k] = UT.fitBaseline(baseFor(t, y, u.k).map(monthRow).map(r => ({ ...r, y: r[u.k] })), UT.MODEL_FEATS[u.k]); });
       ['water', 'ww'].forEach(k => { const m = fitSimple(baseFor(t, y, k), k); if (m) out[k] = m; });
@@ -2032,6 +2062,8 @@
       if (r.hdd === null) { const nm = normals()[Number(ym.slice(5))]; if (nm) { r.hdd = nm.hdd; r.cdd = nm.cdd; } }
       const exp = mdl.predict(r); if (exp === null || !exp) return null;
       const rate = rateOf(t, uk);
+      if (mdl.simple) { const q = mdl.split(r); if (!q.var) return null; // 목표 = 기본분 + 생산분 × (1 − 절감률) · 「예상 대비」 = 원단위(생산분) 개선률
+        return { exp, base: q.base, target: rate === null ? null : q.base + q.var * (1 - rate / 100), act: r[uk], save: (1 - (r[uk] - q.base) / q.var) * 100, rate, cost: r[uk + '_cost'] }; }
       return { exp, target: rate === null ? null : exp * (1 - rate / 100), act: r[uk], save: (1 - r[uk] / exp) * 100, rate, cost: r[uk + '_cost'] };
     }
     // 실적 평가 (다른 화면에서도 씀): 그 해 목표 기준
@@ -2050,16 +2082,37 @@
       targetDraft = keepDraft || JSON.parse(JSON.stringify(tgt(targetY))); targetDirty = !!keepDraft;
       if (!keepDraft || !targetOrig) targetOrig = JSON.parse(JSON.stringify(tgt(targetY)));
       targetDraft.rate = targetDraft.rate || {};
-      if (!PRODD && ['elec', 'gas'].some(uk => (pickOf(targetDraft, uk) || []).some(f => PICK_PROD[f]))) { try { await loadProdDaily(); } catch (e) { } }
+      if (!PRODD && (modeOf(targetDraft) === 'simple' || ['elec', 'gas'].some(uk => (pickOf(targetDraft, uk) || []).some(f => PICK_PROD[f])))) { try { await loadProdDaily(); } catch (e) { } }
       const ro = !isAdmin(); document.getElementById('target-save').hidden = ro; document.getElementById('target-fill').hidden = true;
       const y = targetY, t = targetDraft, models = fitModels(t, y), base = baseMonths(t, y);
       const unitOf = k => UT.UTILS.find(u => u.k === k).unit;
 
       // 1) 기준선
+      const SIMPLE = modeOf(t) === 'simple', MAINU = ['elec', 'gas'];
+      { const kc = document.getElementById('tg-kpi'); if (kc && kc.closest('.card')) kc.closest('.card').hidden = SIMPLE; }
+      const modeBtn = isAdmin() ? `<button class="btn secondary small" style="float:right" onclick="targetDraft.mode='${SIMPLE ? 'model' : 'simple'}';targetDirty=true;renderTargets(targetDraft)">${SIMPLE ? '상세 방식(지표 식)으로 보기' : '← 간단 방식(기본 + 원단위)으로'}</button>` : '';
+      if (SIMPLE) {
+        const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
+        const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
+        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 절감 목표(②)는 <b>원단위에만</b> 겁니다 (기본 사용량은 그대로)</div>`;
+        h += `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (${`눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}`}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
+          cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
+        h += `<table class="t tg" style="margin-top:10px;width:100%"><tr><th class="l">항목</th><th class="l">기본 사용량 (하루)</th><th>원단위 (원육 kg당)</th><th>기준 달 오차</th></tr>` + UT.UTILS.map(u => { const m = models[u.k];
+          if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달 자료가 부족합니다</td></tr>`;
+          const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>` : '<span class="hint">없음 — 생산할 때만 씀</span>';
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
+        h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
+          return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}<th>그 달 원단위</th><th>식으로 계산</th><th>차이</th></tr>` +
+            m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
+            `</table><div class="hint">원단위 = 기준 달 생산분 합 ÷ 원육 합 (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)</div></details>`; }).join('');
+        if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.</div>` +
+          ['spring', 'summer', 'fall', 'winter'].map(k => D[k].length ? `<div style="margin:4px 0"><b>${SEASON_NAME[k]}</b> <span class="hint">${D[k].length}일 · 평균 ${f0(D[k].reduce((a, x) => a + x.u, 0) / D[k].length)}</span><div class="hint">${D[k].map(x => `${x.ds.slice(5).replace('-', '/')} ${f0(x.u)}`).join(' · ')}</div></div>` : '').join('') + '</details>'; }
+        document.getElementById('tg-model').innerHTML = h;
+      } else {
       const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
       const lk = isLocked(t), roB = ro || lk;
-      let h = lk ? `<div class="lockbar on">🔒 <b>${y}년 목표 식 확정</b> ${Portal.tip('lock')} · ${esc(t.lock.at || '')} ${esc(t.lock.by || '')} · 기준 달 ${base[0].slice(2).replace('-', '.')} ~ ${base[base.length - 1].slice(2).replace('-', '.')} (${base.length}개) — 전기·가스 지표와 계수가 고정되어 데이터가 쌓이거나 고쳐져도 목표가 바뀌지 않습니다.${ad0() ? ' <button class="btn secondary small" onclick="unlockTargets()">확정 풀기</button>' : ''}</div>`
-        : `<div class="lockbar">⚠ <b>아직 확정 전</b> ${Portal.tip('lock')} — 지금은 기준 달이 늘거나(전년 달이 마감될 때마다) 고지서 값이 고쳐지면 지표·계수가 다시 계산됩니다. 지표를 정했으면 확정해 두세요.${ad0() ? ' <button class="btn small" onclick="lockTargets()">🔒 이 식으로 목표 확정</button>' : ''}</div>`;
+      let h = modeBtn + (lk ? `<div class="lockbar on">🔒 <b>${y}년 목표 식 확정</b> ${Portal.tip('lock')} · ${esc(t.lock.at || '')} ${esc(t.lock.by || '')} · 기준 달 ${base[0].slice(2).replace('-', '.')} ~ ${base[base.length - 1].slice(2).replace('-', '.')} (${base.length}개) — 전기·가스 지표와 계수가 고정되어 데이터가 쌓이거나 고쳐져도 목표가 바뀌지 않습니다.${ad0() ? ' <button class="btn secondary small" onclick="unlockTargets()">확정 풀기</button>' : ''}</div>`
+        : `<div class="lockbar">⚠ <b>아직 확정 전</b> ${Portal.tip('lock')} — 지금은 기준 달이 늘거나(전년 달이 마감될 때마다) 고지서 값이 고쳐지면 지표·계수가 다시 계산됩니다. 지표를 정했으면 확정해 두세요.${ad0() ? ' <button class="btn small" onclick="lockTargets()">🔒 이 식으로 목표 확정</button>' : ''}</div>`);
       if (y === pickYear()) h += `<div class="std-row">${stdBadgeHtml('elec', 'target')}${stdBadgeHtml('gas', 'target')}</div>`;
       h += `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (${lk ? '확정되어 바꿀 수 없음' : `눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}`}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
         cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${roB ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
@@ -2097,24 +2150,25 @@
           <div class="hint" style="margin:6px 0">각 달의 실제 사용량을 <b>${m.feats.map(f => FL[f].replace('(kg)', '')).join(' · ')}</b> 덩어리로 나눴을 때, 모든 기준 달에서 <b>식으로 계산한 값과 실제 사용량의 차이가 가장 작아지는 계수</b>를 찾은 것입니다 (최소제곱법 — 엑셀 추세선·LINEST와 같은 방법). 아래 표의 회색 숫자 = 그 요인 × 계수, 더하면 '식으로 계산한 값'.</div>${t2}</details>`; }).join('');
       if (models.elec && models.elec.idle) h += idleDetail(models.elec.idle);
       document.getElementById('tg-model').innerHTML = h;
+      }
 
       // 2) 절감률
       const rateIn = u => `<label><i class="dot" style="background:${u.color}"></i>${u.name}
         ${ro ? `<b>${rateOf(t, u.k) ?? '-'}%</b>` : `<input type="number" step="0.1" data-rate="${u.k}" value="${rateOf(t, u.k) ?? ''}" placeholder="예: 3"> %`}</label>`;
-      document.getElementById('tg-rate').innerHTML = `<div class="rate-grid">` + UT.UTILS.filter(u => MAIN.includes(u.k)).map(rateIn).join('') +
+      document.getElementById('tg-rate').innerHTML = `<div class="rate-grid">` + UT.UTILS.filter(u => MAINU.includes(u.k)).map(rateIn).join('') +
         (ro ? '' : `<button class="btn secondary" onclick="setAllRates()">모두 같은 값으로</button>`) + `</div>` +
-        `<details class="fold" style="margin-top:6px" ${UT.UTILS.some(u => !MAIN.includes(u.k) && rateOf(t, u.k) !== null) ? '' : ''}><summary class="hint">용수·폐수 절감률 (참고)</summary><div class="rate-grid" style="margin-top:6px">${UT.UTILS.filter(u => !MAIN.includes(u.k)).map(rateIn).join('')}</div></details>`;
+        `<details class="fold" style="margin-top:6px" ${UT.UTILS.some(u => !MAINU.includes(u.k) && rateOf(t, u.k) !== null) ? '' : ''}><summary class="hint">용수·폐수 절감률 (참고)</summary><div class="rate-grid" style="margin-top:6px">${UT.UTILS.filter(u => !MAINU.includes(u.k)).map(rateIn).join('')}</div></details>`;
       document.querySelectorAll('#tg-rate input[data-rate]').forEach(el => el.addEventListener('change', () => {
         const k = el.dataset.rate; if (el.value.trim() === '') delete targetDraft.rate[k]; else targetDraft.rate[k] = Number(el.value);
         targetDirty = true; renderTargets(targetDraft);
       }));
 
-      renderKpiReview(t, y);
+      if (!SIMPLE) renderKpiReview(t, y);
       // 3) 실적 평가
       document.getElementById('target-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${targetUtil === u.k ? 'on' : ''}" onclick="targetUtil='${u.k}';renderTargets(targetDirty ? targetDraft : undefined)">${u.name}</button>`).join('');
       const uk = targetUtil, U = UT.UTILS.find(u => u.k === uk), last = lastCompleteYm();
       const ev = Array.from({ length: 12 }, (_, i) => { const ym = UT.ym(y, i + 1); return ym > last ? null : evalMonth(y, ym, uk, models, t); });
-      const sumE = list => { const l = list.filter(Boolean); if (!l.length) return null; const exp = l.reduce((a, e) => a + e.exp, 0), act = l.reduce((a, e) => a + e.act, 0); return { exp, act, target: l.every(e => e.target !== null) ? l.reduce((a, e) => a + e.target, 0) : null, save: (1 - act / exp) * 100, rate: rateOf(t, uk), n: l.length }; };
+      const sumE = list => { const l = list.filter(Boolean); if (!l.length) return null; const exp = l.reduce((a, e) => a + e.exp, 0), act = l.reduce((a, e) => a + e.act, 0); return { exp, act, target: l.every(e => e.target !== null) ? l.reduce((a, e) => a + e.target, 0) : null, save: l.every(e => e.base !== undefined) ? (b => (1 - (act - b) / (exp - b)) * 100)(l.reduce((a, e) => a + e.base, 0)) : (1 - act / exp) * 100, rate: rateOf(t, uk), n: l.length }; };
       const er = (label, e, cls = '') => `<tr class="${cls}"><td class="l">${label}</td><td>${e && e.op !== undefined ? f0(e.op) : ''}</td><td>${e ? f0(e.prod ?? '') : ''}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e && e.target !== null ? f0(e.target) : '-'}</td><td>${e ? f0(e.act) : '-'}</td><td>${e ? saveTxt(e.save) : '-'}</td><td>${e ? judge(e) : ''}</td></tr>`;
       let ht = `<table class="t"><tr><th class="l">월</th><th>생산일</th><th>원육 투입량 (kg)</th><th>예상 사용량</th><th>목표 사용량</th><th>실제 사용량</th><th>예상 대비</th><th>판정</th></tr>`;
       for (let q = 0; q < 4; q++) {
@@ -2124,7 +2178,7 @@
       }
       const ys = sumE(ev); if (ys) { ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0); ys.op = ev.filter(Boolean).reduce((a, e) => a + e.op, 0); }
       ht += er(`<b>${y}년 누적</b>${ys ? ` <span class="hint">(${ys.n}개월)</span>` : ''}`, ys, 'sum') + '</table>';
-      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. 예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
+      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. ${SIMPLE ? '예상 사용량 = 기본분(전기만) + 원단위 × 그 달 실제 원육 투입량 · 「예상 대비」 = 원단위(생산분)가 기준보다 몇 % 좋아졌나 · 목표 = 기본분 + 생산분 × (1 − 절감률)' : '예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값'}. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
       document.getElementById('target-table').innerHTML = ht;
       // 전 항목 요약
       document.getElementById('tg-summary').innerHTML = `<table class="t"><tr><th class="l">항목</th><th>목표 절감률</th><th>${y}년 누적 예상</th><th>누적 실제</th><th>예상 대비</th><th>판정</th></tr>` +
@@ -2215,6 +2269,7 @@
           const exp0 = (mdl && p !== null && w) ? mdl.predict({ ym: UT.ym(y, m), days: UT.daysIn(UT.ym(y, m)), op: r.op, prod: p, hdd: w.hdd, cdd: w.cdd, plan: true }) : null;
           const exp = exp0 === null ? null : exp0 + ((u.k === 'elec' || u.k === 'gas') ? planAdd(t, y, m, u.k) : 0); // + 계획 부하 변동
           const rate = rateOf(t, u.k);
+          if (mdl && mdl.simple && exp !== null) { const q = mdl.split({ ym: UT.ym(y, m), days: UT.daysIn(UT.ym(y, m)), prod: p }); r[u.k] = exp - q.var * ((rate || 0) / 100); } else
           r[u.k] = exp === null ? null : exp * (1 - (rate || 0) / 100);
           const pr = priceOf(y, u.k, m);
           r[u.k + 'c'] = r[u.k] === null || !pr ? null : r[u.k] * pr;
@@ -5430,6 +5485,7 @@
         try {
           await loadAll();
           try { await loadTemps(); } catch (e) { }
+          if (!BILL_MODE && !(me && me.role === 'admin')) { const pb = document.querySelector('.tab-btn[data-tab="period"]'); if (pb) pb.hidden = true; } // 지표 분석은 관리자만
           switchTab(BILL_MODE ? 'monthly' : 'dash');
           if (!BILL_MODE) loadProdDaily().then(() => { resetPickCache(); const a = document.querySelector('.tab-btn.active'); if (a && a.dataset.tab === 'dash') renderDash(); }).catch(() => {}); // 고른 지표(완제품·포장 등) 계산용
         } catch (e) {
