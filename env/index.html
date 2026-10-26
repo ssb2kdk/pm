@@ -899,9 +899,6 @@
       });
       h += `</table></div><div class="hint">· 설계 대비 = 실측 ÷ 설계값. <span class="wq-hi">100% 넘음</span> <span class="wq-mid">80~100%</span> <span class="wq-ok">80% 미만</span> · 기준 대비 = 방류수 ÷ 배출허용기준(국가식품클러스터 폐수종말처리시설 유입기준) · 불검출은 0으로 계산</div>`;
       h += wqSummary();
-      if (P.rec) { const R = WQ.records, i = R.indexOf(P.rec), nl = wwnForRec(P.rec);
-        h += `<div class="wwn-box"><b>폐수장 특이사항</b> <span class="hint">${i > 0 ? `지난 측정(${R[i - 1].s}) 다음날 ~ 이번 채취일(${P.rec.s})` : `채취일(${P.rec.s}) 전 한 달`}</span>
-          ${nl.length ? `<ul>${nl.map(n => `<li>${wwnLine(n)}${wwnNearSample(n.d)}</li>`).join('')}</ul>` : `<div class="hint">이 기간에 적은 특이사항이 없습니다. <a href="#" onclick="showTab('wwn');return false">특이사항 적기</a></div>`}</div>`; }
       h += '</div>';
       h += wqBillCard() + wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
       el.innerHTML = h;
@@ -946,8 +943,7 @@
       const pts = vals.map((v, i) => v === null ? null : [xs(i), ys(v)]);
       s += `<polyline fill="none" stroke="${side === 'raw' ? '#1D7A5C' : '#1565c0'}" stroke-width="2" points="${pts.filter(Boolean).map(p => p.join(',')).join(' ')}"/>`;
       pts.forEach((p, i) => { if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${side === 'raw' ? '#1D7A5C' : '#1565c0'}"/><text x="${p[0]}" y="${p[1] - 7}" text-anchor="middle" font-size="10" fill="#333">${nf(vals[i], vals[i] < 10 ? 1 : 0)}</text>`; });
-      R.forEach((r, i) => { const nn = wwnForRec(r).length; s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`;
-        if (nn) s += `<g><title>폐수장 특이사항 ${nn}건</title><rect x="${xs(i) - 9}" y="${H - B - 14}" width="18" height="11" rx="5" fill="#6a3d9a"/><text x="${xs(i)}" y="${H - B - 5}" text-anchor="middle" font-size="9" fill="#fff">${nn}</text></g>`; });
+      R.forEach((r, i) => { s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`; });
       return s + '</svg>';
     }
     function wqTrendCard() {
@@ -955,8 +951,8 @@
       let h = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${WQ_MAIN.map(i => `<button class="${i.k === it.k ? 'on' : ''}" onclick="wqItem='${i.k}';renderWq()">${i.n}</button>`).join('')}</span></div>
         <div class="wq-charts"><div><div class="hint"><b>원수</b> (mg/L) — 빨간 점선: 설계 처리전 ${nf(it.dr)}</div>${wqChart('raw', it)}</div>
         <div><div class="hint"><b>방류수</b> (mg/L) — 빨간 점선: 설계 처리후 ${nf(it.de)}, 회색: 배출허용기준 ${nf(it.lim)}</div>${wqChart('eff', it)}</div></div>`;
-      h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}<th rowspan="2">폐수장 특이사항<br><span class="hint">(지난 측정 이후)</span></th></tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
-      R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}<td class="l wwn-cell">${wwnForRec(r).map(n => `<div>${wwnLine(n, false)}</div>`).join('')}</td></tr>`; });
+      h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
+      R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}</tr>`; });
       return h + `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div></div>`;
     }
     function wqFlowDesignCard() {
