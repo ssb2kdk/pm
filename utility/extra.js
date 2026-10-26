@@ -1281,10 +1281,12 @@
         const h0 = r0.c.hall, h1 = r1.c.hall; add('· 생산동 (전체 − 폐수동 − 공조냉동)', h0, h1, 'kWh'); }
       if (uk === 'gas') { add('· 보일러', r0.c.gb, r1.c.gb, 'MJ'); add('· 식당', r0.c.gr, r1.c.gr, 'MJ'); }
       add(`${U.name} 비용`, b[uk].cost, a[uk].cost, '원');
-      // 단가: 평균 단가(비용 ÷ 사용량) + 고지서 단가 (확정된 달만)
+      // 단가: 평균 단가(고지서 경·중간·최대부하 단순 평균) + 실질 단가(비용 ÷ 사용량)
       const avgP = x => x.cost && x.usage ? x.cost / x.usage : null, rv = (sx, k) => { if (!sx || sx[uk].status !== '확정' || !sx.m) return null; const v = Number(sx.m[k]); return sx.m[k] === undefined || sx.m[k] === null || sx.m[k] === '' || isNaN(v) ? null : v; };
-      add(`· 평균 단가 (비용 ÷ 사용량)`, avgP(b[uk]), avgP(a[uk]), `원/${un}`, uk === 'gas' ? 2 : 1);
-      if (uk === 'elec') [['elec_rate_light', '경부하'], ['elec_rate_mid', '중간부하'], ['elec_rate_peak', '최대부하']].forEach(([k, n]) => add(`· ${n} 단가 (고지서)`, rv(b, k), rv(a, k), '원/kWh', 1));
+      if (uk === 'elec') { const RK = [['elec_rate_light', '경부하'], ['elec_rate_mid', '중간부하'], ['elec_rate_peak', '최대부하']], av3 = sx => { const v = RK.map(([k]) => rv(sx, k)); return v.every(x => x !== null) ? v.reduce((p, q) => p + q, 0) / 3 : null; };
+        add(`· 평균 단가 (경·중간·최대부하 평균) ${Portal.tip('unitp')}`, av3(b), av3(a), '원/kWh', 1);
+        RK.forEach(([k, n]) => add(`&nbsp;&nbsp;- ${n} 단가 (고지서)`, rv(b, k), rv(a, k), '원/kWh', 1)); }
+      add(`· 실질 단가 (비용 ÷ 사용량)${uk === 'elec' ? '' : ' ' + Portal.tip('unitp')}`, avgP(b[uk]), avgP(a[uk]), `원/${un}`, uk === 'gas' ? 2 : 1);
       if (uk === 'gas') add('· 단가 (고지서)', rv(b, 'gas_price'), rv(a, 'gas_price'), '원/MJ', 4);
       add('원육 투입량', b.production, a.production, 'kg');
       add('완제품 중량', r0.f.pkg, r1.f.pkg, 'kg'); add('포장 생산량 (완제품 EA)', r0.f.ea, r1.f.ea, 'EA');
@@ -1301,7 +1303,7 @@
           return `<tr${r.key ? ' style="font-weight:600;background:#f6f8fb"' : ''}><td class="l">${r.n}</td><td>${fmt(r.v0, r.d)} <span class="hint">${r.u}</span></td><td>${fmt(r.v1, r.d)} <span class="hint">${r.u}</span></td><td class="${dd > 0 ? 'up' : dd < 0 ? 'down' : ''}">${dd === null ? '-' : (dd > 0 ? '+' : dd < 0 ? '−' : '') + fmt(Math.abs(dd), r.d)}</td><td class="${pc > 0 ? 'up' : pc < 0 ? 'down' : ''}">${pc === null ? '' : (pc >= 0 ? '+' : '') + nf1.format(pc) + '%'}</td></tr>`; }).join('') +
         `</table>${(() => { const du = a[uk].usage && b[uk].usage ? a[uk].usage / b[uk].usage - 1 : null, dc = a[uk].cost && b[uk].cost ? a[uk].cost / b[uk].cost - 1 : null, dp = avgP(a[uk]) && avgP(b[uk]) ? avgP(a[uk]) / avgP(b[uk]) - 1 : null;
           if (du === null || dc === null || dp === null || Math.abs(dp) < 0.02) return '';
-          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 평균 단가가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 일별 사용량 · ③ 특이사항으로 원인을 찾아 ④ 이달의 총평에 정리하세요.</div>`;
+          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 실질 단가(비용 ÷ 사용량)가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 일별 사용량 · ③ 특이사항으로 원인을 찾아 ④ 이달의 총평에 정리하세요.</div>`;
       const pct = a[uk].usage && b[uk].usage ? (a[uk].usage / b[uk].usage - 1) * 100 : null;
       const plain = `${Number(ym.slice(5))}월 ${U.name}: ${ymLabel(ym0)} 대비 ${a[uk].usage !== null && b[uk].usage !== null ? `${a[uk].usage - b[uk].usage >= 0 ? '+' : '−'}${f0(Math.abs(a[uk].usage - b[uk].usage))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''}` : '-'}` +
         ` · 원육 ${b.production && a.production ? `${a.production - b.production >= 0 ? '+' : '−'}${f0(Math.abs(a.production - b.production))}kg` : '-'} · 생산일 ${op0 !== null && op1 !== null ? `${op1 - op0 >= 0 ? '+' : '−'}${Math.abs(op1 - op0)}일` : '-'} · 평균기온 ${w0.tmean !== null && w1.tmean !== null ? `${nf1.format(w0.tmean)} → ${nf1.format(w1.tmean)}℃` : '-'}`;
