@@ -1501,6 +1501,7 @@
             <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
         `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
       h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
+      h += `<div class="br-charts"><div><div class="br-ct">전기 원단위 (kWh/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-eunit"></canvas></div></div><div><div class="br-ct">가스 원단위 (MJ/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-gunit"></canvas></div></div></div>`;
       const cmt = (yd(y).comments || {})[brYm] || '';
       h += `<div class="br-sec">특이사항 및 조치 계획</div>` + (isAdmin()
         ? `<textarea id="br-comment" class="br-comment" placeholder="예) 9월 가스 사용 증가: 자숙 설비 증설 시운전 영향 / 10월 보일러 공기비 조정 예정">${esc(cmt)}</textarea><div class="no-print" style="text-align:right;margin-top:4px"><button class="btn secondary" onclick="saveBriefComment()">코멘트 저장</button> <span class="hint" id="br-cmt-st"></span></div><div class="print-only br-txt" id="br-comment-print">${esc(cmt)}</div>`
@@ -1509,13 +1510,20 @@
       const ta = document.getElementById('br-comment'); if (ta) ta.addEventListener('input', () => { document.getElementById('br-comment-print').textContent = ta.value; });
       // 차트
       if (!window.Chart) return;
-      const ms = yearMonths(y), cs = ms.map(ym => ym === brYm && fc ? fc : S(ym)), ps = yearMonths(y - 1).map(S);
-      mkChart('br-cost', { type: 'bar', data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({ label: u.name, data: cs.map(x => x[u.k].cost === null ? null : x[u.k].cost / 1000), backgroundColor: u.color, stack: 'c', maxBarThickness: 22 })) },
+      const ms = yearMonths(y), cs = ms.map(ym => ym > brYm ? null : ym === brYm && fc ? fc : S(ym)), ps = yearMonths(y - 1).map(S); // 고른 달 다음 달부터는 비움
+      mkChart('br-cost', { type: 'bar', data: { labels: monthLabels, datasets: UT.UTILS.map(u => ({ label: u.name, data: cs.map(x => !x || x[u.k].cost === null ? null : x[u.k].cost / 1000), backgroundColor: u.color, stack: 'c', maxBarThickness: 22 })) },
         options: (() => { const o = baseOpts(''); o.scales.x.stacked = o.scales.y.stacked = true; o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return o; })() });
       mkChart('br-unit', { type: 'line', data: { labels: monthLabels, datasets: [
-        { label: `${y}년`, data: cs.map(uc), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 3 },
+        { label: `${y}년`, data: cs.map(x => x ? uc(x) : null), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 3 },
         { label: `${y - 1}년`, data: ps.map(uc), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 2 },
-      ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return clipAxis(o, cs.map(uc), ps.map(uc)); })() });
+      ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return clipAxis(o, cs.map(x => x ? uc(x) : null), ps.map(uc)); })() });
+      const uu = k => x => x ? ratio(x[k].usage, x.production) : null;
+      [['br-eunit', 'elec'], ['br-gunit', 'gas']].forEach(([id, k]) => { const U = UT.UTILS.find(u => u.k === k), a = cs.map(uu(k)), b = ps.map(uu(k));
+        mkChart(id, { type: 'line', data: { labels: monthLabels, datasets: [
+          { label: `${y}년`, data: a, borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 3 },
+          { label: `${y - 1}년`, data: b, borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 2 },
+        ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 };
+          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.raw === null ? '-' : Number(c.raw).toFixed(k === 'elec' ? 2 : 1)}`; return clipAxis(o, a, b); })() }); });
     }
     async function saveBriefComment() {
       const y = Number(brYm.slice(0, 4));
