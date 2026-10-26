@@ -829,8 +829,6 @@
       if (r.hdd === null) { const nm = normals()[Number(ym.slice(5))]; if (nm) { r.hdd = nm.hdd; r.cdd = nm.cdd; } }
       const exp = mdl.predict(r); if (exp === null || !exp) return null;
       const rate = rateOf(t, uk);
-      if (mdl.simple) { const q = mdl.split(r); if (!q.var) return null; // 목표 = 기본분 + 생산분 × (1 − 절감률) · 「예상 대비」 = 원단위(생산분) 개선률
-        return { exp, base: q.base, target: rate === null ? null : q.base + q.var * (1 - rate / 100), act: r[uk], save: (1 - (r[uk] - q.base) / q.var) * 100, rate, cost: r[uk + '_cost'] }; }
       return { exp, target: rate === null ? null : exp * (1 - rate / 100), act: r[uk], save: (1 - r[uk] / exp) * 100, rate, cost: r[uk + '_cost'] };
     }
     // 실적 평가 (다른 화면에서도 씀): 그 해 목표 기준
@@ -861,7 +859,7 @@
       if (SIMPLE) {
         const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
         const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
-        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 절감 목표(②)는 <b>원단위에만</b> 겁니다 (기본 사용량은 그대로)</div>`;
+        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 절감 목표(②)는 <b>예상 사용량 전체</b>에 겁니다 (기본분·생산분 모두 — 쉬는 날 공조·폐수·대기전력도 절감 대상)</div>`;
         h += `<div class="hint" style="margin-bottom:6px">기준 달 — 항목마다 따로 고름 (${ro ? '관리자만 바꿀 수 있음' : '눌러서 넣기/빼기'}) · 뺀 이유는 오른쪽 칸에 적어 두세요.</div><table class="t tg" style="width:100%"><tr><th class="l" style="width:70px">항목</th><th class="l">기준 달</th><th class="l" style="width:34%">뺀 이유 메모</th></tr>` +
           UT.UTILS.map(u => { const sel = baseFor(t, y, u.k), note = (t.baseNote || {})[u.k] ?? (!(t.baseU && t.baseU[u.k]) && exclOf(t, u.k).length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? EXCL_WHY[u.k] : '');
             return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b><br><span class="hint">${sel.length}개월</span></td><td class="l"><span class="chips">${cands.map(ym => `<button class="chip mini ${sel.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBaseU('${u.k}','${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('')}</span></td>
@@ -871,9 +869,10 @@
           const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>` : '<span class="hint">없음 — 생산할 때만 씀</span>';
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
         h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
-          return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}<th>그 달 원단위</th><th>식으로 계산</th><th>차이</th></tr>` +
-            m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
-            `</table><div class="hint">원단위 = 기준 달 생산분 합 ÷ 원육 합 (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)</div></details>`; }).join('');
+          return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}<th>그 달 원단위</th><th class="l">식</th><th>식으로 계산</th><th>차이</th></tr>` +
+            m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td class="l hint" style="white-space:nowrap">${m.BD ? `${f0(r.base / r.days)} × ${r.days}일 + ` : ''}${Number(m.unit.toPrecision(5))} × ${f0(r.prod)}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
+            `</table><div class="hint" style="margin-top:4px"><b>원단위</b> = ${m.BD ? '생산분' : '실제'} 합 ${f0(m.rows.reduce((a, r) => a + r.var, 0))} ÷ 원육 합 ${f0(m.rows.reduce((a, r) => a + r.prod, 0))} = <b>${Number(m.unit.toPrecision(5))}</b> ${u.unit}/kg (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)<br>
+              <b>식으로 계산</b> = ${m.BD ? '계절 하루 기본 × 그 달 날수 + ' : ''}원단위 × 그 달 원육 · <b>차이</b> = (식 − 실제) ÷ 실제 — ＋면 그 달은 식보다 덜 쓴 달, −면 더 쓴 달</div></details>`; }).join('');
         if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.${models.elec.BD._skip.length ? `<br>· <b>뺀 달: ${models.elec.BD._skip.map(x => x.slice(2).replace('-', '.')).join(', ')}</b> — 생산 대시보드에 일별 생산 입력이 없어 생산 없는 날을 가릴 수 없음 (원단위 계산에는 그대로 씀)` : ''}</div>` +
           ['spring', 'summer', 'fall', 'winter'].map(k => D[k].length ? `<div style="margin:4px 0"><b>${SEASON_NAME[k]}</b> <span class="hint">${D[k].length}일 · 평균 ${f0(D[k].reduce((a, x) => a + x.u, 0) / D[k].length)}</span><div class="hint">${D[k].map(x => `${x.ds.slice(5).replace('-', '/')} ${f0(x.u)}`).join(' · ')}</div></div>` : '').join('') + '</details>'; }
         document.getElementById('tg-model').innerHTML = h;
@@ -947,7 +946,7 @@
       }
       const ys = sumE(ev); if (ys) { ys.prod = ev.filter(Boolean).reduce((a, e) => a + e.prod, 0); ys.op = ev.filter(Boolean).reduce((a, e) => a + e.op, 0); }
       ht += er(`<b>${y}년 누적</b>${ys ? ` <span class="hint">(${ys.n}개월)</span>` : ''}`, ys, 'sum') + '</table>';
-      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. ${SIMPLE ? '예상 사용량 = 기본분(전기만) + 원단위 × 그 달 실제 원육 투입량 · 「예상 대비」 = 원단위(생산분)가 기준보다 몇 % 좋아졌나 · 목표 = 기본분 + 생산분 × (1 − 절감률)' : '예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값'}. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
+      ht += `<div class="hint" style="margin-top:6px">단위: ${U.unit}. ${SIMPLE ? '예상 사용량 = 기본분(전기만) + 원단위 × 그 달 실제 원육 투입량 · 「예상 대비」 = 1 − 실제 ÷ 예상 · 목표 = 예상 사용량 × (1 − 절감률)' : '예상 사용량 = 그 달 실제 원육 투입량·날씨를 위 식에 넣은 값'}. 예상보다 목표 절감률 이상 덜 썼으면 달성입니다. 마감 안 된 달은 비워 둡니다.</div>`;
       document.getElementById('target-table').innerHTML = ht;
       // 전 항목 요약
       document.getElementById('tg-summary').innerHTML = `<table class="t"><tr><th class="l">항목</th><th>목표 절감률</th><th>${y}년 누적 예상</th><th>누적 실제</th><th>예상 대비</th><th>판정</th></tr>` +
@@ -1045,7 +1044,6 @@
           const exp0 = (mdl && p !== null && w) ? mdl.predict({ ym: UT.ym(y, m), days: UT.daysIn(UT.ym(y, m)), op: r.op, prod: p, hdd: w.hdd, cdd: w.cdd, plan: true }) : null;
           const exp = exp0 === null ? null : exp0 + ((u.k === 'elec' || u.k === 'gas') ? planAdd(t, y, m, u.k) : 0); // + 계획 부하 변동
           const rate = rateOf(t, u.k);
-          if (mdl && mdl.simple && exp !== null) { const q = mdl.split({ ym: UT.ym(y, m), days: UT.daysIn(UT.ym(y, m)), prod: p }); r[u.k] = exp - q.var * ((rate || 0) / 100); } else
           r[u.k] = exp === null ? null : exp * (1 - (rate || 0) / 100);
           const pr = priceOf(y, u.k, m);
           r[u.k + 'c'] = r[u.k] === null || !pr ? null : r[u.k] * pr;
