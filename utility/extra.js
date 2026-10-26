@@ -1097,6 +1097,14 @@
       await loadWWD();
     }
     let causeDays = 120, causeUtil = 'elec', causeYm = null, causeCmp = 'prev';
+    // 일별 분석 (관리자): 고른 달·유틸리티의 일별 그래프 + 생산 일별 요약 비교
+    function renderDayan() {
+      if (!causeYm) causeYm = lastCompleteYm(); const ym = causeYm, uk = causeUtil || 'elec';
+      document.getElementById('dayan-month').textContent = ymLabel(ym);
+      document.getElementById('dayan-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${uk === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderDayan()">${u.name}</button>`).join('');
+      if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; if (PD_UTIL[uk]) pdUtil = uk; anomMonth = ym; renderAnomaly();
+      dcYm = ym; dcU = uk; renderDayCmp();
+    }
     function shiftCauseMonth(d) { causeYm = d > 0 ? UT.nextYm(causeYm) : UT.prevYm(causeYm); renderCause(); }
     // 그 달 이상 사용일 (과다만)
     function monthAnoms(ym, uk) {
@@ -1304,7 +1312,7 @@
           return `<tr${r.key ? ' style="font-weight:600;background:#f6f8fb"' : ''}><td class="l">${r.n}</td><td>${fmt(r.v0, r.d)} <span class="hint">${r.u}</span></td><td>${fmt(r.v1, r.d)} <span class="hint">${r.u}</span></td><td class="${dd > 0 ? 'up' : dd < 0 ? 'down' : ''}">${dd === null ? '-' : (dd > 0 ? '+' : dd < 0 ? '−' : '') + fmt(Math.abs(dd), r.d)}</td><td class="${pc > 0 ? 'up' : pc < 0 ? 'down' : ''}">${pc === null ? '' : (pc >= 0 ? '+' : '') + nf1.format(pc) + '%'}</td></tr>`; }).join('') +
         `</table>${(() => { const du = a[uk].usage && b[uk].usage ? a[uk].usage / b[uk].usage - 1 : null, dc = a[uk].cost && b[uk].cost ? a[uk].cost / b[uk].cost - 1 : null, dp = avgP(a[uk]) && avgP(b[uk]) ? avgP(a[uk]) / avgP(b[uk]) - 1 : null;
           if (du === null || dc === null || dp === null || Math.abs(dp) < 0.02) return '';
-          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 실질 단가(비용 ÷ 사용량)가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 일별 사용량 · ③ 특이사항으로 원인을 찾아 ④ 이달의 총평에 정리하세요.</div>`;
+          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 실질 단가(비용 ÷ 사용량)가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 특이사항으로 원인을 찾아 ③ 이달의 총평에 정리하세요.</div>`;
       const pct = a[uk].usage && b[uk].usage ? (a[uk].usage / b[uk].usage - 1) * 100 : null;
       const plain = `${Number(ym.slice(5))}월 ${U.name}: ${ymLabel(ym0)} 대비 ${a[uk].usage !== null && b[uk].usage !== null ? `${a[uk].usage - b[uk].usage >= 0 ? '+' : '−'}${f0(Math.abs(a[uk].usage - b[uk].usage))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''}` : '-'}` +
         ` · 원육 ${b.production && a.production ? `${a.production - b.production >= 0 ? '+' : '−'}${f0(Math.abs(a.production - b.production))}kg` : '-'} · 생산일 ${op0 !== null && op1 !== null ? `${op1 - op0 >= 0 ? '+' : '−'}${Math.abs(op1 - op0)}일` : '-'} · 평균기온 ${w0.tmean !== null && w1.tmean !== null ? `${nf1.format(w0.tmean)} → ${nf1.format(w1.tmean)}℃` : '-'}`;
@@ -1339,9 +1347,6 @@
            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
         : `<div style="white-space:pre-wrap">${esc(cmt) || '<span class="hint">-</span>'}</div>`;
 
-      // ② 어느 날이 튀었나: 고른 달·유틸리티의 일별 그래프 + 최근 이상일 목록
-      if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; if (PD_UTIL[uk]) pdUtil = uk; anomMonth = ym; renderAnomaly();
-      dcYm = ym; dcU = uk; renderDayCmp(); // 생산 일별 요약과 비교: 항상 보임
       renderCauseRef();
     }
     // ---- 설비 운전 이력 편집 ----
@@ -1471,7 +1476,7 @@
       });
     }
     // 이상감지 → 그 달 원인분석으로
-    function goCause(d, u) { causeYm = d.slice(0, 7); causeUtil = u; switchTab('cause'); setTimeout(() => { const e = document.getElementById('cz-day'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
+    function goCause(d, u) { causeYm = d.slice(0, 7); causeUtil = u; switchTab(isAdmin() ? 'dayan' : 'cause'); setTimeout(() => { const e = document.getElementById('cz-day'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     let anomFocus = null;
     function renderAnomChart() {
       if (!window.Chart) return;
@@ -2389,7 +2394,7 @@
       const E = unEditId && !isEq ? utNotes().find(n => n.id === unEditId) : null, X = isEq ? eqAll().find(x => x._k === unEditId.slice(3)) : null;
       const utilBox = (n) => UT.UTILS.map(u => `<label class="un-u"><input type="checkbox" class="un-ut" value="${u.k}" ${(n ? (n.utils || []) : UN_UTIL_DEF['전기']).includes(u.k) ? 'checked' : ''}> ${u.name}</label>`).join('');
       const load = !!X || unLoadOn;
-      let h = ro ? '' : `<div class="card"><h3>${E || X ? '기록 고치기' : '기록 적기'} <span class="sub">설비·운전에 있었던 일 — 원인 분석 ③에 그 기간 기록이 나옵니다</span></h3>
+      let h = ro ? '' : `<div class="card"><h3>${E || X ? '기록 고치기' : '기록 적기'} <span class="sub">설비·운전에 있었던 일 — 원인 분석 ② 특이사항에 그 기간 기록이 나옵니다</span></h3>
         <div class="un-form">
           <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : X ? X.d : todayStr)}"></label>
           <label>분류 <select id="un-cat" onchange="unCatChange(this.value)" ${X ? 'disabled' : ''}>${UN_CATS.map(c => `<option ${(E && (UN_OLD[E.cat] || E.cat) === c) || (X && UN_CAT_K[c] === eqUt(X)) || (!E && !X && unFormCat === c) ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -2405,7 +2410,7 @@
             ${fk === 'elec' ? `<span class="un-f hint">계산 도우미: <input id="un-kw" type="number" step="0.1" style="width:70px" placeholder="kW" value="${X ? X.kw ?? '' : ''}" oninput="unKwCalc()"> kW × <input id="un-hours" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.hours ?? '' : ''}" oninput="unKwCalc()"> h/일 &nbsp;·&nbsp; 전류 <input id="un-amp" type="number" step="0.1" style="width:60px" placeholder="A" oninput="const a=Number(this.value);if(a){document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1);unKwCalc()}"> A → kW (3상 380V·역률 0.85) &nbsp;·&nbsp; 줄어들면 kW를 − 로</span>` : ''}
             ${fk === 'gas' ? `<span class="un-f hint">계산 도우미: 스팀 <input id="un-steam" type="number" step="1" style="width:76px" placeholder="kg/h" value="${X ? X.steam ?? '' : ''}" oninput="unGasCalc('s')"> kg/h × <input id="un-gh" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.gh ?? '' : ''}" oninput="unGasCalc('s')"> h/일 × 0.07 &nbsp;·&nbsp; 또는 버너 <input id="un-burn" type="number" step="1" style="width:70px" placeholder="㎥/h" value="${X ? X.burn ?? '' : ''}" oninput="unGasCalc('b')"> ㎥/h × <input id="un-bh" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.bh ?? '' : ''}" oninput="unGasCalc('b')"> h/일 × 부하율 <input id="un-bl" type="number" step="5" style="width:56px" value="${X ? X.bl ?? 60 : 60}" oninput="unGasCalc('b')"> % &nbsp;·&nbsp; 줄어들면 − 로</span>
             <div class="hint" style="flex-basis:100%">· 스팀: 스팀 1톤 ≈ LNG 70㎥ (7bar 포화증기 ≈ 2,680 MJ/톤 ÷ 43 MJ/㎥ ÷ 보일러 효율 90%) — 스팀 kg/h는 설비 명판·사양서의 증기 소비량 · 버너: 보일러 명판 가스 소비량 × 늘거나 준 운전시간 × 평균 부하율 · 가장 정확한 건 바뀌기 전·후 2~4주 보일러 가스 일일 검침 생산일 평균 차이</div>` : ''}
-            <div class="hint" style="flex-basis:100%">· 그날부터 매일 이만큼 <b>예상 사용량</b>에 더하거나 뺌 (목표·예산 ①③④, 현황 「예상 대비」, 월간보고서) · 원인 분석 ③에는 기록으로 나옴<br>· 예) 설비 신설 +14 · 수리하러 반출 −64 → 재입고 +64 (둘 합이 0이 되게)${fk === 'gas' ? ' · 가스는 ㎥로 적으면 MJ로 바꿔 계산 (열량계수 ' + nf1.format(gasHeat()) + ')' : ''}</div></div>`; })()
+            <div class="hint" style="flex-basis:100%">· 그날부터 매일 이만큼 <b>예상 사용량</b>에 더하거나 뺌 (목표·예산 ①③④, 현황 「예상 대비」, 월간보고서) · 원인 분석 ② 특이사항에는 기록으로 나옴<br>· 예) 설비 신설 +14 · 수리하러 반출 −64 → 재입고 +64 (둘 합이 0이 되게)${fk === 'gas' ? ' · 가스는 ㎥로 적으면 MJ로 바꿔 계산 (열량계수 ' + nf1.format(gasHeat()) + ')' : ''}</div></div>`; })()
             : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 분석에 나옵니다</span></div>`}
           <div><button class="btn" onclick="unSave()">${E || X ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E || X ? ` <button class="btn secondary" onclick="unEditId=null;unLoadOn=false;renderNotes()">취소</button>` : ''}</div>
         </div></div>`;
@@ -2489,7 +2494,7 @@
       const U = UT.UTILS.find(u => u.k === uk), from = UT.dateStr(a, 1), to = UT.dateStr(b, UT.daysIn(b));
       const EQ = eqAll().filter(x => x.d >= from && x.d <= to && (eqUt(x) === uk || (uk === 'gas' && eqUt(x) === 'elec' && !eqDelta(x) && /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))));
       L.push(...EQ.map(x => ({ d: x.d, _eq: x }))); L.sort((p, q) => p.d < q.d ? -1 : 1);
-      return `<h3>③ 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
+      return `<h3>② 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
         (L.length ? (() => { // 이번 달 / 비교 달 / 그 사이로 나눠 보여 줌
           const li = arr => `<ul class="un-list">${arr.map(n => `<li>${n._eq ? eqLine(n._eq) : unLine(n)}</li>`).join('')}</ul>`, mo = x => x.d.slice(0, 7);
           const cur = L.filter(n => mo(n) === ym), cmp = L.filter(n => mo(n) === ym0), mid = L.filter(n => mo(n) !== ym && mo(n) !== ym0);
