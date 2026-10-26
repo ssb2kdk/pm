@@ -115,7 +115,7 @@
     const EXCL_DEFAULT = { water: ['2026-05', '2026-06', '2026-07', '2026-08'], ww: ['2026-04', '2026-05', '2026-06', '2026-07'] };
     const EXCL_WHY = { water: '악취 희석용 물 추가 (26.4월 말~7월 · 용수 검침 기간 기준)', ww: '악취 희석용 물 추가 (26.4월 말~7월)' };
     const exclOf = (t, uk) => { const e = (t.excl || {})[uk]; return Array.isArray(e) ? e : (EXCL_DEFAULT[uk] || []); };
-    const baseFor = (t, y, uk) => baseMonths(t, y).filter(ym => !exclOf(t, uk).includes(ym));
+    const baseFor = (t, y, uk) => (t.baseU && Array.isArray(t.baseU[uk])) ? t.baseU[uk] : baseMonths(t, y).filter(ym => !exclOf(t, uk).includes(ym)); // 항목별로 고른 기준 달이 있으면 그것
     // 용수·폐수: 날수·원육 (+ 난방도일 — 넣어서 오차가 0.5%p 넘게 줄고 계수가 0 이상일 때만)
     function fitSimple(months, uk) {
       const rows = months.map(monthRow).map(r => ({ ...r, y: r[uk] }));
@@ -862,13 +862,14 @@
         const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
         const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
         let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량은 <b>전기만</b> — 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 · 가스·용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 절감 목표(②)는 <b>원단위에만</b> 겁니다 (기본 사용량은 그대로)</div>`;
-        h += `<div class="hint" style="margin-bottom:6px">기준으로 삼은 달 (${`눌러서 넣기/빼기${ro ? ' — 관리자만' : ''}`}) · 원육 투입이 아주 적었던 가동 초기 달은 자동으로 빠집니다.</div><div class="chips">` +
-          cands.map(ym => `<button class="chip ${base.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBase('${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('') + '</div>';
+        h += `<div class="hint" style="margin-bottom:6px">기준 달 — 항목마다 따로 고름 (${ro ? '관리자만 바꿀 수 있음' : '눌러서 넣기/빼기'}) · 뺀 이유는 오른쪽 칸에 적어 두세요.</div><table class="t tg" style="width:100%"><tr><th class="l" style="width:70px">항목</th><th class="l">기준 달</th><th class="l" style="width:34%">뺀 이유 메모</th></tr>` +
+          UT.UTILS.map(u => { const sel = baseFor(t, y, u.k), note = (t.baseNote || {})[u.k] ?? (!(t.baseU && t.baseU[u.k]) && exclOf(t, u.k).length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? EXCL_WHY[u.k] : '');
+            return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b><br><span class="hint">${sel.length}개월</span></td><td class="l"><span class="chips">${cands.map(ym => `<button class="chip mini ${sel.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBaseU('${u.k}','${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('')}</span></td>
+              <td class="l">${ro ? `<span class="hint">${esc(note) || '-'}</span>` : `<input class="tg-note" style="width:100%;text-align:left" value="${esc(note)}" placeholder="예) 26.5~8월 악취 희석용 물 추가" oninput="setBaseNote('${u.k}',this.value)">`}</td></tr>`; }).join('') + '</table>';
         h += `<table class="t tg" style="margin-top:10px;width:100%"><tr><th class="l">항목</th><th class="l">기본 사용량 (하루)</th><th>원단위 (원육 kg당)</th><th>기준 달 오차</th></tr>` + UT.UTILS.map(u => { const m = models[u.k];
           if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달 자료가 부족합니다</td></tr>`;
           const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>` : '<span class="hint">없음 — 생산할 때만 씀</span>';
-          const ex = exclOf(t, u.k), exH = (ex.length || EXCL_DEFAULT[u.k]) ? `<div class="tg-excl">이 항목 기준 달 <span class="hint">(빨간 줄 = 뺌 · 눌러서 바꾸기)</span>: ${base.map(ym => `<button class="chip mini ${ex.includes(ym) ? 'off' : ''}" ${ro ? 'disabled' : `onclick="toggleExcl('${u.k}','${ym}')"`} title="${ex.includes(ym) ? '빠짐 — 눌러서 다시 넣기' : '들어감 — 눌러서 빼기'}">${ym.slice(2).replace('-', '.')}</button>`).join('')}${ex.length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? ` <span class="hint">← 기본으로 뺌: ${EXCL_WHY[u.k]}</span>` : ''}</div>` : '';
-          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}${exH}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
         h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
           return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}<th>그 달 원단위</th><th>식으로 계산</th><th>차이</th></tr>` +
             m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
@@ -969,6 +970,13 @@
       targetDraft.base = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort();
       targetDirty = true; renderTargets(targetDraft);
     }
+    function toggleBaseU(uk, ym) { if (isLocked(targetDraft)) return;
+      const cur = baseFor(targetDraft, targetY, uk); targetDraft.baseU = Object.assign({}, targetDraft.baseU || {});
+      targetDraft.baseU[uk] = cur.includes(ym) ? cur.filter(x => x !== ym) : [...cur, ym].sort();
+      if (targetDraft.baseNote === undefined || (targetDraft.baseNote || {})[uk] === undefined) { const n = (EXCL_WHY[uk] && exclOf(targetDraft, uk).length && !Array.isArray((targetDraft.excl || {})[uk])) ? EXCL_WHY[uk] : ''; if (n) targetDraft.baseNote = Object.assign({}, targetDraft.baseNote || {}, { [uk]: n }); }
+      targetDirty = true; renderTargets(targetDraft);
+    }
+    function setBaseNote(uk, v) { targetDraft.baseNote = Object.assign({}, targetDraft.baseNote || {}, { [uk]: v }); targetDirty = true; }
     function setAllRates() {
       const v = prompt('모든 항목의 절감률(%)을 몇으로 할까요?', '3'); if (v === null || isNaN(Number(v))) return;
       UT.UTILS.forEach(u => targetDraft.rate[u.k] = Number(v)); targetDirty = true; renderTargets(targetDraft);
