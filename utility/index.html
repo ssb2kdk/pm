@@ -1369,14 +1369,17 @@
       if (PRODD) { const p = PRODD[ds]; return !(p && ((p.rm || 0) > 0 || (p.ea || 0) > 0)); }
       const g = UT.diffReading(DAILY, ds, ['gas_boiler']); return g === null ? null : g <= 50;
     }
+    const IDLE_SKIP = ['2026-03']; // 생산 입력이 안 된 달 (생산은 있었음) — 생산 없는 날 계산에서 뺌
     function elecBaseDay(months) { // 기준 달 안의 생산 없는 날 전기 하루 사용량 → 계절별 평균
       const by = { spring: [], summer: [], fall: [], winter: [] }, all = [];
+      const skip = []; // 생산 실적이 일별로 안 들어간 달(원육 투입은 있는데 생산 대시보드에 생산한 날이 거의 없음 — 26년 3월 등)은 생산 없는 날을 못 가리니 뺌
+      months = months.filter(ym => { if (!PRODD) return true; let pd = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && ((p.rm || 0) > 0 || (p.ea || 0) > 0)) pd++; } const ok = !IDLE_SKIP.includes(ym) && !(S(ym).production > 0 && pd < 5); if (!ok) skip.push(ym); return ok; });
       months.forEach(ym => { for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d); if (isIdleDay(ds) !== true) continue; const u = UT.dailyUsage(DAILY, ds).elec; if (u === null || u <= 0) continue; by[SEASON(Number(ym.slice(5)))].push({ ds, u }); all.push(u); } });
       const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null, out = {};
       Object.keys(by).forEach(k => { out[k] = by[k].length >= 3 ? { v: avg(by[k].map(x => x.u)), n: by[k].length, src: '' } : null; });
       const fb = { spring: 'fall', fall: 'spring', summer: 'spring', winter: 'fall' };
       Object.keys(by).forEach(k => { if (!out[k]) { const o = out[fb[k]] || (all.length >= 3 ? { v: avg(all), n: all.length } : null); out[k] = o ? { v: o.v, n: o.n, src: out[fb[k]] ? `${SEASON_NAME[fb[k]].split('(')[0]} 값으로 대신` : '전체 평균으로 대신' } : { v: 0, n: 0, src: '생산 없는 날 기록 없음' }; } });
-      out._days = by; return out;
+      out._days = by; out._skip = skip; return out;
     }
     function simpleModel(t, y, uk) {
       const months = baseFor(t, y, uk), rows = months.map(monthRow).filter(r => r[uk] !== null && r[uk] !== undefined && r.prod > 0);
@@ -2105,7 +2108,7 @@
           return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.BD ? '<th>기본분<br><span class="hint">하루 × 날수</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>' : ''}<th>그 달 원단위</th><th>식으로 계산</th><th>차이</th></tr>` +
             m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.BD ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
             `</table><div class="hint">원단위 = 기준 달 생산분 합 ÷ 원육 합 (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)</div></details>`; }).join('');
-        if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.</div>` +
+        if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.${models.elec.BD._skip.length ? `<br>· <b>뺀 달: ${models.elec.BD._skip.map(x => x.slice(2).replace('-', '.')).join(', ')}</b> — 생산 대시보드에 일별 생산 입력이 없어 생산 없는 날을 가릴 수 없음 (원단위 계산에는 그대로 씀)` : ''}</div>` +
           ['spring', 'summer', 'fall', 'winter'].map(k => D[k].length ? `<div style="margin:4px 0"><b>${SEASON_NAME[k]}</b> <span class="hint">${D[k].length}일 · 평균 ${f0(D[k].reduce((a, x) => a + x.u, 0) / D[k].length)}</span><div class="hint">${D[k].map(x => `${x.ds.slice(5).replace('-', '/')} ${f0(x.u)}`).join(' · ')}</div></div>` : '').join('') + '</details>'; }
         document.getElementById('tg-model').innerHTML = h;
       } else {
