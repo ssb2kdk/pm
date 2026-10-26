@@ -3634,6 +3634,8 @@
             ${fk === 'elec' ? `<span class="un-f">구역 <select id="un-area">${EQ_AREAS.map(a => `<option ${X && X.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select></span>` : ''}
             <span class="un-f"><b>하루 증감량</b> <input id="un-delta" type="number" step="0.1" style="width:100px" value="${dv}" placeholder="+ 늘어남 / − 줄어듦"> ${un}/일</span>
             ${fk === 'elec' ? `<span class="un-f hint">계산 도우미: <input id="un-kw" type="number" step="0.1" style="width:70px" placeholder="kW" value="${X ? X.kw ?? '' : ''}" oninput="unKwCalc()"> kW × <input id="un-hours" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.hours ?? '' : ''}" oninput="unKwCalc()"> h/일 &nbsp;·&nbsp; 전류 <input id="un-amp" type="number" step="0.1" style="width:60px" placeholder="A" oninput="const a=Number(this.value);if(a){document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1);unKwCalc()}"> A → kW (3상 380V·역률 0.85) &nbsp;·&nbsp; 줄어들면 kW를 − 로</span>` : ''}
+            ${fk === 'gas' ? `<span class="un-f hint">계산 도우미: 스팀 <input id="un-steam" type="number" step="1" style="width:76px" placeholder="kg/h" value="${X ? X.steam ?? '' : ''}" oninput="unGasCalc('s')"> kg/h × <input id="un-gh" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.gh ?? '' : ''}" oninput="unGasCalc('s')"> h/일 × 0.07 &nbsp;·&nbsp; 또는 버너 <input id="un-burn" type="number" step="1" style="width:70px" placeholder="㎥/h" value="${X ? X.burn ?? '' : ''}" oninput="unGasCalc('b')"> ㎥/h × <input id="un-bh" type="number" step="0.5" style="width:60px" placeholder="h" value="${X ? X.bh ?? '' : ''}" oninput="unGasCalc('b')"> h/일 × 부하율 <input id="un-bl" type="number" step="5" style="width:56px" value="${X ? X.bl ?? 60 : 60}" oninput="unGasCalc('b')"> % &nbsp;·&nbsp; 줄어들면 − 로</span>
+            <div class="hint" style="flex-basis:100%">· 스팀: 스팀 1톤 ≈ LNG 70㎥ (7bar 포화증기 ≈ 2,680 MJ/톤 ÷ 43 MJ/㎥ ÷ 보일러 효율 90%) — 스팀 kg/h는 설비 명판·사양서의 증기 소비량 · 버너: 보일러 명판 가스 소비량 × 늘거나 준 운전시간 × 평균 부하율 · 가장 정확한 건 바뀌기 전·후 2~4주 보일러 가스 일일 검침 생산일 평균 차이</div>` : ''}
             <div class="hint" style="flex-basis:100%">· 그날부터 매일 이만큼 <b>예상 사용량</b>에 더하거나 뺌 (목표·예산 ①③④, 현황 「예상 대비」, 월간보고서) · 원인 분석 ③에는 기록으로 나옴<br>· 예) 설비 신설 +14 · 수리하러 반출 −64 → 재입고 +64 (둘 합이 0이 되게)${fk === 'gas' ? ' · 가스는 ㎥로 적으면 MJ로 바꿔 계산 (열량계수 ' + nf1.format(gasHeat()) + ')' : ''}</div></div>`; })()
             : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 분석에 나옵니다</span></div>`}
           <div><button class="btn" onclick="unSave()">${E || X ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E || X ? ` <button class="btn secondary" onclick="unEditId=null;unLoadOn=false;renderNotes()">취소</button>` : ''}</div>
@@ -3653,13 +3655,16 @@
             <td>${(n.utils || []).map(k => (UT.UTILS.find(u => u.k === k) || {}).name).filter(Boolean).join('·')}</td><td>${esc(n.by || '')}</td>
             ${ro ? '' : `<td>${canRow(n) ? `<button class="btn secondary small" onclick="unEditId='${n.id}';unLoadOn=false;renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="unDel('${n.id}')">삭제</button>` : ''}</td>`}</tr>`)(o.n)
             : (x => `<tr class="eq-row"><td>${x.d}</td><td><span class="un-cat eq">⚡ 설비 부하 변경</span>${eqUt(x) === 'elec' ? `<div class="hint">${esc(x.area || '')}</div>` : ''}</td><td class="l">${esc(x.name || '')}</td><td class="l un-txt">${esc(x.note || '')}</td>
-            <td class="l">그날부터 ${eqAmt(x)}${eqUt(x) === 'elec' && x.kw ? `<br><span class="hint">${nf1.format(Number(x.kw) || 0)}kW × ${nf1.format(Number(x.hours) || 0)}h</span>` : ''}</td><td>${(UT.UTILS.find(u => u.k === eqUt(x)) || {}).name}</td><td>${esc(x.by || '')}</td>
+            <td class="l">그날부터 ${eqAmt(x)}${eqUt(x) === 'elec' && x.kw ? `<br><span class="hint">${nf1.format(Number(x.kw) || 0)}kW × ${nf1.format(Number(x.hours) || 0)}h</span>` : ''}${eqUt(x) === 'gas' && x.steam ? `<br><span class="hint">스팀 ${f0(x.steam)}kg/h × ${nf1.format(x.gh || 0)}h × 0.07</span>` : eqUt(x) === 'gas' && x.burn ? `<br><span class="hint">버너 ${f0(x.burn)}㎥/h × ${nf1.format(x.bh || 0)}h × ${f0(x.bl || 100)}%</span>` : ''}</td><td>${(UT.UTILS.find(u => u.k === eqUt(x)) || {}).name}</td><td>${esc(x.by || '')}</td>
             ${ro ? '' : `<td>${canRow(x) ? `<button class="btn secondary small" onclick="unEditId='EQ:${esc(x._k)}';renderNotes();window.scrollTo(0,0)">고치기</button> <button class="btn danger small" onclick="eqDel2('${esc(x._k)}')">삭제</button>` : ''}</td>`}</tr>`)(o.x)).join('') + '</table></div>'
           : `<div class="empty">${unYm ? '이 달에 적은 기록이 없습니다.' : '적은 기록이 없습니다.'}</div>`) + '</div>';
       document.getElementById('notes-body').innerHTML = h;
       if (unYm) causeYm = unYm; else if (!causeYm) causeYm = lastCompleteYm();
     }
     let unLoadOn = false, unDraft = null, unFormCat = '전기';
+    function unGasCalc(w) { const v = id => Number((document.getElementById(id) || {}).value), o = document.getElementById('un-delta');
+      if (w === 's') { const a = v('un-steam'), h = v('un-gh'); if (a && h) o.value = Math.round(a * h * 0.07 * 10) / 10; }
+      else { const a = v('un-burn'), h = v('un-bh'), l = v('un-bl') || 100; if (a && h) o.value = Math.round(a * h * l / 100 * 10) / 10; } }
     function unKwCalc() { const k = Number(document.getElementById('un-kw').value), h = Number(document.getElementById('un-hours').value); if (k && h) document.getElementById('un-delta').value = Math.round(k * h * 10) / 10; }
     function unKeepDraft() { const g = id => { const e = document.getElementById(id); return e ? e.value : ''; }; unDraft = { d: g('un-d'), eq: g('un-eq'), text: g('un-text') }; setTimeout(() => { if (!unDraft) return; ['d', 'eq', 'text'].forEach(k => { const e = document.getElementById('un-' + k); if (e && unDraft[k]) e.value = unDraft[k]; }); unDraft = null; }, 0); }
     async function eqPut(fn) { // 부하 변동: 저장 직전 최신 목록을 다시 읽어서 고침
@@ -3688,7 +3693,8 @@
         const area = ut === 'elec' ? g('un-area') : '', kw = Number(g('un-kw')) || 0, hours = Number(g('un-hours')) || 0, delta = g('un-delta');
         if (!d || !(eq || text)) { alert('날짜와 설비·장소(또는 내용)를 넣어 주세요.'); return; }
         if (delta === '' || isNaN(Number(delta))) { alert('하루 증감량을 넣어 주세요. (늘어나면 +, 줄어들면 −)'); return; }
-        const rec = { d, ut, area, name: eq, kw, hours, delta: Number(delta), after: null, before: null, note: text };
+        const gv = id => { const x = g(id); return x === '' ? null : Number(x); };
+        const rec = { d, ut, area, name: eq, kw, hours, delta: Number(delta), after: null, before: null, note: text, ...(ut === 'gas' ? { steam: gv('un-steam'), gh: gv('un-gh'), burn: gv('un-burn'), bh: gv('un-bh'), bl: gv('un-bl') } : {}) };
         try { await eqPut(L => { if (isEq) { const x = L.find(z => z._k === id.slice(3)); if (x) Object.assign(x, rec, { edited: now }); return L; }
           return L.concat([{ id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec, by: (me && (me.name || me.username)) || '', at: now }]); }); }
         catch (e) { alert('저장 실패: ' + errMsg(e)); return; }
