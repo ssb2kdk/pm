@@ -1269,6 +1269,11 @@
         const h0 = r0.c.hall, h1 = r1.c.hall; add('· 생산동 (전체 − 폐수동 − 공조냉동)', h0, h1, 'kWh'); }
       if (uk === 'gas') { add('· 보일러', r0.c.gb, r1.c.gb, 'MJ'); add('· 식당', r0.c.gr, r1.c.gr, 'MJ'); }
       add(`${U.name} 비용`, b[uk].cost, a[uk].cost, '원');
+      // 단가: 평균 단가(비용 ÷ 사용량) + 고지서 단가 (확정된 달만)
+      const avgP = x => x.cost && x.usage ? x.cost / x.usage : null, rv = (sx, k) => { if (!sx || sx[uk].status !== '확정' || !sx.m) return null; const v = Number(sx.m[k]); return sx.m[k] === undefined || sx.m[k] === null || sx.m[k] === '' || isNaN(v) ? null : v; };
+      add(`· 평균 단가 (비용 ÷ 사용량)`, avgP(b[uk]), avgP(a[uk]), `원/${un}`, uk === 'gas' ? 2 : 1);
+      if (uk === 'elec') [['elec_rate_light', '경부하'], ['elec_rate_mid', '중간부하'], ['elec_rate_peak', '최대부하']].forEach(([k, n]) => add(`· ${n} 단가 (고지서)`, rv(b, k), rv(a, k), '원/kWh', 1));
+      if (uk === 'gas') add('· 단가 (고지서)', rv(b, 'gas_price'), rv(a, 'gas_price'), '원/MJ', 4);
       add('원육 투입량', b.production, a.production, 'kg');
       add('완제품 중량', r0.f.pkg, r1.f.pkg, 'kg'); add('포장 생산량 (완제품 EA)', r0.f.ea, r1.f.ea, 'EA');
       add('생산일수', op0, op1, '일'); add('달력 날수', UT.daysIn(ym0), UT.daysIn(ym), '일');
@@ -1282,7 +1287,9 @@
       const html = `<table class="t" style="width:100%"><tr><th class="l">항목</th><th>${ymLabel(ym0)}</th><th>${ymLabel(ym)}</th><th>차이</th><th>%</th></tr>` +
         rows.map(r => { const ok = r.v0 !== null && r.v0 !== undefined && r.v1 !== null && r.v1 !== undefined && !isNaN(r.v0) && !isNaN(r.v1), dd = ok ? r.v1 - r.v0 : null, pc = ok && r.v0 && r.u !== '℃' ? dd / Math.abs(r.v0) * 100 : null;
           return `<tr${r.key ? ' style="font-weight:600;background:#f6f8fb"' : ''}><td class="l">${r.n}</td><td>${fmt(r.v0, r.d)} <span class="hint">${r.u}</span></td><td>${fmt(r.v1, r.d)} <span class="hint">${r.u}</span></td><td class="${dd > 0 ? 'up' : dd < 0 ? 'down' : ''}">${dd === null ? '-' : (dd > 0 ? '+' : dd < 0 ? '−' : '') + fmt(Math.abs(dd), r.d)}</td><td class="${pc > 0 ? 'up' : pc < 0 ? 'down' : ''}">${pc === null ? '' : (pc >= 0 ? '+' : '') + nf1.format(pc) + '%'}</td></tr>`; }).join('') +
-        `</table><div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 튄 날 · ③ 특이사항으로 원인을 찾아 ④에 정리하세요.</div>`;
+        `</table>${(() => { const du = a[uk].usage && b[uk].usage ? a[uk].usage / b[uk].usage - 1 : null, dc = a[uk].cost && b[uk].cost ? a[uk].cost / b[uk].cost - 1 : null, dp = avgP(a[uk]) && avgP(b[uk]) ? avgP(a[uk]) / avgP(b[uk]) - 1 : null;
+          if (du === null || dc === null || dp === null || Math.abs(dp) < 0.02) return '';
+          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 평균 단가가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 일별 사용량 · ③ 특이사항으로 원인을 찾아 ④ 이달의 총평에 정리하세요.</div>`;
       const pct = a[uk].usage && b[uk].usage ? (a[uk].usage / b[uk].usage - 1) * 100 : null;
       const plain = `${Number(ym.slice(5))}월 ${U.name}: ${ymLabel(ym0)} 대비 ${a[uk].usage !== null && b[uk].usage !== null ? `${a[uk].usage - b[uk].usage >= 0 ? '+' : '−'}${f0(Math.abs(a[uk].usage - b[uk].usage))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''}` : '-'}` +
         ` · 원육 ${b.production && a.production ? `${a.production - b.production >= 0 ? '+' : '−'}${f0(Math.abs(a.production - b.production))}kg` : '-'} · 생산일 ${op0 !== null && op1 !== null ? `${op1 - op0 >= 0 ? '+' : '−'}${Math.abs(op1 - op0)}일` : '-'} · 평균기온 ${w0.tmean !== null && w1.tmean !== null ? `${nf1.format(w0.tmean)} → ${nf1.format(w1.tmean)}℃` : '-'}`;
@@ -1301,7 +1308,7 @@
       { const sb2 = document.getElementById('cz-std'); if (sb2) sb2.innerHTML = ''; }
       // ① 무엇이 달라졌나 — 추정 없이 실제 값만 비교 (사용량·생산·기온)
       const F = causeFacts(ym, ym0, uk);
-      document.getElementById('cz-title').textContent = `① ${U.name} — ${ymLabel(ym)} vs ${ymLabel(ym0)} 무엇이 달라졌나`;
+      document.getElementById('cz-title').textContent = `① ${U.name} 실적 비교 — ${ymLabel(ym)} vs ${ymLabel(ym0)} (${causeCmp === 'prev' ? '전월' : '작년 같은 달'})`;
       document.getElementById('cz-text').innerHTML = F.html;
       const cb = document.getElementById('chart-cz'); if (cb) cb.closest('.chart-box').hidden = true;
 
@@ -1318,13 +1325,13 @@
       // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
       const cmt = (yd(y).comments || {})[ym] || '';
       document.getElementById('cz-memo').innerHTML = isAdmin()
-        ? `<textarea id="cz-memo-ta" class="cz-memo-ta" placeholder="예) 9월 전기: 냉방 부하 감소로 −6,000kWh, 원육 투입 증가 +2,800kWh. 운전·관리 차이 +600kWh는 오차 범위.">${esc(cmt)}</textarea>
-           <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 4개 항목 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
+        ? `<textarea id="cz-memo-ta" class="cz-memo-ta" placeholder="예) 9월 전기는 원육 투입이 40% 늘어 사용량 +1.4%, 단가 하락으로 비용은 −3%. 원육 kg당 2.78 kWh로 전월보다 좋아짐. 27일 쉬는 날 사용은 냉동창고 제상 — 특이 없음.">${esc(cmt)}</textarea>
+           <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
         : `<div style="white-space:pre-wrap">${esc(cmt) || '<span class="hint">-</span>'}</div>`;
 
       // ② 어느 날이 튀었나: 고른 달·유틸리티의 일별 그래프 + 최근 이상일 목록
       if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; if (PD_UTIL[uk]) pdUtil = uk; anomMonth = ym; renderAnomaly();
-      dcYm = ym; dcU = uk; const dcf = document.getElementById('dc-fold'); if (dcf && dcf.open) renderDayCmp();
+      dcYm = ym; dcU = uk; renderDayCmp(); // 생산 일별 요약과 비교: 항상 보임
       renderCauseRef();
     }
     // ---- 설비 운전 이력 편집 ----
@@ -2456,7 +2463,7 @@
       const U = UT.UTILS.find(u => u.k === uk), from = UT.dateStr(a, 1), to = UT.dateStr(b, UT.daysIn(b));
       const EQ = uk === 'elec' || uk === 'gas' ? eqAll().filter(x => x.d >= from && x.d <= to && (uk === 'elec' ? Number(x.kw) > 0 || x.area !== '기타' : /보일러|가스|스팀/.test((x.name || '') + (x.note || '')))) : [];
       L.push(...EQ.map(x => ({ d: x.d, _eq: x }))); L.sort((p, q) => p.d < q.d ? -1 : 1);
-      return `<h3>③ 그 기간에 무슨 일이 있었나 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
+      return `<h3>③ 특이사항 <span class="sub">${ymLabel(a)} ~ ${ymLabel(b)} · ${U.name} 관련 특이사항 · <a href="#" onclick="switchTab('notes');return false">특이사항</a> 탭에서 적음</span></h3>` +
         (L.length ? (() => { // 이번 달 / 비교 달 / 그 사이로 나눠 보여 줌
           const li = arr => `<ul class="un-list">${arr.map(n => `<li>${n._eq ? eqLine(n._eq) : unLine(n)}</li>`).join('')}</ul>`, mo = x => x.d.slice(0, 7);
           const cur = L.filter(n => mo(n) === ym), cmp = L.filter(n => mo(n) === ym0), mid = L.filter(n => mo(n) !== ym && mo(n) !== ym0);
