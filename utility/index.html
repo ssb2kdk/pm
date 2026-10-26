@@ -2753,11 +2753,13 @@
       ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 }; return clipAxis(o, cs.map(x => x ? uc(x) : null), ps.map(uc)); })() });
       const uu = k => x => x ? ratio(x[k].usage, x.production) : null;
       [['br-eunit', 'elec'], ['br-gunit', 'gas']].forEach(([id, k]) => { const U = UT.UTILS.find(u => u.k === k), a = cs.map(uu(k)), b = ps.map(uu(k));
-        mkChart(id, { type: 'line', data: { labels: monthLabels, datasets: [
+        const dg = k === 'elec' ? 2 : 1, LBL = { id: 'brlb' + k, afterDatasetsDraw(ch) { const g = ch.ctx, meta = ch.getDatasetMeta(0); if (!ch.isDatasetVisible(0)) return; g.save(); g.textAlign = 'center'; g.font = '600 10px "Malgun Gothic", sans-serif'; g.fillStyle = U.color;
+          meta.data.forEach((el, i) => { const v = a[i]; if (v === null || v === undefined || isNaN(v)) return; const t = Number(v).toFixed(dg); g.lineWidth = 3; g.strokeStyle = '#fff'; g.strokeText(t, el.x, el.y - 8); g.fillText(t, el.x, el.y - 8); }); g.restore(); } };
+        mkChart(id, { type: 'line', plugins: [LBL], data: { labels: monthLabels, datasets: [
           { label: `${y}년`, data: a, borderColor: U.color, backgroundColor: U.color, borderWidth: 2, pointRadius: 3 },
           { label: `${y - 1}년`, data: b, borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 2 },
         ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 };
-          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.raw === null ? '-' : Number(c.raw).toFixed(k === 'elec' ? 2 : 1)}`; return clipAxis(o, a, b); })() }); });
+          o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.raw === null ? '-' : Number(c.raw).toFixed(dg)}`; o.layout = { padding: { top: 12 } }; return clipAxis(o, a, b); })() }); });
     }
     async function saveBriefComment() {
       const y = Number(brYm.slice(0, 4));
