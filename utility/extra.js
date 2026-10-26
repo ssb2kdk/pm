@@ -1280,6 +1280,7 @@
       if (uk === 'elec') { add('· 폐수동 (계량기)', wwKwh(ym0), wwKwh(ym), 'kWh'); add('· 공조냉동 (계량기)', meterKwh(ym0, 'elec_hvac_kwh'), meterKwh(ym, 'elec_hvac_kwh'), 'kWh');
         const h0 = r0.c.hall, h1 = r1.c.hall; add('· 생산동 (전체 − 폐수동 − 공조냉동)', h0, h1, 'kWh'); }
       if (uk === 'gas') { add('· 보일러', r0.c.gb, r1.c.gb, 'MJ'); add('· 식당', r0.c.gr, r1.c.gr, 'MJ'); }
+      if (uk === 'elec') { const mk = sx => { const v = sx && sx.m ? sx.m.elec_max_kw : null; return v === undefined || v === null || v === '' || isNaN(Number(v)) ? null : Number(v); }; add('최대 전력', mk(b), mk(a), 'kW'); }
       add(`${U.name} 비용`, b[uk].cost, a[uk].cost, '원');
       // 단가: 평균 단가(고지서 경·중간·최대부하 단순 평균) + 실질 단가(비용 ÷ 사용량)
       const avgP = x => x.cost && x.usage ? x.cost / x.usage : null, rv = (sx, k) => { if (!sx || sx[uk].status !== '확정' || !sx.m) return null; const v = Number(sx.m[k]); return sx.m[k] === undefined || sx.m[k] === null || sx.m[k] === '' || isNaN(v) ? null : v; };

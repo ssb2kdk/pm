@@ -296,6 +296,7 @@
 .ind-tbl td, .ind-tbl th { padding: 5px 8px; } .ind-tbl tr.sel td { background: #eef4ff; } .ind-chk { cursor: pointer; }
 .ind-rec tr { cursor: pointer; } .ind-rec tr:hover td { background: #f6f8fb; } .ind-res { border: 1px solid #c9d7ee; background: #f8fbff; border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
 .ind-cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; } @media (max-width: 900px) { .ind-cols { grid-template-columns: 1fr; } }
+    .kpi .cmp .kc { font-size: 11.5px; color: #777; margin: 0 0 4px 8px; }
 </style>
 </head>
 <body>
@@ -2514,6 +2515,7 @@
       if (uk === 'elec') { add('· 폐수동 (계량기)', wwKwh(ym0), wwKwh(ym), 'kWh'); add('· 공조냉동 (계량기)', meterKwh(ym0, 'elec_hvac_kwh'), meterKwh(ym, 'elec_hvac_kwh'), 'kWh');
         const h0 = r0.c.hall, h1 = r1.c.hall; add('· 생산동 (전체 − 폐수동 − 공조냉동)', h0, h1, 'kWh'); }
       if (uk === 'gas') { add('· 보일러', r0.c.gb, r1.c.gb, 'MJ'); add('· 식당', r0.c.gr, r1.c.gr, 'MJ'); }
+      if (uk === 'elec') { const mk = sx => { const v = sx && sx.m ? sx.m.elec_max_kw : null; return v === undefined || v === null || v === '' || isNaN(Number(v)) ? null : Number(v); }; add('최대 전력', mk(b), mk(a), 'kW'); }
       add(`${U.name} 비용`, b[uk].cost, a[uk].cost, '원');
       // 단가: 평균 단가(고지서 경·중간·최대부하 단순 평균) + 실질 단가(비용 ÷ 사용량)
       const avgP = x => x.cost && x.usage ? x.cost / x.usage : null, rv = (sx, k) => { if (!sx || sx[uk].status !== '확정' || !sx.m) return null; const v = Number(sx.m[k]); return sx.m[k] === undefined || sx.m[k] === null || sx.m[k] === '' || isNaN(v) ? null : v; };
@@ -4916,11 +4918,15 @@
       document.getElementById('anom-banner').innerHTML = an7.length ? `<div class="anom-banner" onclick="switchTab('anom')">⚠ 최근 7일 평소보다 많이 쓴 날 <b>${an7.length}건</b> — ${an7.slice(-3).reverse().map(a => `${a.d.slice(5).replace('-', '/')} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}${a.kind === '과다' ? (a.pct === null ? ' (평소 0)' : ' +' + nf0.format(a.pct) + '%') : ' 지침오류'}`).join(', ')} <u>자세히 보기</u></div>` : '';
       html = '';
       UT.UTILS.forEach(u => {
-        const c = cur[u.k], p = prev[u.k];
-        const unitNow = ratio(c.usage, cur.production), unitPrev = ratio(p.usage, prev.production);
+        const c = cur[u.k], p = prev[u.k], l = ly[u.k];
+        const unitNow = ratio(c.usage, cur.production), unitPrev = ratio(p.usage, prev.production), unitLy = ratio(l.usage, ly.production);
+        const cmp2 = (x, xp, xl) => `<div class="kc">전월 ${pctTxt(x, xp)} · 전년 ${pctTxt(x, xl)}</div>`;
+        const rate3 = sx => { const m = sx.m || {}, v = ['elec_rate_light', 'elec_rate_mid', 'elec_rate_peak'].map(k => m[k] === undefined || m[k] === null || m[k] === '' ? null : Number(m[k])); return v.every(x => x !== null && !isNaN(x)) ? v.reduce((a, b) => a + b, 0) / 3 : null; };
+        const r3 = u.k === 'elec' ? rate3(cur) : null;
         html += kpiTile(u.k, `${u.name}`,
           `${man(c.cost)}`,
-          `사용량 ${f0(c.usage)} ${u.unit} (${pctTxt(c.usage, p.usage)})<br>원단위 ${fU(unitNow, u.k)} ${u.unit}/kg (${pctTxt(unitNow, unitPrev)})` +
+          `사용량 <b>${f0(c.usage)}</b> ${u.unit}${cmp2(c.usage, p.usage, l.usage)}원단위 <b>${fU(unitNow, u.k)}</b> ${u.unit}/kg${cmp2(unitNow, unitPrev, unitLy)}` +
+            (u.k === 'elec' ? `<span title="고지서 경부하·중간부하·최대부하 단가의 평균">평균 단가 <b>${r3 === null ? '-' : nf1.format(r3)}</b> 원/kWh</span>${cmp2(r3, rate3(prev), rate3(ly))}` : '') +
             (() => { const e = evalFor(dashYm, u.k); return e ? `<br>예상 대비 ${saveTxt(e.save)}${e.rate !== null ? ` · 목표 ${e.rate}% ${judge(e)}` : ''}` : ''; })(),
           c.status);
       });
