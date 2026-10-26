@@ -577,7 +577,7 @@
           (best.fix >= 30 ? ` 다만 고정분이 ${nf0.format(best.fix)}%라 생산이 늘면 원단위가 저절로 좋아지고 줄면 나빠집니다 → <b>원단위 자체를 목표로 하기보다 「예상 사용량 대비 절감률」(아래 ①②)로 목표를 세우고, 원단위는 결과로 같이 보고</b>하는 걸 권장합니다.` : ` 고정분이 ${nf0.format(best.fix)}%로 작아 원단위를 그대로 목표로 써도 무리가 적습니다.`));
         else concl.push(`<b>${un}</b>: r 0.6 넘게 같이 움직이는 지표가 없습니다 — 생산량보다 날씨·기본 부하 영향이 큰 편이라 원단위 KPI는 맞지 않고, 예상 사용량 대비 절감률로 보는 게 맞습니다.`);
       });
-      h += `<div class="kpi-con">${concl.join('<br>')}</div><div class="hint" style="margin-top:6px">· 원단위 흔들림 = 달마다 (사용량 ÷ 지표) 값의 표준편차 ÷ 평균 · 고정분 비율 = 사용량을 「고정 + 지표 × 계수」 직선으로 맞췄을 때 고정 몫 ÷ 평균 사용량 · 완제품 kg = 포장 EA × 제품 1개 중량 (원인 찾기 → 생산 일별 요약과 비교 → 「제품 1개 중량」 표) · 달이 적어(6~9개월) 참고용입니다.</div>`;
+      h += `<div class="kpi-con">${concl.join('<br>')}</div><div class="hint" style="margin-top:6px">· 원단위 흔들림 = 달마다 (사용량 ÷ 지표) 값의 표준편차 ÷ 평균 · 고정분 비율 = 사용량을 「고정 + 지표 × 계수」 직선으로 맞췄을 때 고정 몫 ÷ 평균 사용량 · 완제품 kg = 포장 EA × 제품 1개 중량 (원인 분석 → 생산 일별 요약과 비교 → 「제품 1개 중량」 표) · 달이 적어(6~9개월) 참고용입니다.</div>`;
       el.innerHTML = h;
     }
     function toggleExcl(uk, ym) {
@@ -1097,7 +1097,7 @@
       return v * h * c;
     }
     // =====================================================================
-    // 📐 기준 식 — 지표 분석 · 원인 찾기 · 목표·예산이 모두 같은 식을 씀 (전기·가스)
+    // 📐 기준 식 — 지표 분석 · 원인 분석 · 목표·예산이 모두 같은 식을 씀 (전기·가스)
     //   순서: 🔒 확정한 식 → 직접 고른 지표 → 자동 식 · 연도 = 지금 목표를 세우는 해 (pickYear)
     // =====================================================================
     const STD_CACHE = {};
@@ -1257,7 +1257,7 @@
       const plain = `${ml(ym)} ${U.name}: ${cmpName} 대비 ${D.diff >= 0 ? '+' : '−'}${f0(Math.abs(D.diff))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''} — ` + rows.filter(x => Math.abs(x[2]) >= 0.5).map(x => `${x[0]} ${fx(x[2])}`).join(', ');
       return { lead, rows, concl, plain };
     }
-    // 원인 찾기 ①: 이번 달과 비교 달의 실제 값 (추정·몫 나누기 없음)
+    // 원인 분석 ①: 이번 달과 비교 달의 실제 값 (추정·몫 나누기 없음)
     function causeFacts(ym, ym0, uk) {
       const U = UT.UTILS.find(u => u.k === uk), a = S(ym), b = S(ym0), un = U.unit;
       const w1 = UT.monthWeather(ym, TEMPS || {}), w0 = UT.monthWeather(ym0, TEMPS || {}), r1 = peRow(ym), r0 = peRow(ym0);
@@ -1350,7 +1350,7 @@
           <td class="l">${inp(i, 'name', x.name, '120px')}</td><td>${inp(i, 'kw', x.kw, '60px')}</td><td>${inp(i, 'hours', x.hours, '60px')}</td><td>${f0((Number(x.kw) || 0) * (Number(x.hours) || 0))} kWh</td>
           <td class="l">${inp(i, 'note', x.note, '100%')}</td>${ro ? '' : `<td><button class="chip" onclick="eqDel(${i})">삭제</button></td>`}</tr>`).join('') + '</table>' +
         (ro ? '' : `<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn secondary" onclick="eqAdd()">+ 이력 추가</button><button class="btn" onclick="eqSave()">저장</button><span class="hint" id="eq-st"></span></div>`) +
-        `<div class="hint" style="margin-top:6px">폐수동·공조냉동은 계량기로 실측하므로 원인 찾기에 <b>그 기간에 있었던 변동 내용만 코멘트</b>로 붙습니다. 생산동·기타(계량기 없는 곳)는 kW × 하루 가동시간이 전기 원인 찾기의 '부하 변동' 줄로 계산에 들어갑니다. 같은 구역·설비는 가장 최근 시작일 줄이 적용됩니다. 대당 kW 계산: 3상 380V × 전류(A) × 1.732 × 0.85 ÷ 1000.</div>`;
+        `<div class="hint" style="margin-top:6px">폐수동·공조냉동은 계량기로 실측하므로 원인 분석에 <b>그 기간에 있었던 변동 내용만 코멘트</b>로 붙습니다. 생산동·기타(계량기 없는 곳)는 kW × 하루 가동시간이 전기 원인 분석의 '부하 변동' 줄로 계산에 들어갑니다. 같은 구역·설비는 가장 최근 시작일 줄이 적용됩니다. 대당 kW 계산: 3상 380V × 전류(A) × 1.732 × 0.85 ÷ 1000.</div>`;
       el.querySelectorAll('.eqi').forEach(e => e.addEventListener('change', () => { const x = EQ_EDIT[e.dataset.i], k = e.dataset.k; x[k] = (k === 'kw' || k === 'hours') ? Number(e.value) : e.value; document.getElementById('eq-st').textContent = '저장하지 않음'; }));
     }
     let eqShowAll = false;
@@ -1421,7 +1421,7 @@
     let anomDays = 60, anomSpan = 1, anomTblU = 'all', anomRatio = 1.4, anomUtil = 'all', anomList = [], anomMonth = null;
     function renderAnomaly() {
       setTimeout(renderProdCompare, 0);
-      // 기간 = 원인 찾기 맨 위에서 고른 달 (또는 그 달까지 3개월) — 진행 중인 달은 어제까지
+      // 기간 = 원인 분석 맨 위에서 고른 달 (또는 그 달까지 3개월) — 진행 중인 달은 어제까지
       const am = anomMonth || causeYm || lastCompleteYm(), yst = UT.addDays(todayStr, -1), mEnd = UT.dateStr(am, UT.daysIn(am));
       let fm = am; for (let i = 1; i < anomSpan; i++) fm = UT.prevYm(fm);
       const to = mEnd > yst ? yst : mEnd, from = UT.dateStr(fm, 1);
@@ -1438,7 +1438,7 @@
           return `<tr class="anom-row" onclick="anomFocus='${a.d}';goCause('${a.d}','${a.u}')" title="이 날이 있는 달로 위 그래프·원인을 바꿉니다"><td>${a.d.slice(5).replace('-', '/')} (${W[wd]})</td><td class="l"><i class="dot" style="background:${u.color}"></i>${u.name}</td><td>${f1(a.v)} ${u.unit}</td><td>${a.base === null ? '-' : f1(a.base) + ' ' + u.unit}</td>
             <td>${a.kind !== '과다' ? '-' : a.pct === null ? '<span class="up">평소 0</span>' : `<span class="up">+${nf0.format(a.pct)}%</span>`}</td><td class="l">${a.kind === '지침 오류' ? '<span class="ng">지침 확인 필요 (다음날 지침이 더 작음)</span>' : (a.work ? '생산일 과다 사용' : '쉬는 날 사용 (누수·미차단 확인)')}</td>
             <td class="l" onclick="event.stopPropagation()">${isAdmin() ? `<input class="anom-note" data-d="${a.d}" data-u="${a.u}" value="${esc(anomNote(a.d, a.u))}" placeholder="예) 자숙기 세척 / 누수 확인 → 밸브 교체">` : esc(anomNote(a.d, a.u)) || '<span class="hint">-</span>'}</td>
-            <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인 찾기 →</button></td></tr>`; }).join('') + '</table>';
+            <td onclick="event.stopPropagation()"><button class="chip" title="이 날이 그 달 사용량에 얼마나 영향을 줬는지" onclick="goCause('${a.d}','${a.u}')">${Number(a.d.slice(5, 7))}월 원인 분석 →</button></td></tr>`; }).join('') + '</table>';
       bindAnomNotes('#anom-table');
       renderAnomChart();
     }
@@ -2315,7 +2315,7 @@
       if (!PRODD) { el.innerHTML = '<div class="loading">생산 대시보드 일별 실적 불러오는 중...</div>';
         try { await loadProdDaily(); } catch (e) { el.innerHTML = `<div class="empty">생산 대시보드 자료를 읽지 못했습니다: ${esc(errMsg(e))}<br>회사 네트워크에서 firestore.googleapis.com 이 막혀 있을 수 있습니다.</div>`; return; } }
       try { await loadTemps(); } catch (e) { TEMPS = TEMPS || {}; }
-      // 기간 = 위에서 고른 달 (원인 찾기 맨 위 ◀ ▶) — 진행 중인 달은 어제까지 · 하루 식은 그 달 마지막 날까지 최근 120일로 맞춤
+      // 기간 = 위에서 고른 달 (원인 분석 맨 위 ◀ ▶) — 진행 중인 달은 어제까지 · 하루 식은 그 달 마지막 날까지 최근 120일로 맞춤
       const pym = anomMonth || causeYm || lastCompleteYm(), mEnd = UT.dateStr(pym, UT.daysIn(pym)), yst = UT.addDays(todayStr, -1);
       const to = mEnd > yst ? yst : mEnd, from = UT.dateStr(pym, 1), U = { ...PD_UTIL[pdUtil] }, M = pdFit(pdUtil, to);
       const HI_PCT = pdUtil === 'water' || pdUtil === 'ww' ? 0.3 : 0.15; // 용수·폐수는 하루 값이 청소·방류 일정에 따라 크게 흔들려 30%
@@ -2362,7 +2362,7 @@
       YEARDATA[9999] = nd;
     }
     // ---- 기록 적기 (특이사항 + 부하 변동 한 곳에서) ----
-    //  특이사항: ut_monthly 9999-00 notes · 부하 변동(그 날부터 계속되는 운전 변화): 9999-00 equip (원인 찾기·목표 식 계산에 들어감)
+    //  특이사항: ut_monthly 9999-00 notes · 부하 변동(그 날부터 계속되는 운전 변화): 9999-00 equip (원인 분석·목표 식 계산에 들어감)
     const EQ_AREAS = ['생산동', '폐수동', '공조냉동', '기타'];
     const eqKey = (x, i) => x.id || `eqi${i}|${x.d}|${x.area}|${x.name}`;
     const eqAll = () => equipList().map((x, i) => ({ ...x, _k: eqKey(x, i) }));
@@ -2373,7 +2373,7 @@
       const E = unEditId && !isEq ? utNotes().find(n => n.id === unEditId) : null, X = isEq ? eqAll().find(x => x._k === unEditId.slice(3)) : null;
       const utilBox = (n) => UT.UTILS.map(u => `<label class="un-u"><input type="checkbox" class="un-ut" value="${u.k}" ${(n ? (n.utils || []) : UN_UTIL_DEF['전기']).includes(u.k) ? 'checked' : ''}> ${u.name}</label>`).join('');
       const load = !!X || unLoadOn;
-      let h = ro ? '' : `<div class="card"><h3>${E || X ? '기록 고치기' : '기록 적기'} <span class="sub">설비·운전에 있었던 일 — 원인 찾기 ③에 그 기간 기록이 나옵니다</span></h3>
+      let h = ro ? '' : `<div class="card"><h3>${E || X ? '기록 고치기' : '기록 적기'} <span class="sub">설비·운전에 있었던 일 — 원인 분석 ③에 그 기간 기록이 나옵니다</span></h3>
         <div class="un-form">
           <label>날짜 <input type="date" id="un-d" value="${esc(E ? E.d : X ? X.d : todayStr)}"></label>
           <label>분류 <select id="un-cat" onchange="unCatChange(this.value)" ${load ? 'disabled' : ''}>${UN_CATS.map(c => `<option ${E && E.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -2387,7 +2387,7 @@
             <label>대당 kW <input id="un-kw" type="number" step="0.1" style="width:80px" value="${X ? X.kw ?? '' : ''}"></label>
             <label>하루 가동시간 합 (h) <input id="un-hours" type="number" step="0.5" style="width:80px" value="${X ? X.hours ?? '' : ''}"></label>
             <label class="hint">kW 계산 도우미: 전류 <input id="un-amp" type="number" step="0.1" style="width:64px" oninput="const a=Number(this.value);if(a)document.getElementById('un-kw').value=(a*380*1.732*0.85/1000).toFixed(1)"> A → 3상 380V × 1.732 × 역률 0.85</label>
-            <div class="hint" style="flex-basis:100%">· 생산동·기타(계량기 없는 곳)는 kW × 하루 시간이 그날부터 매일 전기 계산(원인 찾기 ①·목표 식)에 더해짐 · 폐수동·공조냉동은 계량기로 재므로 설명으로만 붙음 · 같은 구역·설비는 가장 최근 시작일 기록이 적용 (예: 터보블로워 16h → 24h로 바뀌면 새 날짜로 하나 더 적기) · 가스 쪽 변화(보일러 대수 등)는 kW를 0으로 두고 내용만 적으면 됨</div></div>` : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 찾기에 나옵니다</span></div>`}
+            <div class="hint" style="flex-basis:100%">· 생산동·기타(계량기 없는 곳)는 kW × 하루 시간이 그날부터 매일 전기 계산(원인 분석 ①·목표 식)에 더해짐 · 폐수동·공조냉동은 계량기로 재므로 설명으로만 붙음 · 같은 구역·설비는 가장 최근 시작일 기록이 적용 (예: 터보블로워 16h → 24h로 바뀌면 새 날짜로 하나 더 적기) · 가스 쪽 변화(보일러 대수 등)는 kW를 0으로 두고 내용만 적으면 됨</div></div>` : `<div class="wide">관련 유틸리티 <span id="un-utils">${utilBox(E)}</span> <span class="hint">— 체크한 유틸리티의 원인 분석에 나옵니다</span></div>`}
           <div><button class="btn" onclick="unSave()">${E || X ? '✓ 고친 내용 저장' : '+ 기록 추가'}</button>${E || X ? ` <button class="btn secondary" onclick="unEditId=null;unLoadOn=false;renderNotes()">취소</button>` : ''}</div>
         </div></div>`;
       const inM = d => !unYm || (d || '').slice(0, 7) === unYm;
@@ -2419,7 +2419,7 @@
       await saveYear(9999, { equip: out }); EQ_EDIT = null; resetCache && resetCache(); resetPickCache();
     }
     async function eqDel2(k) {
-      const x = eqAll().find(z => z._k === k); if (!x || !confirm(`${x.d} 부하 변동 「${x.area} ${x.name || ''}」 기록을 지울까요?\n\n지우면 원인 찾기·목표 식 계산에서도 빠집니다.`)) return;
+      const x = eqAll().find(z => z._k === k); if (!x || !confirm(`${x.d} 부하 변동 「${x.area} ${x.name || ''}」 기록을 지울까요?\n\n지우면 원인 분석·목표 식 계산에서도 빠집니다.`)) return;
       try { await eqPut(L => L.filter(z => z._k !== k)); } catch (e) { alert('삭제 실패: ' + errMsg(e)); return; }
       renderNotes();
     }
