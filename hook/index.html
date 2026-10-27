@@ -80,7 +80,7 @@
     .prow { display: flex; align-items: center; gap: 8px; padding: 12px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
     .prow:last-child { border-bottom: none; } .prow:active, .prow:hover { background: #f6f8fb; }
     .prow .tree { color: #bbb; } .prow .pn { font-weight: 700; font-size: 15px; } .prow .pc { flex: 1; font-size: 11px; color: var(--muted); }
-    .prow .pk { font-size: 13px; font-weight: 700; color: var(--blue); } .prow .chev { color: #bbb; font-size: 18px; }
+    .prow .pk { font-size: 13px; font-weight: 700; color: var(--blue); text-align: right; } .prow .pk small { display: block; font-size: 10px; font-weight: 400; color: var(--muted); } .prow .chev { color: #bbb; font-size: 18px; }
     .crumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 14px; padding: 2px 2px 4px; }
     .crumb a { color: var(--blue); text-decoration: none; }
     .pe { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; } .pe label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
@@ -135,7 +135,8 @@
     #lb button { position: absolute; background: rgba(255,255,255,.15); color: #fff; border: none; font-size: 22px; width: 48px; height: 48px; border-radius: 24px; cursor: pointer; }
     #lb .lb-x { top: 12px; right: 12px; } #lb .lb-p { left: 8px; top: 50%; } #lb .lb-n { right: 8px; top: 50%; }
     #lb-cap { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; }
-  </style>
+      #lb-tools { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; } #lb-tools button { background: rgba(255,255,255,.9); border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+</style>
 </head>
 <body>
   <div id="app" hidden>
@@ -172,7 +173,7 @@
     <div id="v-photo" hidden>
       <div class="wrap wide"><div class="panel" id="photo-body"></div></div>
     </div>
-    <div id="lb" hidden onclick="if(event.target.id==='lb')lbClose()"><button class="lb-x" onclick="lbClose()">✕</button><button class="lb-p" onclick="lbGo(-1)">◀</button><img id="lb-img" alt=""><button class="lb-n" onclick="lbGo(1)">▶</button><div id="lb-cap"></div></div>
+    <div id="lb" hidden onclick="if(event.target.id==='lb')lbClose()"><button class="lb-x" onclick="lbClose()">✕</button><button class="lb-p" onclick="lbGo(-1)">◀</button><img id="lb-img" alt=""><button class="lb-n" onclick="lbGo(1)">▶</button><div id="lb-cap"></div><div id="lb-tools"><button onclick="phRotate(LB.list[LB.i].id)">↻ 돌리기</button><button onclick="phReplacePick(LB.list[LB.i].id)">교체</button></div></div>
     <div class="toast" id="toast"></div>
   </div>
 
@@ -244,19 +245,19 @@
     function openPanel(p) { panelSel = p; renderInput(); window.scrollTo(0, 0); }
     function pStat(p) { // 차단기 수, 오늘 잰 수, 하위 포함 kW
       const bs = allB().filter(b => b.panel === p && String(b.name || '').trim()), m = bs.filter(b => readOn(b.id, workDate) || DRAFT[b.id]).length, st = subtreeKw(p, true);
-      return { n: bs.length, m, kw: st.kw, kn: st.n };
+      return { n: bs.length, m, kw: st.kw, kn: st.n, main: st.main, loads: st.loads };
     }
     function pRowHtml(p, depth) {
       const t = pStat(p), kids = childPanels(p).length;
       return `<div class="prow" style="padding-left:${12 + depth * 22}px" onclick="openPanel(${qj(p)})">
         ${depth ? '<span class="tree">└</span>' : ''}<span class="pn">${esc(p)}</span>
         <span class="pc">${t.n ? `차단기 ${t.n} · 오늘 ${t.m}/${t.n}` : '차단기 없음'}${kids ? ` · 하위 ${kids}` : ''}</span>
-        <span class="pk">${t.kn ? nf(t.kw, 1) + ' kW' : ''}</span><span class="chev">›</span></div>`;
+        <span class="pk">${t.kn ? `${nf(t.kw, 1)} kW${t.main !== null && t.loads ? `<small>메인 측정 · 차단기 합 ${nf(t.loads, 1)}</small>` : t.main !== null ? '<small>메인 측정</small>' : '<small>차단기 합</small>'}` : ''}</span><span class="chev">›</span></div>`;
     }
     function renderPanelList(ps) {
       const el = document.getElementById('content');
       let h = panelErr ? `<div class="card" style="border-color:var(--red)"><b>분전반 목록을 저장할 표가 없습니다.</b><div class="hint">Supabase에 19번 SQL(19_hook_photos.sql)을 실행해 주세요. 실행 전에는 새로 만든 분전반이 새로고침하면 사라집니다.</div></div>` : '';
-      h += `<div class="hint">분전반을 누르면 차단기가 나옵니다. 오른쪽 kW = 오늘 잰 부하 합 (하위 분전반 포함, 메인 차단기 이중 합산 없음).</div>`;
+      h += `<div class="hint">분전반을 누르면 차단기가 나옵니다. 오른쪽 kW = 오늘 잰 부하 — <b>메인 차단기를 쟀으면 메인 값</b>, 안 쟀으면 부하 차단기 합 (하위 분전반 포함). 하위 분전반은 위에서 내려가는 차단기 값과 하위 분전반 값 중 한 번만 더해서 겹치지 않습니다.</div>`;
       h += ps.length ? `<div class="plist">${ps.map(p => pRowHtml(p, PDEPTH[p] || 0)).join('')}</div>` : `<div class="card"><b>분전반을 먼저 만들어 주세요.</b></div>`;
       h += `<button class="addbtn" onclick="addPanel('')">＋ 분전반 추가 (최상위)</button>`;
       el.innerHTML = h;
@@ -315,15 +316,21 @@
       } catch (e) { alert('삭제 실패: ' + errMsg(e)); }
     }
     // 분전반 아래(하위 포함) 말단 부하 합 — today=true면 측정 화면 날짜 값, 아니면 차단기별 최근 가동 측정값
-    function subtreeKw(p, today, seen = new Set()) {
-      if (seen.has(p)) return { kw: 0, n: 0 }; seen.add(p); let kw = 0, n = 0;
-      childPanels(p).forEach(c => { const s = subtreeKw(c, today, seen); kw += s.kw; n += s.n; });
+    // 분전반 부하 합: 메인 차단기를 쟀으면 메인 값, 안 쟀으면 부하 차단기 합 (중복 합산 없음)
+    //  · 하위 분전반으로 가는 차단기(⤷)는 그 차단기를 쟀으면 그 값, 안 쟀으면 하위 분전반 합으로 한 번만 넣음
+    function bKw(b, today) { if (today) { const c = cur(bv(b)); return c.running === false ? null : kwOf(bv(b), c); } const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0]; return l ? kwOf(b, l) : null; }
+    function panelAgg(p, today, seen = new Set()) {
+      if (seen.has(p)) return { main: null, loads: 0, total: 0, n: 0 }; seen.add(p);
+      let loads = 0, n = 0, main = null; const done = new Set();
       allB().filter(b => b.panel === p).forEach(b => {
-        if (feedOf(b) && feedOf(b) !== p) return; // 하위 분전반 메인은 하위 쪽 차단기로 합산
-        let k = null; if (today) { const c = cur(b); if (c.running !== false) k = kwOf(b, c); } else { const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0]; if (l) k = kwOf(b, l); }
-        if (k !== null) { kw += k; n++; } });
-      return { kw, n };
+        const k = bKw(b, today);
+        if (secOf(b) === 'main' && !(feedOf(b) && feedOf(b) !== p)) { if (k !== null) { main = (main || 0) + k; } return; }
+        if (feedOf(b) && feedOf(b) !== p) { const c = feedOf(b); done.add(c); const sub = panelAgg(c, today, seen); if (k !== null) { loads += k; n++; } else if (sub.n || sub.main !== null) { loads += sub.total; n += sub.n || 1; } return; }
+        if (k !== null) { loads += k; n++; } });
+      childPanels(p).forEach(c => { if (done.has(c)) return; const sub = panelAgg(c, today, seen); if (sub.n || sub.main !== null) { loads += sub.total; n += sub.n || 1; } });
+      return { main, loads, n, total: main !== null ? main : loads };
     }
+    function subtreeKw(p, today) { const a = panelAgg(p, today); return { kw: a.total, n: a.n + (a.main !== null ? 1 : 0), main: a.main, loads: a.loads }; }
     function cur(b) { // 화면에 보일 값 = 고친 값 > 그날 기록
       const r = readOn(b.id, workDate) || {}, d = DRAFT[b.id] || {};
       const g = k => (k in d) ? d[k] : (r[k] ?? '');
@@ -347,7 +354,7 @@
           <label class="ml">차단기<input class="ra" inputmode="decimal" placeholder="-" value="${esc(b.rated_a ?? '')}" onchange="bset('${id}','rated_a',this.value)">A</label>
           <input class="nt" placeholder="비고 (정격용량·모터 사양 등)" value="${esc(b.note ?? '')}" onchange="bset('${id}','note',this.value)"></div>
         <div class="meta"><label class="ml">⤷ 하위 분전반 메인<input class="fd" list="pl" placeholder="해당 없으면 비움" value="${esc(b.feeds ?? '')}" onchange="bset('${id}','feeds',this.value.trim())"></label></div>
-        ${feedOf(b) ? `<div class="feedtag">⤷ 하위 분전반 <a href="#" onclick="panelSel=${JSON.stringify(feedOf(b)).replace(/"/g, '&quot;')};renderInput();return false"><b>${esc(feedOf(b))}</b></a> 메인 차단기 — 전체 합계에서는 빠지고 하위 분전반 차단기들로 합산 (이중 합산 방지)${(() => { const sub = subtreeKw(feedOf(b), true); return sub.n ? ` · 하위 측정 합 ${nf(sub.kw, 1)} kW${kw !== null ? ` / 이 차단기 ${nf(kw, 1)} kW` : ''}` : ''; })()}</div>` : ''}
+        ${feedOf(b) ? `<div class="feedtag">⤷ 하위 분전반 <a href="#" onclick="panelSel=${JSON.stringify(feedOf(b)).replace(/"/g, '&quot;')};renderInput();return false"><b>${esc(feedOf(b))}</b></a> 메인 차단기 — 이 값을 쟀으면 이 값, 안 쟀으면 하위 분전반 합으로 한 번만 합산 (이중 합산 방지)${(() => { const sub = subtreeKw(feedOf(b), true); return sub.n ? ` · 하위 측정 합 ${nf(sub.kw, 1)} kW${kw !== null ? ` / 이 차단기 ${nf(kw, 1)} kW` : ''}` : ''; })()}</div>` : ''}
         <div class="meta"><input class="nt" placeholder="이번 측정 메모 (운전 상태 등)" value="${esc(c.note)}" onchange="rset('${id}','note',this.value)"></div>
         ${last ? `<div class="last">지난 측정 ${last.d.slice(2).replace(/-/g, '.')} · ${last.running ? `${[last.r, last.s, last.t].map(v => v ?? '-').join(' / ')} A → ${nf(kwOf(b, last), 1)} kW` : '정지'}</div>` : ''}
       </div>`;
@@ -405,11 +412,10 @@
       renderInput(); setTimeout(() => { const c = document.querySelectorAll('.card .nm'); if (c.length) c[c.length - 1].focus(); }, 30);
     }
     function renderSumBar() {
-      const bs = BRK.concat(NEWB).filter(b => b.panel === panelSel); let tot = 0, n = 0, ft = 0;
-      bs.forEach(b => { const c = cur(bv(b)); const k = kwOf(bv(b), c); if (k !== null && c.running !== false) { if (feedOf(bv(b))) ft += k; else { tot += k; n++; } } });
+      const ag = panelSel ? panelAgg(panelSel, true) : null;
       const dc = dirtyCount();
       const all = panels().filter(x => !parentName(x)).reduce((a, x) => { const t = subtreeKw(x, true); return { kw: a.kw + t.kw, n: a.n + t.n }; }, { kw: 0, n: 0 });
-      document.getElementById('sum').innerHTML = !panelSel ? `전체 · 오늘 가동 ${all.n}개 합 <b>${nf(all.kw, 1)} kW</b>${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : `${esc(panelSel)} · 가동 ${n}개 합 <b>${nf(tot, 1)} kW</b>${ft ? ` <span title="하위 분전반 메인 차단기 — 합계 제외">+ 하위 피더 ${nf(ft, 1)}</span>` : ''}${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}`;
+      document.getElementById('sum').innerHTML = !panelSel ? `전체 · 오늘 가동 ${all.n}개 합 <b>${nf(all.kw, 1)} kW</b>${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}` : `${esc(panelSel)} · 메인 <b>${ag.main === null ? '-' : nf(ag.main, 1) + ' kW'}</b> · 부하 차단기 합 <b>${nf(ag.loads, 1)} kW</b>${ag.main !== null && ag.loads ? ` <span style="color:var(--muted)">(차이 ${ag.main - ag.loads >= 0 ? '+' : ''}${nf(ag.main - ag.loads, 1)})</span>` : ''}${dc ? ` · <span style="color:var(--amber)">저장 안 함 ${dc}건</span>` : ''}`;
       const sbtn = document.getElementById('save-btn'); sbtn.classList.toggle('has', !!dc); sbtn.textContent = dc ? `저장 (${dc})` : '저장';
     }
     async function saveAll() {
@@ -515,7 +521,7 @@
             <div class="qa"><input id="qa-${k}" placeholder="${nm} 차단기 명칭 입력 후 Enter" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();quickAdd(${qj(p)},'${k}',this)}" onpaste="const t=(event.clipboardData||window.clipboardData).getData('text');if(/\\n/.test(t)){event.preventDefault();quickAdd(${qj(p)},'${k}',this,t)}"><button class="mini" onclick="quickAdd(${qj(p)},'${k}',document.getElementById('qa-${k}'))">추가</button></div></div>`; });
         h += `<div class="hint">⋯ 를 누르면 정격 kW·극수(2P/3P/4P)·AF·AT·kA·비고·하위 분전반 메인·위치(메인/왼쪽/오른쪽) 설정과 목록에서 빼기가 나옵니다. 여러 줄을 한꺼번에 붙여넣어도 한 줄에 하나씩 들어갑니다.</div>`;
       } else {
-        h += `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 넣으세요. 안 돌면 「가동」을 눌러 「정지」로. kW는 역률 ${PF} 가정.</div>`;
+        h += `<div class="hint">가동 중인 차단기만 R·S·T 전류(A)를 넣으세요. 안 돌면 「가동」을 눌러 「정지」로. kW는 역률 ${PF} 가정.<br>· <b>N상은 안 재도 됩니다</b> (3상 4P도 R·S·T만 — 전력은 각 상 전류로 계산) · <b>단상 차단기</b>는 연결된 상 칸 하나에만 적으면 됩니다 (220V = 220V × 전류).</div>`;
         if (!L.length) h += `<div class="card">차단기가 없습니다. 「✏ 차단기 등록·순서」에서 먼저 등록하세요.</div>`;
         SECS.forEach(([k, nm]) => { const S = L.filter(b => secOf(b) === k); if (S.length) h += `<div class="sec-h">${nm}</div>` + S.map(measureRow).join(''); });
       }
@@ -530,17 +536,17 @@
       const lastRun = b => READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0];
       let list = BRK.filter(b => !sumPanel || b.panel === sumPanel).map(b => { const l = lastRun(b), any = latest(b), kw = l ? kwOf(b, l) : null; return { b, l, any, kw, lr: kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null, n: READ.filter(r => r.breaker_id === b.id && r.running).length }; });
       if (sumSort === 'kw') list.sort((a, c) => (c.kw ?? -1) - (a.kw ?? -1)); else if (sumSort === 'lr') list.sort((a, c) => (c.lr ?? -1) - (a.lr ?? -1)); else list.sort((a, c) => a.b.panel < c.b.panel ? -1 : a.b.panel > c.b.panel ? 1 : a.b.sort - c.b.sort);
-      const leaf = list.filter(x => !feedOf(x.b)), tot = leaf.reduce((a, x) => a + (x.kw || 0), 0), mx = Math.max(1, ...list.map(x => x.kw || 0));
-      const byPanel = {}; leaf.forEach(x => { byPanel[x.b.panel] = (byPanel[x.b.panel] || 0) + (x.kw || 0); });
+      const tops = sumPanel ? [sumPanel] : ps.filter(x => !parentName(x)), tot = tops.reduce((a, x) => a + panelAgg(x, false).total, 0), mx = Math.max(1, ...list.map(x => x.kw || 0));
+      const byPanel = {}; tops.forEach(x => { byPanel[x] = panelAgg(x, false).total; });
       let h = `<div class="tool"><b>가동 중 부하 (차단기별 가장 최근 가동 측정값)</b>
         <select onchange="sumPanel=this.value;renderSum()"><option value="">전체 분전반</option>${ps.map(p => `<option ${p === sumPanel ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
         <select onchange="sumSort=this.value;renderSum()"><option value="kw" ${sumSort === 'kw' ? 'selected' : ''}>큰 부하 순</option><option value="lr" ${sumSort === 'lr' ? 'selected' : ''}>부하율 높은 순</option><option value="panel" ${sumSort === 'panel' ? 'selected' : ''}>분전반 순</option></select>
         <button class="btn sec" onclick="downloadSum()">📥 엑셀</button></div>
-        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})${list.some(x => feedOf(x.b)) ? ' · <span class="feedtag-s">하위 분전반 메인 차단기는 합계에서 뺌 (이중 합산 방지)</span>' : ''}</div>
+        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})<br>합계는 분전반마다 <b>메인 차단기를 쟀으면 메인 값</b>, 안 쟀으면 부하 차단기 합 · 하위 분전반은 위에서 내려가는 차단기 값과 하위 합 중 한 번만 (중복 합산 없음)</div>
         ${treeHtml()}
         <div class="tbl"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>R</th><th>S</th><th>T (A)</th><th class="l">가동 부하 (kW)</th><th>정격 kW</th><th>부하율</th><th>측정일</th><th>횟수</th><th class="l">비고</th></tr>`;
       list.forEach(x => { const l = x.l;
-        h += `<tr class="${l ? '' : 'off'} ${feedOf(x.b) ? 'feedrow' : ''}"><td class="l">${PDEPTH[x.b.panel] ? '↳'.repeat(PDEPTH[x.b.panel]) + ' ' : ''}${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a>${feedOf(x.b) ? ` <span class="feedtag-s">⤷ ${esc(feedOf(x.b))} 메인 · 합계 제외</span>` : ''}</td><td>${x.b.volt}V</td>
+        h += `<tr class="${l ? '' : 'off'} ${feedOf(x.b) ? 'feedrow' : ''}"><td class="l">${PDEPTH[x.b.panel] ? '↳'.repeat(PDEPTH[x.b.panel]) + ' ' : ''}${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a>${feedOf(x.b) ? ` <span class="feedtag-s">⤷ ${esc(feedOf(x.b))}</span>` : secOf(x.b) === 'main' ? ' <span class="feedtag-s">메인</span>' : ''}</td><td>${x.b.volt}V</td>
           <td>${l ? nf(l.r) : '-'}</td><td>${l ? nf(l.s) : '-'}</td><td>${l ? nf(l.t) : '-'}</td>
           <td class="l">${x.kw === null ? (x.any ? '<span class="hist">정지 중만 측정</span>' : '<span class="hist">측정 없음</span>') : `<span class="bar" style="width:${Math.round(x.kw / mx * 90)}px"></span> <b>${nf(x.kw, 1)}</b>`}</td>
           <td>${x.b.rated_kw ?? '-'}</td><td class="${x.lr === null ? '' : x.lr > 90 ? 'lr-hi' : x.lr < 40 ? 'lr-lo' : ''}">${x.lr === null ? '-' : nf(x.lr, 0) + '%'}</td>
@@ -548,13 +554,12 @@
       h += `</table></div><div class="hint" style="margin-top:8px">· 부하율 <span class="lr-lo">40% 미만</span> = 정격보다 훨씬 작게 도는 설비 (용량 과다·인버터 검토 대상) · <span class="lr-hi">90% 넘음</span> = 과부하 주의 · 차단기 이름을 누르면 측정 이력이 나옵니다.</div><div id="hist"></div>`;
       el.innerHTML = h;
     }
-    function treeHtml() { // 분전반 구조: 위→아래, 피더 측정값과 하위 합 비교
-      const ps = panels(); if (!ps.some(p => parentOf(p))) return '';
-      const rows = ps.map(p => { const own = allB().filter(b => b.panel === p && !feedOf(b)).reduce((a, b) => { const l = READ.filter(r => r.breaker_id === b.id && r.running).sort((x, y) => x.d < y.d ? 1 : -1)[0]; return a + (l ? kwOf(b, l) || 0 : 0); }, 0);
-        const sub = subtreeKw(p, false), par = parentOf(p); let fk = null; if (par) { const l = READ.filter(r => r.breaker_id === par.id && r.running).sort((x, y) => x.d < y.d ? 1 : -1)[0]; if (l) fk = kwOf(par, l); }
-        return `<tr><td class="l">${'　'.repeat(PDEPTH[p] || 0)}${PDEPTH[p] ? '↳ ' : ''}<b>${esc(p)}</b>${par ? ` <span class="hist">(${esc(par.panel)} · ${esc(par.name)})</span>` : ''}</td><td>${nf(own, 1)}</td><td><b>${nf(sub.kw, 1)}</b></td><td>${fk === null ? '-' : nf(fk, 1)}</td><td>${fk === null || !sub.n ? '-' : `${fk - sub.kw >= 0 ? '+' : ''}${nf(fk - sub.kw, 1)}`}</td></tr>`; }).join('');
-      return `<h4 style="margin:10px 0 4px">분전반 구조</h4><div class="tbl" style="max-height:none;margin-bottom:10px"><table class="t"><tr><th class="l">분전반</th><th>자체 부하 kW</th><th>하위 포함 합 kW</th><th>메인(피더) 측정 kW</th><th>차이</th></tr>${rows}</table></div>
-        <div class="hint" style="margin-bottom:10px">차이 = 메인 차단기 측정값 − 하위 차단기 합. 크면 안 잰 차단기가 있거나 측정 시각이 달라서입니다.</div>`;
+    function treeHtml() { // 분전반 구조: 메인 측정값과 부하 차단기 합을 따로
+      const ps = panels(); if (!ps.length) return '';
+      const rows = ps.map(p => { const a = panelAgg(p, false), par = parentOf(p); let fk = par ? bKw(par, false) : null;
+        return `<tr><td class="l">${'　'.repeat(PDEPTH[p] || 0)}${PDEPTH[p] ? '↳ ' : ''}<b>${esc(p)}</b>${par ? ` <span class="hist">(${esc(par.panel)} · ${esc(par.name)})</span>` : ''}</td><td>${fk === null ? '-' : nf(fk, 1)}</td><td>${a.main === null ? '-' : nf(a.main, 1)}</td><td>${a.n ? nf(a.loads, 1) : '-'}</td><td>${a.main === null || !a.n ? '-' : `${a.main - a.loads >= 0 ? '+' : ''}${nf(a.main - a.loads, 1)}`}</td><td><b>${nf(a.total, 1)}</b></td></tr>`; }).join('');
+      return `<h4 style="margin:10px 0 4px">분전반 구조</h4><div class="tbl" style="max-height:none;margin-bottom:10px"><table class="t"><tr><th class="l">분전반</th><th>위에서 내려오는 차단기 kW</th><th>메인 차단기 kW</th><th>부하 차단기 합 kW<br><span class="hist">하위 분전반 포함</span></th><th>차이<br><span class="hist">메인 − 합</span></th><th>합계에 쓰는 값</th></tr>${rows}</table></div>
+        <div class="hint" style="margin-bottom:10px">· 합계에 쓰는 값 = 메인을 쟀으면 메인, 아니면 부하 차단기 합 · 하위 분전반은 위에서 내려가는 차단기를 쟀으면 그 값, 아니면 하위 분전반 값으로 <b>한 번만</b> 더함<br>· 차이가 크면 안 잰 차단기가 있거나 측정 시각이 달라서(부하가 그새 바뀜) — 같은 시각에 재면 거의 같아야 함</div>`;
     }
     function histOf(id) {
       const b = BRK.find(x => x.id === id), rs = READ.filter(r => r.breaker_id === id).sort((a, c) => a.d < c.d ? 1 : -1);
@@ -630,6 +635,29 @@
       try { await sb.storage.from('pm-photos').remove([x.path]); } catch (e) { }
       PHOTOS = PHOTOS.filter(p => p.id !== id); renderPhoto();
     }
+    // 사진 고치기: 회전(↻ 90°) · 교체 — 새 파일로 올리고 표의 경로만 바꾼 뒤 옛 파일 삭제
+    async function phSwap(id, blob) {
+      const x = PHOTOS.find(p => p.id === id); if (!x) return;
+      const d = new Date(), path = `hook/${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${uuid()}.jpg`;
+      const up = await sb.storage.from('pm-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false }); if (up.error) throw up.error;
+      const { error } = await sb.from('hook_photos').update({ path }).eq('id', id); if (error) { try { await sb.storage.from('pm-photos').remove([path]); } catch (e) { } throw error; }
+      const old = x.path; x.path = path; try { await sb.storage.from('pm-photos').remove([old]); } catch (e) { }
+      await signUrls([path]);
+    }
+    async function phRotate(id) {
+      const x = PHOTOS.find(p => p.id === id); if (!x) return; toast('돌리는 중...');
+      try {
+        const { data, error } = await sb.storage.from('pm-photos').download(x.path); if (error) throw error;
+        const img = await new Promise((ok, no) => { const u = URL.createObjectURL(data), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => no(new Error('사진을 읽지 못했습니다')); im.src = u; });
+        const cv = document.createElement('canvas'); cv.width = img.naturalHeight; cv.height = img.naturalWidth; const g = cv.getContext('2d');
+        g.translate(cv.width, 0); g.rotate(Math.PI / 2); g.drawImage(img, 0, 0);
+        const blob = await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error('사진 변환 실패')), 'image/jpeg', 0.85));
+        await phSwap(id, blob); toast('돌렸습니다');
+      } catch (e) { alert('회전 실패: ' + errMsg(e)); return; }
+      refreshPhotoViews();
+    }
+    function phReplacePick(id) { const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*'; f.onchange = async () => { const file = f.files[0]; if (!file) return; toast('바꾸는 중...'); try { await phSwap(id, await compressImage(file)); toast('사진을 바꿨습니다'); } catch (e) { alert('교체 실패: ' + errMsg(e)); return; } refreshPhotoViews(); }; f.click(); }
+    function refreshPhotoViews() { if (!document.getElementById('v-photo').hidden) renderPhoto(); else renderInput(); if (!document.getElementById('lb').hidden) lbShow(); }
     function renderPhoto() {
       const el = document.getElementById('photo-body'), ps = [...new Set(panels().concat([...PH_EXTRA]))], q = s => JSON.stringify(s).replace(/"/g, '&quot;');
       const groups = [...new Set(PHOTOS.map(x => x.panel || ''))].sort((a, b) => a === '' ? 1 : b === '' ? -1 : ps.indexOf(a) - ps.indexOf(b));
@@ -649,7 +677,7 @@
         const L = phOf(g);
         h += `<div class="ph-h">${g ? esc(g) : '미분류'} <span class="hint">${L.length}장</span></div><div class="ph-grid">${L.map((x, i) => `<div class="ph-it ${x.kind === 'panel' ? 'pn' : ''}"><img loading="lazy" src="${esc(URLS[x.path] || '')}" onclick="lbOpen(${q(g)},${i})">
           <div class="pc"><select onchange="phSet('${x.id}','panel',this.value)">${panelOpts(x.panel)}</select>
-            <div class="row"><select onchange="phSet('${x.id}','kind',this.value)"><option value="panel" ${x.kind === 'panel' ? 'selected' : ''}>분전반 전체</option><option value="breaker" ${x.kind === 'breaker' ? 'selected' : ''}>차단기</option></select>${isAdmin() ? `<button class="mini" onclick="phDel('${x.id}')">삭제</button>` : ''}</div>
+            <div class="row"><select onchange="phSet('${x.id}','kind',this.value)"><option value="panel" ${x.kind === 'panel' ? 'selected' : ''}>분전반 전체</option><option value="breaker" ${x.kind === 'breaker' ? 'selected' : ''}>차단기</option></select><button class="mini" title="오른쪽으로 90° 돌리기" onclick="phRotate('${x.id}')">↻</button><button class="mini" title="다른 사진으로 바꾸기" onclick="phReplacePick('${x.id}')">교체</button>${isAdmin() ? `<button class="mini" onclick="phDel('${x.id}')">삭제</button>` : ''}</div>
             <input placeholder="메모 (예: 1~3번 차단기)" value="${esc(x.note || '')}" onchange="phSet('${x.id}','note',this.value)"></div></div>`).join('')}</div>`;
       });
       if (!PHOTOS.length && !photoErr) h += '<div class="hint">아직 올린 사진이 없습니다.</div>';
