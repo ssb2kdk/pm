@@ -4972,8 +4972,8 @@
       // 3) 항목별 추이
       document.getElementById('util-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${utilSel === u.k ? 'on' : ''}" onclick="utilSel='${u.k}';renderCharts()">${u.name}</button>`).join('');
       const metrics = [['usage', '사용량'], ['daily', '일평균'], ['unit', '원단위'], ['cost', '비용']];
-      document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSet.includes(k) ? 'on' : ''}" onclick="metricToggle('${k}')">${n}</button>`).join('') + ' <span class="hint">여러 개 고를 수 있음</span>';
-      metricSet = metrics.map(m => m[0]).filter(k => metricSet.includes(k)); if (!metricSet.length) metricSet = ['unit']; metricSel = metricSet[0];
+      document.getElementById('metric-chips').innerHTML = metrics.map(([k, n]) => `<button class="chip ${metricSet.includes(k) ? 'on' : ''}" onclick="metricToggle('${k}')">${metricSet.length > 1 && metricSet.includes(k) ? (metricSet[0] === k ? '▮ ' : '╱ ') : ''}${n}</button>`).join('') + ' <span class="hint">여러 개 고를 수 있음 · 먼저 고른 것 = 막대</span>';
+      metricSet = metricSet.filter(k => metrics.some(m => m[0] === k)); // 고른 순서 그대로 (첫 번째 = 막대) if (!metricSet.length) metricSet = ['unit']; metricSel = metricSet[0];
       const U = UT.UTILS.find(u => u.k === utilSel);
       // 일평균: 월 사용량 ÷ 날수 (용수는 고지서 검침 기간 전월 12일~당월 11일이라 전월 날수) · 아직 안 끝난 달은 뺌
       const dayN = ym => U.k === 'water' ? UT.daysIn(UT.prevYm(ym)) : UT.daysIn(ym);
@@ -4986,12 +4986,15 @@
         const val = (k, s, ym) => partial(s, ym) ? null : k === 'usage' ? s[U.k].usage : k === 'daily' ? daily(s, ym) : k === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
         const dsm = [], scales = { x: { grid: { display: false }, ticks: { color: '#666' } } };
         metricSet.forEach((k, i) => { const ax = 'y' + i;
-          dsm.push({ label: `${MN[k]} ${y}년`, data: cs.map((s2, j) => val(k, s2, ms[j])), borderColor: MC[k], backgroundColor: MC[k], borderWidth: 2, pointRadius: 3, yAxisID: ax });
-          dsm.push({ label: `${MN[k]} ${y - 1}년`, data: ps.map((s2, j) => val(k, s2, pms[j])), borderColor: MC[k] + '77', backgroundColor: MC[k] + '77', borderWidth: 1.5, borderDash: [5, 4], pointRadius: 2, yAxisID: ax });
-          scales[ax] = { position: i === 0 ? 'left' : 'right', beginAtZero: false, grid: { display: i === 0, color: '#eef0f3' }, border: { display: false }, ticks: { color: MC[k] }, title: { display: true, text: `${MN[k]} (${MU[k]})`, color: MC[k] } }; });
-        document.getElementById('util-legend').innerHTML = `<span class="hint">실선 = ${y}년 · 점선 = ${y - 1}년 · 항목마다 축이 따로 (색 맞춰 보기) · 범례를 누르면 그 선을 숨김</span>`;
+          const bar = i === 0; // 먼저 고른 항목 = 막대, 나중에 고른 항목 = 꺾은선
+          dsm.push(bar ? { type: 'bar', label: `${MN[k]} ${y}년`, data: cs.map((s2, j) => val(k, s2, ms[j])), backgroundColor: MC[k] + 'cc', borderRadius: 3, maxBarThickness: 22, yAxisID: ax, order: 10 }
+            : { type: 'line', label: `${MN[k]} ${y}년`, data: cs.map((s2, j) => val(k, s2, ms[j])), borderColor: MC[k], backgroundColor: MC[k], borderWidth: 2, pointRadius: 3, yAxisID: ax, order: 1 });
+          dsm.push(bar ? { type: 'bar', label: `${MN[k]} ${y - 1}년`, data: ps.map((s2, j) => val(k, s2, pms[j])), backgroundColor: MC[k] + '40', borderRadius: 3, maxBarThickness: 22, yAxisID: ax, order: 11 }
+            : { type: 'line', label: `${MN[k]} ${y - 1}년`, data: ps.map((s2, j) => val(k, s2, pms[j])), borderColor: MC[k] + '77', backgroundColor: MC[k] + '77', borderWidth: 1.5, borderDash: [5, 4], pointRadius: 2, yAxisID: ax, order: 2 });
+          scales[ax] = { position: i === 0 ? 'left' : 'right', beginAtZero: bar, grid: { display: i === 0, color: '#eef0f3' }, border: { display: false }, ticks: { color: MC[k] }, title: { display: true, text: `${MN[k]} (${MU[k]})`, color: MC[k] } }; });
+        document.getElementById('util-legend').innerHTML = `<span class="hint">먼저 고른 항목 = 막대(진한 색 ${y}년 · 연한 색 ${y - 1}년), 나중에 고른 항목 = 꺾은선(실선 ${y}년 · 점선 ${y - 1}년) · 항목마다 축이 따로 (색 맞춰 보기) · 범례를 누르면 그 선을 숨김</span>`;
         const fmtK = (k, v) => k === 'unit' ? fU(v, U.k) : k === 'daily' ? Number(v).toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : f0(v);
-        mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: dsm }, options: (() => { const o = baseOpts(''); o.scales = scales; o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 12, font: { size: 11 } };
+        mkChart('chart-util', { type: 'bar', data: { labels: monthLabels, datasets: dsm }, options: (() => { const o = baseOpts(''); o.scales = scales; o.interaction = { mode: 'index', intersect: false }; o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 12, font: { size: 11 } };
           o.plugins.tooltip.callbacks.label = c => { const k = metricSet[Number(c.dataset.yAxisID.slice(1))]; return ` ${c.dataset.label}: ${c.raw === null ? '-' : fmtK(k, c.raw)} ${MU[k]}`; }; return o; })() });
         const nt = document.getElementById('util-note'); if (nt) nt.textContent = '';
       } else {
