@@ -1310,9 +1310,7 @@
       const html = `<table class="t" style="width:100%"><tr><th class="l">항목</th><th>${ymLabel(ym0)}</th><th>${ymLabel(ym)}</th><th>차이</th><th>%</th></tr>` +
         rows.map(r => { const ok = r.v0 !== null && r.v0 !== undefined && r.v1 !== null && r.v1 !== undefined && !isNaN(r.v0) && !isNaN(r.v1), dd = ok ? r.v1 - r.v0 : null, pc = ok && r.v0 && r.u !== '℃' ? dd / Math.abs(r.v0) * 100 : null;
           return `<tr${r.key ? ' style="font-weight:600;background:#f6f8fb"' : ''}><td class="l">${r.n}</td><td>${fmt(r.v0, r.d)} <span class="hint">${r.u}</span></td><td>${fmt(r.v1, r.d)} <span class="hint">${r.u}</span></td><td class="${dd > 0 ? 'up' : dd < 0 ? 'down' : ''}">${dd === null ? '-' : (dd > 0 ? '+' : dd < 0 ? '−' : '') + fmt(Math.abs(dd), r.d)}</td><td class="${pc > 0 ? 'up' : pc < 0 ? 'down' : ''}">${pc === null ? '' : (pc >= 0 ? '+' : '') + nf1.format(pc) + '%'}</td></tr>`; }).join('') +
-        `</table>${(() => { const du = a[uk].usage && b[uk].usage ? a[uk].usage / b[uk].usage - 1 : null, dc = a[uk].cost && b[uk].cost ? a[uk].cost / b[uk].cost - 1 : null, dp = avgP(a[uk]) && avgP(b[uk]) ? avgP(a[uk]) / avgP(b[uk]) - 1 : null;
-          if (du === null || dc === null || dp === null || Math.abs(dp) < 0.02) return '';
-          return `<div class="story" style="margin-top:8px">💡 사용량은 <b class="${du >= 0 ? 'up' : 'down'}">${du >= 0 ? '+' : ''}${nf1.format(du * 100)}%</b>인데 비용은 <b class="${dc >= 0 ? 'up' : 'down'}">${dc >= 0 ? '+' : ''}${nf1.format(dc * 100)}%</b> — 실질 단가(비용 ÷ 사용량)가 <b class="${dp >= 0 ? 'up' : 'down'}">${dp >= 0 ? '+' : ''}${nf1.format(dp * 100)}%</b> ${dp >= 0 ? '올라서' : '내려서'}입니다${uk === 'elec' ? ' (계절별 요금·시간대별 사용 비율 차이)' : ''}.</div>`; })()}<div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 특이사항으로 원인을 찾아 ③ 이달의 총평에 정리하세요.</div>`;
+        `</table><div class="hint" style="margin-top:6px">추정 없이 두 달의 실제 값만 나란히 봅니다. 사용량이 바뀐 만큼 원육·생산일·기온·계량기 구성 중 무엇이 같이 바뀌었는지 보고, 아래 ② 특이사항에서 그 기간에 있었던 일을 확인하세요.</div>`;
       const pct = a[uk].usage && b[uk].usage ? (a[uk].usage / b[uk].usage - 1) * 100 : null;
       const plain = `${Number(ym.slice(5))}월 ${U.name}: ${ymLabel(ym0)} 대비 ${a[uk].usage !== null && b[uk].usage !== null ? `${a[uk].usage - b[uk].usage >= 0 ? '+' : '−'}${f0(Math.abs(a[uk].usage - b[uk].usage))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''}` : '-'}` +
         ` · 원육 ${b.production && a.production ? `${a.production - b.production >= 0 ? '+' : '−'}${f0(Math.abs(a.production - b.production))}kg` : '-'} · 생산일 ${op0 !== null && op1 !== null ? `${op1 - op0 >= 0 ? '+' : '−'}${Math.abs(op1 - op0)}일` : '-'} · 평균기온 ${w0.tmean !== null && w1.tmean !== null ? `${nf1.format(w0.tmean)} → ${nf1.format(w1.tmean)}℃` : '-'}`;
@@ -1342,7 +1340,7 @@
 
       // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
       const cmt = (yd(y).comments || {})[ym] || '';
-      document.getElementById('cz-memo').innerHTML = isAdmin()
+      if (document.getElementById('cz-memo')) document.getElementById('cz-memo').innerHTML = isAdmin()
         ? `<textarea id="cz-memo-ta" class="cz-memo-ta" placeholder="예) 9월 전기는 원육 투입이 40% 늘어 사용량 +1.4%, 단가 하락으로 비용은 −3%. 원육 kg당 2.78 kWh로 전월보다 좋아짐. 27일 쉬는 날 사용은 냉동창고 제상 — 특이 없음.">${esc(cmt)}</textarea>
            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
         : `<div style="white-space:pre-wrap">${esc(cmt) || '<span class="hint">-</span>'}</div>`;
@@ -1389,44 +1387,23 @@
       catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     // 참고 그래프 (기존 3개)
-    function renderCauseRef() {
-      const du = UT.DAILY_UTILS.find(u => u.k === causeUtil) || UT.DAILY_UTILS[0], U = du, causeYear = Number(causeYm.slice(0, 4));
-      document.getElementById('cz-days').textContent = causeDays + '일';
-      const pts = [];
-      for (let i = causeDays; i >= 1; i--) {
-        const ds = UT.addDays(todayStr, -i);
-        if (UT.isWeekend(ds) || TEMPS[ds] === undefined) continue;
-        const v = UT.dailyUsage(DAILY, ds)[U.k];
-        if (v !== null && v >= 0) pts.push({ x: Math.round(TEMPS[ds] * 10) / 10, y: v, d: ds });
-      }
-      const lr = UT.linreg(pts.map(p => [p.x, p.y]));
-      const xs = pts.map(p => p.x), x0 = Math.min(...xs), x1 = Math.max(...xs);
-      mkChart('chart-temp', { type: 'scatter', data: { datasets: [
-        { label: '평일', data: pts, backgroundColor: U.color + 'aa', pointRadius: 4 },
-        ...(lr ? [{ type: 'line', label: '추세', data: [{ x: x0, y: lr.a * x0 + lr.b }, { x: x1, y: lr.a * x1 + lr.b }], borderColor: '#333', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }] : [])
-      ] }, options: (() => { const o = baseOpts(`${U.unit}/일`); o.scales.x = { type: 'linear', title: { display: true, text: '평균기온 (℃)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.interaction = { mode: 'nearest', intersect: true };
-        o.plugins.tooltip.callbacks.label = c => c.raw.d ? ` ${c.raw.d.slice(5)} · ${c.raw.x}℃ · ${f1(c.raw.y)} ${U.unit}` : ''; return o; })() });
-      const strength = lr ? (lr.r2 >= 0.5 ? '뚜렷함' : lr.r2 >= 0.25 ? '보통' : '약함 — 기온보다 다른 요인이 큼') : '';
-      document.getElementById('temp-note').innerHTML = !lr ? '기온 기록이 부족합니다. (설비검침의 최저·최고온도 사용)' :
-        `읽는 법: 오른쪽(더운 날)으로 갈수록 점이 위에 있으면 더울수록 더 쓴다는 뜻.<br>→ 기온이 1℃ ${lr.a < 0 ? '내려가면' : '올라가면'} ${U.name}를 하루 약 <b>${f1(Math.abs(lr.a))} ${U.unit}</b> 더 씁니다 (관련성 ${strength}).`;
-      const months = []; for (let ym = UT.ym(causeYear - 1, 1); ym <= UT.ym(causeYear, 12) && ym <= thisYm; ym = UT.nextYm(ym)) months.push(ym);
-      const ck = causeUtil, mp = months.map(ym => { const s = S(ym); return { ym, x: s.production, y: ratio(s[ck].usage, s.production) }; }).filter(p => p.x && p.y);
-      const lr2 = UT.linreg(mp.map(p => [p.x, p.y]));
-      const unit2 = `${UT.UTILS.find(u => u.k === ck).unit}/kg`, UC = UT.UTILS.find(u => u.k === ck);
-      mkChart('chart-produnit', { type: 'scatter', data: { datasets: [
-        { label: `${causeYear - 1}년`, data: mp.filter(p => p.ym < `${causeYear}`), backgroundColor: '#a3a29d', pointRadius: 5 },
-        { label: `${causeYear}년`, data: mp.filter(p => p.ym >= `${causeYear}`), backgroundColor: UC.color, pointRadius: 6 }
-      ] }, options: (() => { const o = baseOpts(unit2); o.scales.x = { type: 'linear', title: { display: true, text: '원육 투입량 (kg)', color: '#888' }, grid: { color: '#f3f4f6' } }; o.plugins.legend.display = true; o.interaction = { mode: 'nearest', intersect: true };
-        o.plugins.tooltip.callbacks.label = c => ` ${c.raw.ym} · 원육 ${f0(c.raw.x)}kg · ${fU(c.raw.y, ck)} ${unit2}`; return o; })() });
-      document.getElementById('produnit-note').innerHTML = !lr2 ? '원육 투입량을 넣은 달이 부족합니다.' :
-        `읽는 법: 오른쪽(원육 많이 넣은 달)으로 갈수록 점이 아래로 내려가면, 많이 넣을수록 kg당 덜 쓴다는 뜻.<br>→ 원육을 많이 넣은 달일수록 kg당 사용량이 ${lr2.a < 0 ? '<b>낮아집니다</b> (기본으로 쓰는 양이 나뉘기 때문)' : '<b>높아집니다</b>'}. 비슷한 원육 투입량인데 혼자 위에 떠 있는 점은 낭비를 의심해 볼 달입니다.`;
-      const ms = yearMonths(causeYear), es = ms.map(ym => { const s = S(ym); const m = s.m || {}; const tot = s.elec.usage; const hv = Number(m.elec_hvac_kwh) || null, ww = Number(m.elec_ww_kwh) || null; return { tot, hv, ww, etc: tot ? Math.max(0, tot - (hv || 0) - (ww || 0)) : null }; });
-      mkChart('chart-elecmix', { type: 'bar', data: { labels: monthLabels, datasets: [
-        { label: '공조냉동', data: es.map(e => e.hv), backgroundColor: '#5b8def', stack: 'e', maxBarThickness: 34 },
-        { label: '폐수동', data: es.map(e => e.ww), backgroundColor: '#eda100', stack: 'e', maxBarThickness: 34 },
-        { label: '그 외 (생산·기타)', data: es.map(e => e.etc), backgroundColor: '#c8ccd2', stack: 'e', maxBarThickness: 34 }
-      ] }, options: (() => { const o = baseOpts('kWh'); o.scales.x.stacked = true; o.scales.y.stacked = true; o.plugins.legend.display = true;
-        o.plugins.tooltip.callbacks.label = c => { const t = es[c.dataIndex].tot; return ` ${c.dataset.label}: ${f0(c.raw)} kWh${t ? ` (${nf1.format(c.raw / t * 100)}%)` : ''}`; }; return o; })() });
+    function renderCauseRef() { // 참고 그래프: 고른 유틸리티의 월별 사용 구성
+      const uk = causeUtil || 'elec', U = UT.UTILS.find(u => u.k === uk), causeYear = Number(causeYm.slice(0, 4)), ms = yearMonths(causeYear);
+      const n = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+      const DEF = {
+        elec: { t: '전력 사용 구성', sub: '공조냉동·폐수동 = 설비검침 계량기 / 그 외 = 전체 − 두 항목', parts: [['공조냉동', '#5b8def'], ['폐수동', '#eda100'], ['그 외 (생산·기타)', '#c8ccd2']],
+          get: s => { const m = s.m || {}, tot = s.elec.usage, hv = n(m.elec_hvac_kwh), ww = n(m.elec_ww_kwh); return { tot, v: [hv, ww, tot === null ? null : Math.max(0, tot - (hv || 0) - (ww || 0))] }; } },
+        gas: { t: '가스 사용 구성', sub: '보일러 · 식당 (도시가스 계량기 지침 × 열량계수)', parts: [['보일러', '#eb6834'], ['식당', '#f2b28f']],
+          get: s => { const g = s.gas.calc; return { tot: s.gas.usage, v: [g && g.boiler ? g.boiler.mj : null, g ? (g.rest ? g.rest.mj : 0) : null] }; } },
+        water: { t: '용수 사용 구성', sub: '상수도 40A · 50A 계량기', parts: [['40A', '#1D9E75'], ['50A', '#8fd3b9']],
+          get: s => ({ tot: s.water.usage, v: [s.water.w40 ? s.water.w40.usage : null, s.water.w50 ? s.water.w50.usage : null] }) },
+        ww: { t: '폐수 사용 구성', sub: '폐수 발생량(방류) · 오수량', parts: [['폐수 발생량', '#e0a400'], ['오수량', '#f3d37a']],
+          get: s => ({ tot: s.ww.usage, v: [s.ww.flow, s.ww.sewage] }) } }[uk];
+      document.getElementById('cz-mix-title').innerHTML = `${DEF.t} <span class="sub">${causeYear}년 · ${DEF.sub}</span>`;
+      const es = ms.map(ym => DEF.get(S(ym)));
+      mkChart('chart-elecmix', { type: 'bar', data: { labels: monthLabels, datasets: DEF.parts.map(([nm, col], i) => ({ label: nm, data: es.map(e => e.v[i]), backgroundColor: col, stack: 'e', maxBarThickness: 34 })) },
+        options: (() => { const o = baseOpts(U.unit); o.scales.x.stacked = true; o.scales.y.stacked = true; o.plugins.legend.display = true;
+          o.plugins.tooltip.callbacks.label = c => { const t = es[c.dataIndex].tot; return ` ${c.dataset.label}: ${f0(c.raw)} ${U.unit}${t ? ` (${nf1.format(c.raw / t * 100)}%)` : ''}`; }; return o; })() });
     }
 
     // =====================================================================
@@ -1624,7 +1601,7 @@
       ZUNIT = unit;
       const ttl = h3 ? (h3.childNodes[0].textContent || '').trim() || h3.textContent.trim().split('\n')[0] : '';
       let ttl2 = ttl;
-      if (id === 'chart-util') { const U = UT.UTILS.find(u => u.k === utilSel); ttl2 = `${U.name} ${{ usage: '사용량', unit: '원단위 (원육 kg당 사용량)', cost: '비용' }[metricSel]}`; }
+      if (id === 'chart-util') { const U = UT.UTILS.find(u => u.k === utilSel); ttl2 = `${U.name} ${metricSet.map(k => ({ usage: '사용량', daily: '일평균', unit: '원단위 (원육 kg당 사용량)', cost: '비용' }[k])).join(' · ')}`; }
       document.getElementById('zoom-title').textContent = ttl2 + (unit ? ` (단위: ${unit})` : '');
       const c = cloneCfg(cfg);
       c.options = c.options || {}; c.options.maintainAspectRatio = false; c.options.animation = false;
