@@ -1305,7 +1305,11 @@
       if (uk === 'gas') { add(`보일러 켠 시간<div class="hint" style="font-weight:400" title="⚡실측 = 쉘리 보일러 전류로 잰 켠·끈 시각 / 추정 = 전처리 시작 ~ 레토르트 t4(포장 종료+1h)">${bsrc(ym0)} / ${bsrc(ym)}</div>`, r0.f.boilH, r1.f.boilH, 'h', 1); add('레토르트 회차', r0.f.retN, r1.f.retN, '회'); }
       const per = (x, d) => x.usage && d ? x.usage / d : null;
       add(`원육 kg당 ${un}`, b.production ? b[uk].usage / b.production : null, a.production ? a[uk].usage / a.production : null, `${un}/kg`, 3);
-      add(`생산일 하루당 ${un}`, per(b[uk], op0), per(a[uk], op1), un);
+      if (uk === 'elec') { // 하루당: 생산일 · 휴일(생산 없는 날) 은 파워플래너 일별 값 평균, 전체 = 월 사용량 ÷ 날수
+        const dayAv = (ym2, idle) => { let t = 0, c = 0; for (let d = 1; d <= UT.daysIn(ym2); d++) { const ds = UT.dateStr(ym2, d), w = isIdleDay(ds); if (w === null || w !== idle) continue; const v = UT.dailyUsage(DAILY, ds).elec; if (v === null || v === undefined || v <= 0) continue; t += v; c++; } return c ? t / c : null; };
+        add('생산일 하루당 kWh', dayAv(ym0, false), dayAv(ym, false), 'kWh'); add('휴일 하루당 kWh <span class="hint" style="font-weight:400">(생산 없는 날)</span>', dayAv(ym0, true), dayAv(ym, true), 'kWh');
+        add('전체 하루당 kWh', per(b[uk], UT.daysIn(ym0)), per(a[uk], UT.daysIn(ym)), 'kWh');
+      } else add(`생산일 하루당 ${un}`, per(b[uk], op0), per(a[uk], op1), un);
       const fmt = (v, d) => v === null || v === undefined || isNaN(v) ? '-' : d ? v.toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d }) : f0(v);
       const html = `<table class="t" style="width:100%"><tr><th class="l">항목</th><th>${ymLabel(ym0)}</th><th>${ymLabel(ym)}</th><th>차이</th><th>%</th></tr>` +
         rows.map(r => { const ok = r.v0 !== null && r.v0 !== undefined && r.v1 !== null && r.v1 !== undefined && !isNaN(r.v0) && !isNaN(r.v1), dd = ok ? r.v1 - r.v0 : null, pc = ok && r.v0 && r.u !== '℃' ? dd / Math.abs(r.v0) * 100 : null;
@@ -1314,7 +1318,7 @@
       const pct = a[uk].usage && b[uk].usage ? (a[uk].usage / b[uk].usage - 1) * 100 : null;
       const plain = `${Number(ym.slice(5))}월 ${U.name}: ${ymLabel(ym0)} 대비 ${a[uk].usage !== null && b[uk].usage !== null ? `${a[uk].usage - b[uk].usage >= 0 ? '+' : '−'}${f0(Math.abs(a[uk].usage - b[uk].usage))} ${un}${pct !== null ? ` (${pct >= 0 ? '+' : ''}${nf1.format(pct)}%)` : ''}` : '-'}` +
         ` · 원육 ${b.production && a.production ? `${a.production - b.production >= 0 ? '+' : '−'}${f0(Math.abs(a.production - b.production))}kg` : '-'} · 생산일 ${op0 !== null && op1 !== null ? `${op1 - op0 >= 0 ? '+' : '−'}${Math.abs(op1 - op0)}일` : '-'} · 평균기온 ${w0.tmean !== null && w1.tmean !== null ? `${nf1.format(w0.tmean)} → ${nf1.format(w1.tmean)}℃` : '-'}`;
-      return { html, plain };
+      return { html, plain, rows };
     }
     async function renderCause() {
       if (!window.Chart) return;
@@ -1387,7 +1391,26 @@
       catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     // 참고 그래프 (기존 3개)
-    function renderCauseRef() { // 참고 그래프: 고른 유틸리티의 월별 사용 구성
+    // 참고 그래프 ①: ① 실적 비교 표의 지표를 골라 월별로 (먼저 고른 것 = 막대, 나머지 = 꺾은선 · 지표마다 축)
+    let czRefSel = {};
+    function czRefToggle(i) { const L = czRefSel[causeUtil] || [0]; czRefSel[causeUtil] = L.includes(i) ? L.filter(x => x !== i) : L.concat([i]); if (!czRefSel[causeUtil].length) czRefSel[causeUtil] = [i]; renderCauseTrend(); }
+    function renderCauseTrend() {
+      const uk = causeUtil || 'elec', y = Number(causeYm.slice(0, 4)), ms = yearMonths(y).filter(m => m <= causeYm);
+      const strip = h => String(h).replace(/<div[\s\S]*?<\/div>/g, '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').replace(/ⓘ/g, '').replace(/^[·\-\s]+/, '').trim();
+      const per = ms.map(m => (causeFacts(m, m, uk).rows || [])), names = (() => { const o = [], seen = new Set(); per.forEach(L => L.forEach((r, i) => { const k = String(r.n).replace(/<div[\s\S]*?<\/div>/g, '').replace(/<[^>]*>/g, '').trim(); if (seen.has(strip(r.n))) return; seen.add(strip(r.n)); let at = o.length; for (let j = i - 1; j >= 0; j--) { const kk = strip(L[j].n), p = o.findIndex(x => x.k === kk); if (p >= 0) { at = p + 1; break; } } o.splice(at, 0, { k: strip(r.n), n: r.n, u: r.u, d: r.d }); })); return o; })();
+      const sel = (czRefSel[uk] || [0]).filter(i => i < names.length); if (!sel.length) sel.push(0);
+      document.getElementById('cz-tr-chips').innerHTML = names.map((n, i) => `<button class="chip ${sel.includes(i) ? 'on' : ''}" onclick="czRefToggle(${i})">${sel.length > 1 && sel.includes(i) ? (sel[0] === i ? '▮ ' : '╱ ') : ''}${esc(strip(n.n))}</button>`).join('');
+      const COL = ['#2a78d6', '#e0482b', '#6a3d9a', '#1D9E75', '#eda100', '#333'], scales = { x: { grid: { display: false }, ticks: { color: '#666' } } }, ds = [];
+      sel.forEach((i, j) => { const ax = 'y' + j, col = COL[j % COL.length], nm = strip(names[i].n), u = names[i].u || '', dg = names[i].d || 0;
+        const data = ms.map((m, k) => { const r = per[k].find(x => strip(x.n) === names[i].k); return r && r.v1 !== null && r.v1 !== undefined && !isNaN(r.v1) ? r.v1 : null; });
+        ds.push(j === 0 ? { type: 'bar', label: nm, data, backgroundColor: col + 'cc', borderRadius: 3, maxBarThickness: 30, yAxisID: ax, order: 10, _u: u, _d: dg } : { type: 'line', label: nm, data, borderColor: col, backgroundColor: col, borderWidth: 2, pointRadius: 3, yAxisID: ax, order: 1, spanGaps: true, _u: u, _d: dg });
+        scales[ax] = { position: j === 0 ? 'left' : 'right', beginAtZero: j === 0, grid: { display: j === 0, color: '#eef0f3' }, border: { display: false }, ticks: { color: col }, title: { display: true, text: `${nm}${u ? ' (' + u + ')' : ''}`, color: col } }; });
+      mkChart('chart-cztr', { type: 'bar', data: { labels: ms.map(m => Number(m.slice(5)) + '월'), datasets: ds }, options: (() => { const o = baseOpts(''); o.scales = scales; o.interaction = { mode: 'index', intersect: false }; o.plugins.legend.display = true;
+        o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.raw === null ? '-' : Number(c.raw).toLocaleString('ko-KR', { maximumFractionDigits: c.dataset._d || (Math.abs(c.raw) < 10 ? 2 : 0) })} ${c.dataset._u}`; return o; })() });
+      document.getElementById('cz-tr-title').innerHTML = `${UT.UTILS.find(u => u.k === uk).name} 지표 월별 비교 <span class="sub">${y}년 1~${Number(causeYm.slice(5))}월 · ① 실적 비교 표의 항목 · 여러 개 고르면 먼저 고른 것 = 막대, 나머지 = 꺾은선 (항목마다 축)</span>`;
+    }
+    function renderCauseRef() { // 참고 그래프 ②: 고른 유틸리티의 월별 사용 구성
+      renderCauseTrend();
       const uk = causeUtil || 'elec', U = UT.UTILS.find(u => u.k === uk), causeYear = Number(causeYm.slice(0, 4)), ms = yearMonths(causeYear);
       const n = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
       const DEF = {
