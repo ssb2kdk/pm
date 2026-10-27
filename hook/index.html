@@ -535,7 +535,7 @@
       const el = document.getElementById('sum-body'), ps = panels();
       const latest = b => READ.filter(r => r.breaker_id === b.id).sort((a, c) => a.d < c.d ? 1 : -1)[0];
       const lastRun = b => READ.filter(r => r.breaker_id === b.id && r.running).sort((a, c) => a.d < c.d ? 1 : -1)[0];
-      let list = BRK.filter(b => !sumPanel || b.panel === sumPanel).map(b => { const l = lastRun(b), any = latest(b), kw = l ? kwOf(b, l) : null;
+      let list = BRK.filter(b => (!sumPanel || b.panel === sumPanel) && !feedOf(b) && secOf(b) !== 'main').map(b => { /* 부하 차단기만 (메인·하위 분전반 피더는 분전반 구조 표에서) */ const l = lastRun(b), any = latest(b), kw = l ? kwOf(b, l) : null;
         const all = READ.filter(r => r.breaker_id === b.id), runs = all.filter(r => r.running).map(r => ({ r, k: kwOf(b, r) })).filter(x => x.k !== null);
         const avg = runs.length ? runs.reduce((a, x) => a + x.k, 0) / runs.length : null, mxr = runs.length ? runs.reduce((a, x) => x.k > a.k ? x : a) : null;
         return { b, l, any, kw, avg, max: mxr ? mxr.k : null, maxD: mxr ? mxr.r.d : null, runPct: all.length ? runs.length / all.length * 100 : null, lr: kw !== null && num(b.rated_kw) ? kw / num(b.rated_kw) * 100 : null, alr: avg !== null && num(b.rated_kw) ? avg / num(b.rated_kw) * 100 : null, n: runs.length, nAll: all.length }; });
@@ -544,19 +544,17 @@
       const byPanel = {}; tops.forEach(x => { byPanel[x] = panelAgg(x, false).total; });
       let h = `<div class="tool"><b>가동 중 부하 (차단기별 가장 최근 가동 측정값)</b>
         <select onchange="sumPanel=this.value;renderSum()"><option value="">전체 분전반</option>${ps.map(p => `<option ${p === sumPanel ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
-        <select onchange="sumSort=this.value;renderSum()"><option value="avg" ${sumSort === 'avg' ? 'selected' : ''}>평균 부하 큰 순</option><option value="max" ${sumSort === 'max' ? 'selected' : ''}>최대 부하 큰 순</option><option value="kw" ${sumSort === 'kw' ? 'selected' : ''}>최근 부하 큰 순</option><option value="lr" ${sumSort === 'lr' ? 'selected' : ''}>부하율 높은 순</option><option value="panel" ${sumSort === 'panel' ? 'selected' : ''}>분전반 순</option></select>
+        <select onchange="sumSort=this.value;renderSum()"><option value="avg" ${sumSort === 'avg' ? 'selected' : ''}>평균 부하 큰 순</option><option value="max" ${sumSort === 'max' ? 'selected' : ''}>최대 부하 큰 순</option><option value="kw" ${sumSort === 'kw' ? 'selected' : ''}>최근 부하 큰 순</option><option value="panel" ${sumSort === 'panel' ? 'selected' : ''}>분전반 순</option></select>
         <button class="btn sec" onclick="downloadSum()">📥 엑셀</button></div>
-        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 부하율 = 측정 kW ÷ 정격 kW. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})<br>합계는 분전반마다 <b>메인 차단기를 쟀으면 메인 값</b>, 안 쟀으면 부하 차단기 합 · 하위 분전반은 위에서 내려가는 차단기 값과 하위 합 중 한 번만 (중복 합산 없음)</div>
+        <div class="hint">kW = 380V는 √3 × 380V × 평균 전류 × 역률 ${PF}, 220V는 220V × 전류 합 × 역률 ${PF}. 합계 <b>${nf(tot, 1)} kW</b> (${Object.entries(byPanel).map(([p, v]) => `${esc(p)} ${nf(v, 1)}`).join(' · ')})<br>합계는 분전반마다 <b>메인 차단기를 쟀으면 메인 값</b>, 안 쟀으면 부하 차단기 합 · 하위 분전반은 위에서 내려가는 차단기 값과 하위 합 중 한 번만 (중복 합산 없음)</div>
         ${saveHint(list)}${treeHtml()}
-        <div class="tbl"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>R</th><th>S</th><th>T (A)</th><th class="l">최근 가동 부하 (kW)</th><th>평균 kW</th><th>최대 kW</th><th>가동 비율</th><th>정격 kW</th><th>부하율<br><span class="hist">평균 ÷ 정격</span></th><th>최근 측정일</th><th>가동 측정</th><th class="l">비고</th></tr>`;
+        <div class="tbl"><table class="t"><tr><th class="l">분전반</th><th class="l">차단기</th><th>전압</th><th>R</th><th>S</th><th>T (A)</th><th class="l">최근 가동 부하 (kW)</th><th>평균 kW</th><th>최대 kW</th><th>최근 측정일</th><th>가동 측정</th><th class="l">비고</th></tr>`;
       list.forEach(x => { const l = x.l;
-        h += `<tr class="${l ? '' : 'off'} ${feedOf(x.b) ? 'feedrow' : ''}"><td class="l">${PDEPTH[x.b.panel] ? '↳'.repeat(PDEPTH[x.b.panel]) + ' ' : ''}${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a>${feedOf(x.b) ? ` <span class="feedtag-s">⤷ ${esc(feedOf(x.b))}</span>` : secOf(x.b) === 'main' ? ' <span class="feedtag-s">메인</span>' : ''}</td><td>${x.b.volt}V</td>
+        h += `<tr class="${l ? '' : 'off'} ${feedOf(x.b) ? 'feedrow' : ''}"><td class="l">${PDEPTH[x.b.panel] ? '↳'.repeat(PDEPTH[x.b.panel]) + ' ' : ''}${esc(x.b.panel)}</td><td class="l"><a href="#" onclick="histOf('${x.b.id}');return false">${esc(x.b.name)}</a></td><td>${x.b.volt}V</td>
           <td>${l ? nf(l.r) : '-'}</td><td>${l ? nf(l.s) : '-'}</td><td>${l ? nf(l.t) : '-'}</td>
           <td class="l">${x.kw === null ? (x.any ? '<span class="hist">정지 중만 측정</span>' : '<span class="hist">측정 없음</span>') : `<span class="bar" style="width:${Math.round(x.kw / mx * 90)}px"></span> <b>${nf(x.kw, 1)}</b>`}</td>
-          <td>${x.avg === null ? '-' : `<b>${nf(x.avg, 1)}</b>`}</td><td>${x.max === null ? '-' : `${nf(x.max, 1)}<br><span class="hist">${x.maxD.slice(5).replace('-', '/')}</span>`}</td><td>${x.runPct === null ? '-' : nf(x.runPct, 0) + '%'}<br><span class="hist">${x.n}/${x.nAll}회</span></td>
-          <td>${x.b.rated_kw ?? '-'}</td><td class="${x.alr === null ? '' : x.alr > 90 ? 'lr-hi' : x.alr < 40 ? 'lr-lo' : ''}">${x.alr === null ? '-' : nf(x.alr, 0) + '%'}</td>
-          <td>${l ? l.d.slice(2).replace(/-/g, '.') : '-'}</td><td>${x.n}</td><td class="l hist">${esc(x.b.note || '')}</td></tr>`; });
-      h += `</table></div><div class="hint" style="margin-top:8px">· 평균·최대 kW = 이 차단기를 「가동」으로 잰 측정값 전부의 평균·가장 큰 값 · 가동 비율 = 잰 횟수 중 가동이었던 비율 (잴 때마다 돌고 있었나) · 부하율 = 평균 kW ÷ 정격 kW<br>· 부하율 <span class="lr-lo">40% 미만</span> = 정격보다 훨씬 작게 도는 설비 (용량 과다·인버터 검토 대상) · <span class="lr-hi">90% 넘음</span> = 과부하 주의 · 차단기 이름을 누르면 측정 이력이 나옵니다.</div><div id="hist"></div>`;
+          <td>${x.avg === null ? '-' : `<b>${nf(x.avg, 1)}</b>`}</td><td>${x.max === null ? '-' : `${nf(x.max, 1)}<br><span class="hist">${x.maxD.slice(5).replace('-', '/')}</span>`}</td>          <td>${l ? l.d.slice(2).replace(/-/g, '.') : '-'}</td><td>${x.n}</td><td class="l hist">${esc(x.b.note || '')}</td></tr>`; });
+      h += `</table></div><div class="hint" style="margin-top:8px">· 부하 차단기만 보여 줍니다 (메인·하위 분전반으로 가는 차단기는 위 「분전반 구조」 표에서) · 평균·최대 kW = 이 차단기를 「가동」으로 잰 측정값 전부의 평균·가장 큰 값 · 가동 측정 = 가동으로 잰 횟수 · 차단기 이름을 누르면 측정 이력이 나옵니다.</div><div id="hist"></div>`;
       el.innerHTML = h;
     }
     // 전기요금 절감 후보: 측정값만으로 고름 (평균 큰 순 · 최대/평균 차이 큼 · 부하율 낮음 · 늘 돌고 있음)
@@ -570,9 +568,7 @@
       const box = (t, d, arr, f) => arr.length ? `<div class="sv"><div class="sv-t">${t}</div><div class="hist">${d}</div><ol>${arr.map(x => `<li>${nm(x)} — ${f(x)}</li>`).join('')}</ol></div>` : '';
       return `<h4 style="margin:10px 0 4px">💡 전기요금 절감 후보 <span class="hist">측정값 기준 · 측정이 쌓일수록 정확</span></h4><div class="svs">` +
         box('① 평소 많이 쓰는 설비', '평균 부하 큰 순 — 운전시간 줄이기·대기 차단·고효율 교체 효과가 가장 큰 곳 (사용량 요금)', top, x => `평균 ${nf(x.avg, 1)} kW (측정 합의 ${nf(x.avg / tot * 100, 0)}%)`) +
-        box('② 순간 최대가 큰 설비', '최대 − 평균 차이 큰 순 — 동시 기동을 피하거나 시간대를 나누면 최대수요(기본요금) 절감', peak, x => `최대 ${nf(x.max, 1)} / 평균 ${nf(x.avg, 1)} kW`) +
-        box('③ 정격보다 작게 도는 설비', '부하율(평균 ÷ 정격) 40% 미만 — 모터 용량 과다 · 인버터 적용 검토', low, x => `부하율 ${nf(x.alr, 0)}% (평균 ${nf(x.avg, 1)} / 정격 ${x.b.rated_kw} kW)`) +
-        box('④ 잴 때마다 돌고 있던 설비', '가동 비율 90% 이상 — 쉬는 시간·야간에도 꼭 돌아야 하는지 확인 (타이머·자동 정지)', always, x => `${x.n}/${x.nAll}회 가동 · 평균 ${nf(x.avg, 1)} kW`) + `</div>`;
+        box('② 순간 최대가 큰 설비', '최대 − 평균 차이 큰 순 — 동시 기동을 피하거나 시간대를 나누면 최대수요(기본요금) 절감', peak, x => `최대 ${nf(x.max, 1)} / 평균 ${nf(x.avg, 1)} kW`) + `</div>`;
     }
     function treeHtml() { // 분전반 구조: 메인 측정값과 부하 차단기 합을 따로
       const ps = panels(); if (!ps.length) return '';
@@ -595,11 +591,11 @@
       const aoa = [['분전반', '차단기', '전압', '측정일', '상태', 'R(A)', 'S(A)', 'T(A)', 'kW', '정격kW', 'AT', '비고', '메모', '하위 분전반(메인)', '극수', 'AF', 'kA']];
       READ.slice().sort((a, c) => a.d < c.d ? -1 : 1).forEach(r => { const b = BRK.find(x => x.id === r.breaker_id); if (!b) return; aoa.push([b.panel, b.name, b.volt, r.d, r.running ? '가동' : '정지', r.r, r.s, r.t, r.running ? Math.round(kwOf(b, r) * 100) / 100 : '', b.rated_kw, b.rated_a, b.note, r.note, b.feeds || '', b.poles ? b.poles + 'P' : '', b.af ?? '', b.ka ?? '']); });
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '부하측정');
-      const sm = [['분전반', '차단기', '전압', '정격kW', '측정 횟수', '가동 횟수', '가동 비율(%)', '평균 kW', '최대 kW', '최대 측정일', '부하율(평균÷정격 %)', '구분']];
-      BRK.forEach(b => { const all = READ.filter(r => r.breaker_id === b.id), runs = all.filter(r => r.running).map(r => ({ r, k: kwOf(b, r) })).filter(x => x.k !== null); if (!all.length) return;
+      const sm = [['분전반', '차단기', '전압', '가동 측정 횟수', '평균 kW', '최대 kW', '최대 측정일']];
+      BRK.filter(b => !feedOf(b) && secOf(b) !== 'main').forEach(b => { const all = READ.filter(r => r.breaker_id === b.id), runs = all.filter(r => r.running).map(r => ({ r, k: kwOf(b, r) })).filter(x => x.k !== null); if (!all.length) return;
         const avg = runs.length ? runs.reduce((q, x) => q + x.k, 0) / runs.length : null, mx = runs.length ? runs.reduce((q, x) => x.k > q.k ? x : q) : null, rd = v => v === null ? '' : Math.round(v * 100) / 100;
-        sm.push([b.panel, b.name, b.volt, b.rated_kw ?? '', all.length, runs.length, Math.round(runs.length / all.length * 100), rd(avg), mx ? rd(mx.k) : '', mx ? mx.r.d : '', avg !== null && num(b.rated_kw) ? Math.round(avg / num(b.rated_kw) * 100) : '', feedOf(b) ? '하위 분전반 피더' : secOf(b) === 'main' ? '메인' : '']); });
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sm), '차단기별 평균·최대'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
+        sm.push([b.panel, b.name, b.volt, runs.length, rd(avg), mx ? rd(mx.k) : '', mx ? mx.r.d : '']); });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sm), '부하 차단기 평균·최대'); XLSX.writeFile(wb, `후크메타_부하측정_${todayStr()}.xlsx`);
     }
     // ---------------- 사진 (분전반 전체·차단기 근접) ----------------
     let PHOTOS = [], URLS = {}, photoErr = '', phFilter = null, phPanel = '', phKind = 'breaker', LB = { list: [], i: 0 };
