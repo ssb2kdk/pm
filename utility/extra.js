@@ -1670,9 +1670,15 @@
     }
     function closeZoom() { document.getElementById('zoom').hidden = true; if (zoomChart) { zoomChart.destroy(); zoomChart = null; } }
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('zoom').hidden) closeZoom(); });
+    // 범례(누르면 그 선 숨김) 위는 크게 보기 안 함 — 그래프 영역을 눌러야 크게 보기
+    function onLegend(cv, e) { const ch = window.Chart && Chart.getChart(cv), lg = ch && ch.legend; if (!lg || !lg.options || lg.options.display === false) return false; const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; return x >= lg.left && x <= lg.right && y >= lg.top && y <= lg.bottom; }
     document.addEventListener('click', e => {
       const box = e.target.closest('.chart-box'); if (!box || box.closest('#zoom')) return;
-      const cv = box.querySelector('canvas'); if (cv && CHART_CFG[cv.id]) openZoom(cv.id);
+      const cv = box.querySelector('canvas'); if (!cv || !CHART_CFG[cv.id] || onLegend(cv, e)) return; openZoom(cv.id);
+    });
+    document.addEventListener('mousemove', e => {
+      const box = e.target.closest && e.target.closest('.chart-box'); if (!box || box.closest('#zoom')) return;
+      const cv = box.querySelector('canvas'); if (cv) box.style.cursor = onLegend(cv, e) ? 'pointer' : 'zoom-in';
     });
 
     // =====================================================================
