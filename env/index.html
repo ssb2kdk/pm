@@ -908,7 +908,7 @@
       h += `</table></div><div class="hint">· 설계 대비 = 실측 ÷ 설계값. <span class="wq-hi">100% 넘음</span> <span class="wq-mid">80~100%</span> <span class="wq-ok">80% 미만</span> · 기준 대비 = 방류수 ÷ 배출허용기준(국가식품클러스터 폐수종말처리시설 유입기준) · 불검출은 0으로 계산</div>`;
       h += wqSummary();
       h += '</div>';
-      h += wqBillCard() + wqLoadCard(P) + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
+      h += wqBillCard() + wqLoadCard() + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
       el.innerHTML = h;
     }
     function wqSummary() {
@@ -924,20 +924,29 @@
       L.push(effOver.length ? `방류수가 설계 처리후 농도를 넘은 경우: ${effOver.map(x => `${x.i.n} ${x.c}회`).join(', ')}.` : '방류수는 모든 회차가 설계 처리후 농도 이하입니다.');
       return `<div class="wq-sum"><b>요약</b><ul>${L.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
     }
-    function wqLoadCard(P) {
-      const R = WQ.records, D = WQ_DESIGN.flow;
-      const rows = R.map(r => ({ r, f: wqFlow(r.s.slice(0, 7)) }));
-      const cur = P.rec ? rows.find(x => x.r === P.rec) : null;
-      const okRows = rows.filter(x => x.f && x.f.avg);
-      const avgFlow = okRows.length ? okRows.reduce((a, x) => a + x.f.avg, 0) / okRows.length : null;
-      const flow = P.rec ? (cur && cur.f ? cur.f.avg : null) : avgFlow;
-      let h = `<div class="card"><b>오염부하량 비교 (원수, kg/일 = 농도 mg/L × 폐수량 ㎥/일 ÷ 1,000)</b>
-        <div class="hint">폐수량은 설비검침 <b>폐수방류량</b>에서 그달 배출한 날(하루 0.5㎥ 넘는 날)의 하루 평균입니다. 설계 폐수발생량은 ${D}㎥/일입니다.</div>
-        <div class="tbl-x"><table class="wq"><tr><th>항목</th><th>설계 부하</th><th>실제 부하</th><th>설계 대비</th></tr>
-        <tr><td class="l"><b>폐수량</b> ㎥/일</td><td>${nf(D, 1)}</td><td class="v">${flow ? nf(flow, 1) : '<span class="hint">검침 자료 없음</span>'}</td>${pctCell(flow ? flow / D * 100 : null)}</tr>`;
-      WQ_MAIN.forEach(i => { const c = wqNum(P.raw[i.k]), dl = i.dr * D / 1000, al = (c !== null && flow) ? c * flow / 1000 : null; h += `<tr><td class="l">${i.n}</td><td>${nf(dl, 1)}</td><td class="v">${al !== null ? nf(al, 1) : ''}</td>${pctCell(al !== null ? al / dl * 100 : null)}</tr>`; });
-      h += `</table></div><div class="hint" style="margin-top:6px">달별 폐수량: ${rows.map(x => `${ymKor(x.r.s)} ${x.f ? `${nf(x.f.tot, 0)}㎥/${x.f.days}일 = <b>${x.f.avg ? nf(x.f.avg, 1) : '-'}</b>` : '자료 없음'}`).join(' · ')}</div></div>`;
-      return h;
+    let lbItem = 'bod';
+    function wqLoadCard() { // 오염부하량: 측정 회차(월)마다 · 원수·방류 부하 = 농도 × 그달 폐수량 (위 회차 선택과 무관)
+      const R = WQ.records, D = WQ_DESIGN.flow, L = R.map(r => { const f = wqFlow(r.s.slice(0, 7)), q = f && f.avg ? f.avg : null;
+        return { r, q, f, it: Object.fromEntries(WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), e = wqNum(r.eff[i.k]); return [i.k, { a: a !== null && q ? a * q / 1000 : null, e: e !== null && q ? e * q / 1000 : null }]; })) }; });
+      const it = WQ_MAIN.find(i => i.k === lbItem) || WQ_MAIN[0], dA = it.dr * D / 1000, dE = it.de * D / 1000;
+      // 그래프: 막대 = 원수 부하(실제), 진한 작은 막대 = 방류 부하(실제), 점선 = 설계 원수 부하·설계 방류 부하
+      const W = 1040, H = 230, Lf = 50, B = 28, T = 16, Rt = 20, n = Math.max(1, L.length), bw = (W - Lf - Rt) / n, xs = i => Lf + bw * i + bw / 2;
+      const mx = Math.max(dA, ...L.map(x => x.it[it.k].a || 0)) * 1.15 || 1, ys = v => T + (H - T - B) * (1 - v / mx);
+      let g = `<svg viewBox="0 0 ${W} ${H}" class="wq-svg">`;
+      for (let k = 0; k <= 4; k++) { const v = mx * k / 4; g += `<line x1="${Lf}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${Lf - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${nf(v, v < 10 ? 1 : 0)}</text>`; }
+      L.forEach((x, i) => { const v = x.it[it.k]; g += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(x.r.s)}</text>`;
+        if (v.a !== null) g += `<rect x="${xs(i) - bw * 0.32}" y="${ys(v.a)}" width="${bw * 0.4}" height="${ys(0) - ys(v.a)}" fill="#1D7A5C" opacity=".75" rx="2"><title>원수 부하 ${nf(v.a, 1)} kg/일 (설계 ${nf(dA, 1)}의 ${nf(v.a / dA * 100, 0)}%)</title></rect><text x="${xs(i) - bw * 0.12}" y="${ys(v.a) - 4}" text-anchor="middle" font-size="10" fill="#1D7A5C">${nf(v.a / dA * 100, 0)}%</text>`;
+        if (v.e !== null) g += `<rect x="${xs(i) + bw * 0.1}" y="${ys(v.e)}" width="${bw * 0.22}" height="${Math.max(1, ys(0) - ys(v.e))}" fill="#1565c0" rx="2"><title>방류 부하 ${nf(v.e, 2)} kg/일 (설계 방류 ${nf(dE, 1)}의 ${nf(v.e / dE * 100, 0)}%)</title></rect><text x="${xs(i) + bw * 0.21}" y="${ys(v.e) - 4}" text-anchor="middle" font-size="10" fill="#1565c0">${nf(v.e, v.e < 10 ? 1 : 0)}</text>`; });
+      [[dA, `설계 원수 부하 ${nf(dA, 1)}`, '#1D7A5C'], [dE, `설계 방류 부하 ${nf(dE, 1)}`, '#1565c0']].forEach(([v, t, c]) => { g += `<line x1="${Lf}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="${c}" stroke-dasharray="6 4"/><text x="${W - Rt}" y="${ys(v) - 3}" text-anchor="end" font-size="10.5" fill="${c}">${t}</text>`; });
+      g += '</svg>';
+      const pc = (v, d) => v === null ? '<td>-</td>' : `<td class="${v / d > 1 ? 'wq-hi' : v / d > 0.8 ? 'wq-mid' : ''}">${nf(v, v < 10 ? 1 : 0)}<br><span class="hint">${nf(v / d * 100, 0)}%</span></td>`;
+      const tbl = `<div class="tbl-x"><table class="wq sm"><tr><th rowspan="2">채취</th><th rowspan="2">폐수량<br>㎥/일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n} kg/일</th>`).join('')}</tr><tr>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>
+        <tr style="background:#fafafa"><td>설계</td><td>${nf(D, 0)}</td>${WQ_MAIN.map(i => `<td>${nf(i.dr * D / 1000, 1)}</td><td>${nf(i.de * D / 1000, 1)}</td>`).join('')}</tr>` +
+        L.slice().reverse().map(x => `<tr><td>${x.r.s}</td><td>${x.q ? `${nf(x.q, 1)}<br><span class="hint">${nf(x.q / D * 100, 0)}%</span>` : '<span class="hint">자료 없음</span>'}</td>${WQ_MAIN.map(i => pc(x.it[i.k].a, i.dr * D / 1000) + pc(x.it[i.k].e, i.de * D / 1000)).join('')}</tr>`).join('') + '</table></div>';
+      return `<div class="card"><div class="toolbar"><b>오염부하량 월별 비교</b> <span class="hint">kg/일 = 농도 mg/L × 그달 폐수량 ㎥/일 ÷ 1,000</span><span class="seg">${WQ_MAIN.map(i => `<button class="${i.k === it.k ? 'on' : ''}" onclick="lbItem='${i.k}';renderWq()">${i.n}</button>`).join('')}</span></div>
+        <div class="hint">초록 막대 = 원수(처리 전) 부하 · 위 % = 설계 원수 부하 대비 / 파란 막대 = 방류(처리 후) 부하 · 점선 = 설계 부하</div>${g}${tbl}
+        <div class="hint" style="margin-top:6px">· 폐수량 = 설비검침 <b>폐수방류량</b>에서 그달 배출한 날(하루 0.5㎥ 넘는 날)의 하루 평균 · 설계 폐수발생량 ${D}㎥/일 · % 칸: <span class="wq-mid">80~100%</span> <span class="wq-hi">100% 넘음</span><br>
+          · 원수 부하가 설계를 넘어도 방류 부하가 설계 방류 부하보다 훨씬 낮으면 = 지금은 처리시설이 그만큼을 처리하고 있다는 뜻 (처리시설 용량 150㎥/일 대비 유입량이 적어 체류시간이 긴 덕분)</div></div>`;
     }
     function wqChart(side, it) {
       const R = WQ.records, W = 520, H = 200, L = 46, B = 26, T = 12, Rt = 26;
