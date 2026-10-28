@@ -877,7 +877,7 @@
       const el = document.getElementById('wq-body');
       if (!WQ) { el.innerHTML = '<div class="loading">불러오는 중...</div>'; await loadWq(); }
       if (!WWN) { try { await loadWwn(); } catch (e) { WWN = []; } }
-      if (!wqMeterLoaded && WQ.records.length) { try { await loadMeter(WQ.records[0].s.slice(0, 8) + '01', todayStr); } catch (e) { } wqMeterLoaded = true; }
+      if (!wqMeterLoaded) { const d0 = new Date(); const y0 = `${new Date(d0.getFullYear(), d0.getMonth() - 12, 1).getFullYear()}-${pad2(new Date(d0.getFullYear(), d0.getMonth() - 12, 1).getMonth() + 1)}-01`, f = WQ.records.length && WQ.records[0].s.slice(0, 8) + '01' < y0 ? WQ.records[0].s.slice(0, 8) + '01' : y0; try { await loadMeter(f, todayStr); } catch (e) { } wqMeterLoaded = true; }
       const R = WQ.records, P = wqPick();
       const opts = R.slice().reverse().map(r => `<option value="${r.s}" ${wqSel === r.s ? 'selected' : ''}>${r.s.slice(0, 7)} (채취 ${r.s.slice(5)})</option>`).join('');
       let h = `<div class="card"><div class="toolbar"><b>설계 대비 농도 비교</b>
@@ -946,9 +946,47 @@
       R.forEach((r, i) => { s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${ymKor(r.s)}</text>`; });
       return s + '</svg>';
     }
+    // ---- 폐수량·용수량: 인허가 값과 실제 (월별 하루 평균 · 가장 많은 날) ----
+    const QTY = { qww: { n: '폐수 발생량', g: () => g('폐수방류량'), col: '#1565c0', def: () => WQ_DESIGN.flow }, qwater: { n: '용수 사용량', g: () => gWater, col: '#1D7A5C', def: () => null } };
+    function wqQtyMonth(ym, key) {
+      const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), get = QTY[key].g(), last = todayStr; let tot = 0, have = 0, work = 0, wtot = 0, mx = null, mxd = '';
+      for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`; if (ds >= last) break; const u = pair(ds, get).use; if (u === null || u < 0) continue; have++; tot += u; if (u > 0.5) { work++; wtot += u; } if (mx === null || u > mx) { mx = u; mxd = ds; } }
+      return have < 5 ? null : { avg: tot / have, wavg: work ? wtot / work : null, max: mx, maxD: mxd, have, n };
+    }
+    function wqQtyChart(key) {
+      const Q = QTY[key], permit = wqPermit(key), ms = []; { const d = new Date(); d.setDate(1); for (let i = 11; i >= 0; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); ms.push(`${x.getFullYear()}-${pad2(x.getMonth() + 1)}`); } }
+      const rows = ms.map(ym => ({ ym, q: wqQtyMonth(ym, key) })), W = 1040, H = 240, L = 50, B = 28, T = 16, Rt = 20;
+      const vals = rows.flatMap(r => r.q ? [r.q.wavg, r.q.max] : []).filter(v => v !== null), mx = Math.max(1, ...vals, permit || 0) * 1.12;
+      const bw = (W - L - Rt) / ms.length, xs = i => L + bw * i + bw / 2, ys = v => T + (H - T - B) * (1 - v / mx);
+      let s = `<svg viewBox="0 0 ${W} ${H}" class="wq-svg">`;
+      for (let k = 0; k <= 4; k++) { const v = mx * k / 4; s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${L - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${nf(v, 0)}</text>`; }
+      rows.forEach((r, i) => { const q = r.q; s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#666">${Number(r.ym.slice(5))}월</text>`;
+        if (!q) return; const v = q.wavg ?? q.avg; s += `<rect x="${xs(i) - bw * 0.3}" y="${ys(v)}" width="${bw * 0.6}" height="${ys(0) - ys(v)}" fill="${Q.col}" opacity=".75" rx="3"><title>${r.ym} 일한 날 하루 평균 ${nf(v, 1)}㎥</title></rect><text x="${xs(i)}" y="${ys(v) - 4}" text-anchor="middle" font-size="10" fill="#333">${nf(v, 0)}</text>`;
+        if (q.max !== null) s += `<circle cx="${xs(i)}" cy="${ys(q.max)}" r="4" fill="#fff" stroke="#e0482b" stroke-width="2"><title>${q.maxD} 가장 많은 날 ${nf(q.max, 1)}㎥</title></circle>`; });
+      const mp = rows.map((r, i) => r.q && r.q.max !== null ? `${xs(i)},${ys(r.q.max)}` : null).filter(Boolean); if (mp.length > 1) s += `<polyline fill="none" stroke="#e0482b" stroke-width="1.2" stroke-dasharray="3 3" points="${mp.join(' ')}"/>`;
+      if (permit) s += `<line x1="${L}" x2="${W - Rt}" y1="${ys(permit)}" y2="${ys(permit)}" stroke="#c62828" stroke-width="1.5" stroke-dasharray="6 4"/><text x="${W - Rt}" y="${ys(permit) - 4}" text-anchor="end" font-size="11" fill="#c62828">인허가 ${nf(permit, 1)}㎥/일</text>`;
+      s += '</svg>';
+      const tbl = `<div class="tbl-x"><table class="wq sm"><tr><th>월</th>${rows.map(r => `<th>${Number(r.ym.slice(5))}월</th>`).join('')}</tr>
+        <tr><td class="l">일한 날 하루 평균</td>${rows.map(r => `<td>${r.q && r.q.wavg !== null ? nf(r.q.wavg, 1) : '-'}</td>`).join('')}</tr>
+        <tr><td class="l">가장 많은 날</td>${rows.map(r => `<td class="${r.q && permit && r.q.max > permit ? 'wq-hi' : ''}">${r.q && r.q.max !== null ? nf(r.q.max, 1) : '-'}</td>`).join('')}</tr>
+        <tr><td class="l">인허가 대비 (평균)</td>${rows.map(r => { const v = r.q && r.q.wavg !== null && permit ? r.q.wavg / permit * 100 : null; return `<td class="${v > 100 ? 'wq-hi' : v > 80 ? 'wq-mid' : ''}">${v === null ? '-' : nf(v, 0) + '%'}</td>`; }).join('')}</tr></table></div>`;
+      const ed = isAdmin() ? `<span class="hint" style="margin-left:8px">인허가 ${Q.n} <input id="pm-${key}" type="number" step="0.1" style="width:80px" value="${permit ?? ''}"> ㎥/일 <button class="mini" onclick="wqPermitSave('${key}')">저장</button></span>` : '';
+      return `<div class="hint" style="margin:4px 0"><b>${Q.n}</b> (㎥/일) — 막대: 일한 날(하루 0.5㎥ 넘게 쓴 날) 하루 평균 · <span style="color:#e0482b">○</span> 그 달 가장 많은 날 · <span style="color:#c62828">빨간 점선</span>: 인허가 ${permit ? nf(permit, 1) + '㎥/일' : '(값을 넣어 주세요)'} · 설비검침 ${key === 'qww' ? '폐수방류량' : '상수도 40A + 50A'} 하루 사용량 기준${ed}</div>${s}${tbl}`;
+    }
+    function wqPermit(key) { const v = ((WQ && WQ.permit) || {})[key]; return v !== undefined && v !== null && v !== '' ? Number(v) : QTY[key].def(); }
+    async function wqPermitSave(key) {
+      const raw = document.getElementById('pm-' + key).value, val = raw === '' ? null : Number(raw);
+      const wasSaved = WQ_SAVED, keep = WQ; await loadWq(); if (!WQ_SAVED && wasSaved === false) WQ = keep;
+      const v = Object.assign({}, WQ, { permit: Object.assign({}, WQ.permit || {}, { [key]: val }) });
+      const { error } = await sb.from('env_settings').upsert({ key: 'wq', value: v }, { onConflict: 'key' });
+      if (error) { alert('저장 실패: ' + errMsg(error)); return; } WQ = v; WQ_SAVED = true; renderWq();
+    }
     function wqTrendCard() {
-      const it = WQ_MAIN.find(i => i.k === wqItem) || WQ_MAIN[0], R = WQ.records;
-      let h = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${WQ_MAIN.map(i => `<button class="${i.k === it.k ? 'on' : ''}" onclick="wqItem='${i.k}';renderWq()">${i.n}</button>`).join('')}</span></div>
+      const R = WQ.records, segs = WQ_MAIN.map(i => [i.k, i.n]).concat([['qww', '폐수량'], ['qwater', '용수량']]);
+      const head = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${segs.map(([k, n]) => `<button class="${k === wqItem ? 'on' : ''}" onclick="wqItem='${k}';renderWq()">${n}</button>`).join('')}</span></div>`;
+      if (QTY[wqItem]) return head + wqQtyChart(wqItem) + '</div>';
+      const it = WQ_MAIN.find(i => i.k === wqItem) || WQ_MAIN[0];
+      let h = head + `
         <div class="wq-charts"><div><div class="hint"><b>원수</b> (mg/L) — 빨간 점선: 설계 처리전 ${nf(it.dr)}</div>${wqChart('raw', it)}</div>
         <div><div class="hint"><b>방류수</b> (mg/L) — 빨간 점선: 설계 처리후 ${nf(it.de)}, 회색: 배출허용기준 ${nf(it.lim)}</div>${wqChart('eff', it)}</div></div>`;
       h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
