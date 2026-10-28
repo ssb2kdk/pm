@@ -457,6 +457,7 @@
           <div hidden><span class="chips" id="anom-chips"></span><div id="anom-table"></div><div id="pd-body"></div></div>
           <h4 style="margin:16px 0 4px">생산 일별 요약과 비교 <span class="hint" style="font-weight:400">원육 부위·포장 제품·공정별 작업시간 ↔ 유틸리티 · 상관계수</span></h4><div id="dc-body"></div>
           <h4 style="margin:18px 0 4px">비슷한 날끼리 비교 <span class="hint" style="font-weight:400">원육 부위·양·포장 제품이 비슷한 생산일만 모아 유틸리티 사용량 비교 · 위 표 날짜 아래 「≈ 비슷한 날」로 기준 날 고르기</span></h4><div id="sim-body"></div>
+          <h4 style="margin:18px 0 4px">폐수 공정별 나눠 보기 (월별) <span class="hint" style="font-weight:400">자숙 회차 → 증숙 배수 · 레토르트 회차 → 살균 냉각수 · 나머지 = 세척·청소 — 인허가 산출근거 단위로</span></h4><div id="ws-body"></div>
         </div>
       </div>
 
@@ -2370,7 +2371,7 @@
       document.getElementById('dayan-month').textContent = ymLabel(ym);
       document.getElementById('dayan-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${uk === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderDayan()">${u.name}</button>`).join('');
       if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; if (PD_UTIL[uk]) pdUtil = uk; anomMonth = ym; renderAnomaly();
-      dcYm = ym; dcU = uk; renderDayCmp().then(() => renderSimilar());
+      dcYm = ym; dcU = uk; renderDayCmp().then(() => { renderSimilar(); renderWwSplit(); });
     }
     function shiftCauseMonth(d) { causeYm = d > 0 ? UT.nextYm(causeYm) : UT.prevYm(causeYm); renderCause(); }
     // 그 달 이상 사용일 (과다만)
@@ -3843,6 +3844,32 @@
         `<tr class="dc-sum"><td>평균</td><td></td><td>${f0(L.reduce((a, x) => a + x.p.rm, 0) / L.length)}</td><td></td><td>${nf1.format(L.reduce((a, x) => a + (x.p.cookN || 0), 0) / L.length)}</td><td>${nf1.format(L.reduce((a, x) => a + (x.p.retN || 0), 0) / L.length)}</td><td>${(() => { const b = L.filter(x => x.p.boilH !== undefined && x.p.boilH !== null); return b.length ? nf1.format(b.reduce((a, x) => a + x.p.boilH, 0) / b.length) + 'h' : ''; })()}</td>${A.map(v => `<td>${v === null ? '-' : Math.abs(v) >= 100 ? f0(v) : nf1.format(v)}</td>`).join('')}</tr></table></div>`;
       el.innerHTML = h; if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       document.querySelectorAll('#dc-body tr.sim-ref').forEach(t => t.classList.remove('sim-ref'));
+    }
+    // ---- 폐수(·용수) 공정별 나눠 보기: 인허가 산출근거 단위로 ----
+    //  증숙 배수 = 자숙 회차 × 1.33㎥ (증숙기 1.33㎥/대) · 살균 냉각수 = 레토르트 회차 × 6.67㎥ (1차 5.67 + 2차 1.0) · 세척·청소·기타 = 실제 폐수 − 두 몫
+    let wsCook = 1.33, wsRet = 6.67;
+    function renderWwSplit() {
+      const el = document.getElementById('ws-body'); if (!el || !PRODD) return;
+      const yst = UT.addDays(todayStr, -1), ms = []; { let m = yst.slice(0, 7); for (let i = 0; i < 12; i++) { ms.unshift(m); m = UT.prevYm(m); } }
+      const rows = ms.map(ym => { let cook = 0, ret = 0, pd = 0, ww = 0, wwN = 0, wt = 0, wtN = 0, rm = 0, hasC = false, hasR = false;
+        for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d); if (ds > yst) break; const p = PRODD[ds];
+          if (p && (p.rm || 0) > 0) { pd++; rm += p.rm; } if (p && p.cookN !== undefined) { hasC = true; cook += p.cookN || 0; } if (p && p.retN !== undefined) { hasR = true; ret += p.retN || 0; }
+          const u = UT.dailyUsage(DAILY, ds) || {}; if (u.ww !== null && u.ww !== undefined && u.ww >= 0) { ww += u.ww; wwN++; } if (u.water !== null && u.water !== undefined && u.water >= 0) { wt += u.water; wtN++; } }
+        const eC = hasC ? cook * wsCook : null, eR = hasR ? ret * wsRet : null, rest = wwN && eC !== null && eR !== null ? ww - eC - eR : null;
+        return { ym, pd, rm, cook: hasC ? cook : null, ret: hasR ? ret : null, eC, eR, ww: wwN ? ww : null, wt: wtN ? wt : null, rest }; }).filter(r => r.pd || r.ww);
+      const f = v => v === null || v === undefined ? '-' : f0(v), pdv = (v, r) => v === null || !r.pd ? '' : `<div class="hint">${nf1.format(v / r.pd)}/일</div>`;
+      const P = { c: 16, r: 27, w: 65 }; // 인허가 하루 기준 (증숙 16 · 냉각 27 · 세척·청소 65 ㎥/일)
+      let h = `<div class="toolbar" style="flex-wrap:wrap;gap:8px"><span class="hint">계수 (인허가 산출근거 · 바꿔 볼 수 있음, 저장 안 됨)</span>
+          자숙 1회당 <input type="number" step="0.01" style="width:64px" value="${wsCook}" onchange="wsCook=Number(this.value)||0;renderWwSplit()">㎥
+          · 레토르트 1회당 <input type="number" step="0.01" style="width:64px" value="${wsRet}" onchange="wsRet=Number(this.value)||0;renderWwSplit()">㎥ <span class="hint">(1차 냉각 5.67 + 2차 냉각 1.0)</span></div>
+        <div class="tbl-wrap"><table class="t"><tr><th rowspan="2">월</th><th rowspan="2">생산일</th><th rowspan="2">원육 kg</th><th colspan="2">회차</th><th colspan="4">폐수 ㎥ (아래 작은 글씨 = 생산일 하루 평균)</th><th rowspan="2">용수 ㎥</th><th rowspan="2">용수 − 폐수<br><span class="hint">제품·증발 등</span></th></tr>
+          <tr><th>자숙</th><th>레토르트</th><th>증숙 배수<br><span class="hint">자숙 × ${wsCook}</span></th><th>살균 냉각수<br><span class="hint">레토르트 × ${wsRet}</span></th><th>세척·청소·기타<br><span class="hint">실제 − 두 몫</span></th><th>실제 폐수<br><span class="hint">설비검침</span></th></tr>` +
+        rows.map(r => `<tr><td>${ymLabel(r.ym)}</td><td>${r.pd}</td><td>${f0(r.rm)}</td><td>${f(r.cook)}</td><td>${f(r.ret)}</td>
+          <td>${f(r.eC)}${pdv(r.eC, r)}</td><td>${f(r.eR)}${pdv(r.eR, r)}</td><td class="${r.rest !== null && r.rest < 0 ? 'up' : ''}">${f(r.rest)}${pdv(r.rest, r)}</td><td><b>${f(r.ww)}</b>${pdv(r.ww, r)}</td><td>${f(r.wt)}${pdv(r.wt, r)}</td><td>${r.wt !== null && r.ww !== null ? f0(r.wt - r.ww) : '-'}</td></tr>`).join('') +
+        `<tr style="background:#fafafa"><td>인허가 (하루)</td><td></td><td>5,300 + 기타</td><td></td><td></td><td>${P.c}</td><td>${P.r}</td><td>${P.w + 2}</td><td><b>110</b></td><td></td><td></td></tr></table></div>
+        <div class="hint" style="margin-top:6px">· 자숙·레토르트 회차는 생산 웹사이트 기록 (기록을 시작한 달부터 — 그 전 달은 「-」) · 폐수·용수는 설비검침 일일 검침 합 · 「세척·청소·기타」가 마이너스면 계수가 실제보다 큰 것 (탱크 물을 다 버리지 않거나 냉각수 일부를 재사용 등) → 계수를 바꿔 맞춰 보기<br>
+          · 인허가 하루 기준: 증숙 16 (1.33㎥ × 세척 2회 × 6대) · 살균 냉각 27 (레토르트 4대 × 6.67) · 세척·청소 65 + 소스·보일러·콤프레샤 2 = 폐수 110㎥/일 · 생산일 하루 평균과 비교하면 공정별 여유가 보임</div>`;
+      el.innerHTML = h;
     }
     function pkgOf(p) { // { kg, known(EA), all(EA) }
       if (!p) return { kg: 0, known: 0, all: 0 }; let kg = 0, known = 0, all = 0;
