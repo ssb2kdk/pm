@@ -204,7 +204,8 @@
       #tab-print { display: block !important; }
       @page { size: landscape; margin: 10mm; }
     }
-  </style>
+      .pm-next { color: #185FA5; font-weight: 700; white-space: nowrap; } @media print { .pm-next { color: #000; } }
+</style>
 </head>
 <body>
 
@@ -1535,8 +1536,15 @@
         }
         if (!include) return;
         if (!/생산설비/.test(it.category || '')) return; // 생산설비 점검표 — 법정·시설물·필터 점검은 출력 안 함
+        // 월간 주기(2개월·3개월 등)인데 이번 달이 점검 달이 아니면 → 비고에 다음 예정일
+        let nextNote = '';
+        if (it.cycleType === '월간' && Number(it.cycleValue) > 1) {
+          const mEnd = new Date(year, month, 0), mStart = new Date(year, month - 1, 1); let cursor = parseYMD(it.startDate || it.nextDueRaw), due = false, after = null;
+          for (let i = 0; cursor && i < 400; i++) { if (cursor > mEnd) { after = cursor; break; } if (cursor >= mStart) { due = true; break; } cursor = calcNextDue_(cursor, it.cycleType, it.cycleValue, resolveMinusOneDay_(it.minusOneDay, c.settings)); }
+          if (!due && after) nextNote = `다음 예정 ${after.getFullYear()}년 ${after.getMonth() + 1}월`;
+        }
         rows.push({ id: it.id, category: it.category || '미분류', equipment: it.equipment, task: it.task,
-          cycleLabel: cycleLabel_(it.cycleType, it.cycleValue), assignee: it.assignee, note: it.note });
+          cycleLabel: cycleLabel_(it.cycleType, it.cycleValue), assignee: it.assignee, note: it.note, nextNote });
       });
       rows.sort((a, b) => (a.category + a.equipment).localeCompare(b.category + b.equipment, 'ko'));
 
@@ -1613,7 +1621,7 @@
           const mark = r.marks[d] || '';
           html += `<td class="${mark === 'X' ? 'mark-x' : (mark === 'O' ? 'mark-o' : '')}">${mark}</td>`;
         });
-        html += `<td>${esc(r.note)}</td></tr>`;
+        html += `<td>${r.nextNote ? `<b class="pm-next">${esc(r.nextNote)}</b>${r.note ? '<br>' : ''}` : ''}${esc(r.note)}</td></tr>`;
       });
       container.innerHTML = html + '</table>';
     }
