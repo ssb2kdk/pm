@@ -1379,6 +1379,7 @@
 
       // 이 달 원인 정리 (월간보고서 코멘트와 같은 칸)
       const cmt = (yd(y).comments || {})[ym] || '';
+      { const sb2 = document.getElementById('cz-memo-sub'); if (sb2) sb2.textContent = `${ymLabel(ym)} · 전기·가스·용수·폐수 한 칸 (항목을 바꿔도 같은 칸) · 월간보고서 「분석 의견 및 향후 조치」에 그대로 들어감`; }
       if (document.getElementById('cz-memo')) document.getElementById('cz-memo').innerHTML = isAdmin()
         ? `<textarea id="cz-memo-ta" class="cz-memo-ta" placeholder="예) 9월 전기는 원육 투입이 40% 늘어 사용량 +1.4%, 단가 하락으로 비용은 −3%. 원육 kg당 2.78 kWh로 전월보다 좋아짐. 27일 쉬는 날 사용은 냉동창고 제상 — 특이 없음.">${esc(cmt)}</textarea>
            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="czAutoText()">✍ 자동 문장 넣기</button><button class="btn" onclick="czSaveMemo()">저장</button><span class="hint" id="cz-memo-st"></span></div>`
@@ -1422,7 +1423,7 @@
     }
     async function czSaveMemo() {
       const ym = causeYm, y = Number(ym.slice(0, 4));
-      try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [ym]: document.getElementById('cz-memo-ta').value } }); document.getElementById('cz-memo-st').textContent = '저장됨 ✓ (월간보고서에 반영)'; }
+      try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [ym]: document.getElementById('cz-memo-ta').value } }); document.getElementById('cz-memo-st').textContent = '저장됨 ✓ (월간보고서 「분석 의견 및 향후 조치」에 반영)'; }
       catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
     // 참고 그래프 (기존 3개)
@@ -1565,7 +1566,7 @@
       h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
       h += `<div class="br-charts"><div><div class="br-ct">전기 원단위 (kWh/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-eunit"></canvas></div></div><div><div class="br-ct">가스 원단위 (MJ/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-gunit"></canvas></div></div></div>`;
       const cmt = (yd(y).comments || {})[brYm] || '';
-      h += `<div class="br-sec">특이사항 및 조치 계획</div>` + (isAdmin()
+      h += `<div class="br-sec">분석 의견 및 향후 조치</div>` + (isAdmin()
         ? `<textarea id="br-comment" class="br-comment" placeholder="예) 9월 가스 사용 증가: 자숙 설비 증설 시운전 영향 / 10월 보일러 공기비 조정 예정">${esc(cmt)}</textarea><div class="no-print" style="text-align:right;margin-top:4px"><button class="btn secondary" onclick="saveBriefComment()">코멘트 저장</button> <span class="hint" id="br-cmt-st"></span></div><div class="print-only br-txt" id="br-comment-print">${esc(cmt)}</div>`
         : `<div class="br-txt" style="min-height:40px;white-space:pre-wrap">${esc(cmt) || '-'}</div>`);
       document.getElementById('brief-sheet').innerHTML = h;
