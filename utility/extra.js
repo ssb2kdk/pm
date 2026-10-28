@@ -1136,7 +1136,7 @@
       document.getElementById('dayan-month').textContent = ymLabel(ym);
       document.getElementById('dayan-chips').innerHTML = UT.UTILS.map(u => `<button class="chip ${uk === u.k ? 'on' : ''}" onclick="causeUtil='${u.k}';renderDayan()">${u.name}</button>`).join('');
       if (UT.DAILY_UTILS.some(u => u.k === uk)) anomUtil = uk; if (PD_UTIL[uk]) pdUtil = uk; anomMonth = ym; renderAnomaly();
-      dcYm = ym; dcU = uk; renderDayCmp();
+      dcYm = ym; dcU = uk; renderDayCmp().then(() => renderSimilar());
     }
     function shiftCauseMonth(d) { causeYm = d > 0 ? UT.nextYm(causeYm) : UT.prevYm(causeYm); renderCause(); }
     // 그 달 이상 사용일 (과다만)
@@ -2570,6 +2570,46 @@
       return g > 0 ? g : null;
     }
     function prodGram(name) { const k = dcProdName(name), o = prodGMap()[k]; return o !== undefined && o !== null && o !== '' && Number(o) > 0 ? { g: Number(o), src: 'manual' } : (prodGramAuto(name) ? { g: prodGramAuto(name), src: 'auto' } : null); }
+    // ---- 비슷한 날끼리 비교: 원육 부위·양·포장 제품이 비슷한 생산일만 모아서 유틸리티 사용량 차이 보기 ----
+    let simRef = null, simTol = 0.2, simPart = 'same', simProd = 'main', simSpan = 6;
+    const dayP = ds => { const p0 = PRODD && PRODD[ds]; if (!p0) return null; return { ...p0, packItems: p0.packItemsDaily && p0.packItemsDaily.length ? p0.packItemsDaily : p0.packItems, ea: p0.eaDaily !== undefined ? p0.eaDaily : p0.ea }; };
+    const partsKey = p => Object.keys(p.rmParts || {}).filter(k => (p.rmParts[k] || 0) > 0).sort().join('·');
+    const prodMap = p => { const m = {}; (p.packItems || []).forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + (x.ea || 0); }); return m; };
+    const mainProd = p => { const e = Object.entries(prodMap(p)).sort((a, b) => b[1] - a[1]); return e.length ? e[0][0] : ''; };
+    const prodKey = p => Object.keys(prodMap(p)).sort().join('·');
+    function renderSimilar(scroll) {
+      const el = document.getElementById('sim-body'); if (!el || !PRODD) return;
+      const yst = UT.addDays(todayStr, -1), from = simSpan ? UT.addDays(yst, -simSpan * 31) : '0000';
+      const days = Object.keys(PRODD).filter(ds => ds >= from && ds <= yst && (PRODD[ds].rm || 0) > 0).sort();
+      if (!simRef || !PRODD[simRef]) { const inM = days.filter(d => d.startsWith(dcYm || causeYm || '')); simRef = (inM.length ? inM : days)[(inM.length ? inM : days).length - 1] || null; }
+      if (!simRef) { el.innerHTML = '<div class="empty">생산일 자료가 없습니다.</div>'; return; }
+      const R = dayP(simRef), rk = partsKey(R), rm = mainProd(R), rp = prodKey(R);
+      const match = ds => { const p = dayP(ds); if (!p) return false;
+        if (simPart === 'same' && partsKey(p) !== rk) return false;
+        if (simTol && Math.abs(p.rm - R.rm) > R.rm * simTol) return false;
+        if (simProd === 'main' && mainProd(p) !== rm) return false; if (simProd === 'set' && prodKey(p) !== rp) return false; return true; };
+      const L = days.filter(match).map(ds => { const p = dayP(ds); return { ds, p, u: DC_U.map(u => { const v = u[4](ds); return v === null || v === undefined || isNaN(v) || v < 0 ? null : v; }) }; });
+      const avg = i => { const v = L.map(x => x.u[i]).filter(x => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }, A = DC_U.map((_, i) => avg(i));
+      const W = ['일', '월', '화', '수', '목', '금', '토'], chip = (cur, val, lab, set) => `<button class="chip ${cur === val ? 'on' : ''}" onclick="${set}=${JSON.stringify(val).replace(/"/g, "'")};renderSimilar()">${lab}</button>`;
+      const dv = (v, a) => v === null || a === null || !a ? '' : (() => { const d = (v / a - 1) * 100; return `<div class="hint ${d > 10 ? 'up' : d < -10 ? 'down' : ''}">${d >= 0 ? '+' : ''}${nf0.format(d)}%</div>`; })();
+      const pm = p => Object.entries(prodMap(p)).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> ${f0(v)}</div>`).join('');
+      let h = `<div class="toolbar" style="flex-wrap:wrap;gap:6px">
+          <span>기준 날 <input type="date" value="${simRef}" onchange="simRef=this.value;renderSimilar()"> <b>${esc(rk || '-')}</b> ${f0(R.rm)}kg · 주요 제품 <b>${esc(rm || '-')}</b></span></div>
+        <div class="toolbar" style="flex-wrap:wrap;gap:6px">
+          <span class="hint">부위</span><span class="chips">${chip(simPart, 'same', '같은 부위만', 'simPart')}${chip(simPart, 'any', '상관없음', 'simPart')}</span>
+          <span class="hint">원육 양</span><span class="chips">${[[0.1, '±10%'], [0.2, '±20%'], [0.3, '±30%'], [0, '상관없음']].map(([v, l]) => chip(simTol, v, l, 'simTol')).join('')}</span>
+          <span class="hint">포장 제품</span><span class="chips">${chip(simProd, 'main', '주요 제품 같음', 'simProd')}${chip(simProd, 'set', '제품 구성 같음', 'simProd')}${chip(simProd, 'any', '상관없음', 'simProd')}</span>
+          <span class="hint">기간</span><span class="chips">${[[3, '3개월'], [6, '6개월'], [12, '1년'], [0, '전체']].map(([v, l]) => chip(simSpan, v, l, 'simSpan')).join('')}</span></div>`;
+      if (L.length < 2) { el.innerHTML = h + `<div class="empty">조건에 맞는 날이 기준 날 하나뿐입니다 — 조건을 넓혀 보세요.</div>`; return; }
+      h += `<div class="hint" style="margin:4px 0">비슷한 생산일 <b>${L.length}일</b> · 유틸리티 칸 아래 % = 이 묶음 평균 대비 (<span class="up">+10% 넘게 많이</span> · <span class="down">10% 넘게 적게</span>) — 조건이 비슷한데 많이 쓴 날은 설비 운전·누수·특이 작업을 확인해 볼 날</div>
+        <div class="tbl-wrap"><table class="t dc-t"><tr><th>날짜</th><th class="l">부위</th><th>원육 kg</th><th class="l">포장 제품 · EA</th><th>자숙<br><span class="hint">건수</span></th><th>레토르트<br><span class="hint">건수</span></th><th>보일러<br><span class="hint">켠 시간</span></th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
+        L.slice().reverse().map(x => { const p = x.p, w = new Date(x.ds + 'T00:00:00').getDay();
+          return `<tr class="${x.ds === simRef ? 'sim-ref' : ''}"><td>${x.ds.slice(2).replace(/-/g, '.')} (${W[w]})${x.ds === simRef ? '<div class="hint">기준</div>' : ''}</td><td class="l">${esc(partsKey(p))}</td><td>${f0(p.rm)}</td><td class="l dc-pack">${pm(p)}</td><td>${p.cookN || ''}</td><td>${p.retN || ''}</td><td>${p.boilH !== undefined && p.boilH !== null ? nf1.format(p.boilH) + 'h' : ''}</td>
+            ${x.u.map((v, i) => `<td>${v === null ? '-' : Math.abs(v) >= 100 ? f0(v) : nf1.format(v)}${dv(v, A[i])}</td>`).join('')}</tr>`; }).join('') +
+        `<tr class="dc-sum"><td>평균</td><td></td><td>${f0(L.reduce((a, x) => a + x.p.rm, 0) / L.length)}</td><td></td><td>${nf1.format(L.reduce((a, x) => a + (x.p.cookN || 0), 0) / L.length)}</td><td>${nf1.format(L.reduce((a, x) => a + (x.p.retN || 0), 0) / L.length)}</td><td>${(() => { const b = L.filter(x => x.p.boilH !== undefined && x.p.boilH !== null); return b.length ? nf1.format(b.reduce((a, x) => a + x.p.boilH, 0) / b.length) + 'h' : ''; })()}</td>${A.map(v => `<td>${v === null ? '-' : Math.abs(v) >= 100 ? f0(v) : nf1.format(v)}</td>`).join('')}</tr></table></div>`;
+      el.innerHTML = h; if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelectorAll('#dc-body tr.sim-ref').forEach(t => t.classList.remove('sim-ref'));
+    }
     function pkgOf(p) { // { kg, known(EA), all(EA) }
       if (!p) return { kg: 0, known: 0, all: 0 }; let kg = 0, known = 0, all = 0;
       (p.packItems || []).forEach(x => { all += x.ea; const g = prodGram(x.name); if (g) { kg += x.ea * g.g / 1000; known += x.ea; } });
@@ -2619,7 +2659,7 @@
         <tr><th class="l">부위</th><th>kg</th><th>전처리</th><th>자숙</th><th>자숙<br><span class="hint">건수</span></th><th>파쇄</th><th>내포장</th><th>레토르트<br><span class="hint">가열 h</span></th><th>레토르트<br><span class="hint">건수</span></th>${DC_U.map(u => `<th>${u[1]}<br><span class="hint">${u[2]}</span></th>`).join('')}</tr>` +
         rows.map(r => { const p = r.p, w = new Date(r.ds + 'T00:00:00').getDay(), parts = p ? Object.entries(p.rmParts || {}) : [];
           const items = p && p.packItems && p.packItems.length ? p.packItems.map(x => `${x.name} ${f0(x.ea)}`).join('\n') : '';
-          return `<tr class="${!p ? 'dc-off' : ''}"><td>${Number(r.ds.slice(8))}일 (<span class="${w === 0 ? 'dc-sun' : w === 6 ? 'dc-sat' : ''}">${W[w]}</span>)</td>
+          return `<tr class="${!p ? 'dc-off' : ''} ${simRef === r.ds ? 'sim-ref' : ''}"><td>${Number(r.ds.slice(8))}일 (<span class="${w === 0 ? 'dc-sun' : w === 6 ? 'dc-sat' : ''}">${W[w]}</span>)${p && p.rm > 0 ? `<br><button class="chip mini" title="이 날과 원육 부위·양·포장 제품이 비슷한 날만 모아 유틸리티 비교" onclick="simRef='${r.ds}';renderSimilar(true)">≈ 비슷한 날</button>` : ''}</td>
             <td class="l">${parts.length ? parts.map(([k]) => esc(k)).join('<br>') : (p ? '' : '<span class="hint">생산 없음</span>')}</td><td>${parts.length ? parts.map(([, v]) => f0(v)).join('<br>') : ''}</td>
             <td class="l dc-pack">${p && p.packItems && p.packItems.length ? (() => { const m = {}; p.packItems.forEach(x => { const k = dcProdName(x.name); m[k] = (m[k] || 0) + x.ea; }); const e = Object.entries(m);
               return e.map(([k, v]) => `<div><span class="dc-pn">${esc(k)}</span> <b>${f0(v)}</b></div>`).join('') + (e.length > 1 ? `<div class="hint">계 ${f0(p.ea)}</div>` : ''); })() : (p && p.ea ? f0(p.ea) : '')}</td>
