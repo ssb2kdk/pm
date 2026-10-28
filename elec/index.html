@@ -143,14 +143,14 @@
       const P = planOf(planY), R = planRec(planY), man = (R && R.data && R.data.done) || {}, ad = isAdmin();
       let h = `<div class="card"><div class="bar"><button class="chip" onclick="planY--;render()">◀</button><b style="font-size:16px">${planY}년 전기설비 예방정비 일정표</b><button class="chip" onclick="planY++;render()">▶</button>
         <button class="btn sec" onclick="printPlan()">🖨 인쇄</button></div>
-        <div class="hint" style="margin-bottom:8px">· 「계획」 칸: ${ad ? '눌러서 O → △ → 빈칸 (관리자)' : '관리자가 정함'} · 「실시」 칸: 각 탭에 기록하면 그 달에 <b style="color:var(--teal)">✓</b> 자동 표시 (부하측정은 월차 점검 또는 후크메타 측정이 있으면) · 적외선 열화상·전원품질분석은 별도로 하므로 눌러서 직접 표시</div>
+        <div class="hint" style="margin-bottom:8px">· 「계획」 칸: ${ad ? '눌러서 O → △ → 빈칸 (관리자)' : '관리자가 정함'} · 「실시」 칸: 각 탭에 기록하면 그 달에 <b style="color:var(--teal)">✓</b> 자동 표시 (부하측정은 월차 점검 또는 후크메타 측정이 있으면) · 기록이 없는 칸은 눌러서 직접 ✓ 표시·지우기 (적외선 열화상·전원품질분석처럼 별도로 한 것, 종이로만 남긴 것 등)</div>
         <div class="tw"><table class="t plan"><tr><th colspan="2">측정 시험 항목</th><th>월별</th>${[...Array(12)].map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>`;
       PLAN_ROWS.forEach(([k, g, item, , mode], idx) => {
         const span = PLAN_ROWS.slice(idx).findIndex((r, j) => j > 0 && r[1]); const gSpan = g ? (span < 0 ? PLAN_ROWS.length - idx : span) * 2 : 0;
         const head = g ? (item ? `<td class="l" rowspan="${gSpan}"><b>${esc(g)}</b></td><td class="l" rowspan="2">${esc(item)}</td>` : `<td class="l" colspan="2" rowspan="2"><b>${esc(g)}</b></td>`) : `<td class="l" rowspan="2">${esc(item)}</td>`;
         h += `<tr class="${mode === 'na' ? 'na' : ''}">${head}<td>계획</td>${P[k].map((v, m) => `<td class="pc" ${ad && mode !== 'na' ? `onclick="planCycle('${k}',${m})"` : ''}>${esc(v || '')}</td>`).join('')}</tr>`;
         h += `<tr class="${mode === 'na' ? 'na' : ''}"><td>실시</td>${[...Array(12)].map((_, m) => { const a = mode === 'auto' && autoDone(k, planY, m + 1), mm = (man[k] || {})[m + 1];
-          return `<td class="${a ? 'doneauto done' : mm ? 'done' : ''} ${mode === 'man' ? 'man' : ''}" ${mode === 'man' ? `onclick="planMan('${k}',${m + 1})" title="눌러서 실시 표시"` : ''}>${a || mm ? '✓' : ''}</td>`; }).join('')}</tr>`;
+          const can = mode !== 'na' && !a; return `<td class="${a ? 'doneauto done' : mm ? 'done' : ''} ${can ? 'man' : ''}" ${can ? `onclick="planMan('${k}',${m + 1})" title="눌러서 실시 표시 / 지우기"` : a ? 'title="기록이 있어 자동 표시됨"' : ''}>${a || mm ? '✓' : ''}</td>`; }).join('')}</tr>`;
       });
       h += `</table></div></div>`; el.innerHTML = h;
     }
