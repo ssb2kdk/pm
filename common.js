@@ -121,7 +121,7 @@
     isAdmin: () => !!(Portal.me && Portal.me.role === 'admin'),
     isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
     isViewer: () => !!(Portal.me && Portal.me.role === 'viewer'),
-    visibleApps: () => (CFG.APPS || []).filter(a => !a.hidden && (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만 · hidden: true 는 메뉴·홈에서 숨김 (주소로는 열림)
+    visibleApps: () => (CFG.APPS || []).filter(a => !a.hidden && !(a.noViewer && Portal.me && Portal.me.role === 'viewer') && (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만 · hidden: true 는 메뉴·홈에서 숨김 (주소로는 열림)
     appUrl: app => ROOT + app.path,
     start,
     callAdmin,
@@ -223,7 +223,7 @@
     document.body.classList.toggle('pt-admin', prof.role === 'admin'); // ⓘ 메모는 관리자만
     if (prof.role === 'viewer') viewerGuard(sb); // 보기 전용: 저장·수정·삭제 요청은 보내지 않고 바로 오류 (DB에서도 24번 SQL로 막힘)
     // 협력업체 계정은 허용된 앱만
-    if (prof.role === 'partner' && opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId)) {
+    if (opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId) && (prof.role === 'partner' || (prof.role === 'viewer' && (CFG.APPS || []).some(a => a.id === opts.appId && a.noViewer)))) { // 보기 전용 계정: noViewer 앱(설비검침·자재 발주·현장 요청·후크메타)은 안 보임
       const first = Portal.visibleApps().find(a => a.ready);
       location.replace(first ? Portal.appUrl(first) : ROOT); return;
     }
