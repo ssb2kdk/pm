@@ -29,6 +29,8 @@ window.APP_CONFIG = {
   LINKS: [
     { icon: '🗂️', name: '그룹웨어 현장 작업내역', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1595/home' },
     { icon: '📇', name: '그룹웨어 설비이력카드', desc: 'Works (회사 그룹웨어 로그인 필요)', url: 'https://gw.bongroup.co.kr/app/works/applet/1584/home' },
-    { icon: '🔍', name: '이물관리', desc: '순수본 2공장 이물 클레임 관리 (별도 사이트)', url: 'https://appieboysoni.github.io/ssbon-claim-defense/' }
+    { icon: '🔍', name: '이물관리', desc: '순수본 2공장 이물 클레임 관리 (별도 사이트)', url: 'https://appieboysoni.github.io/ssbon-claim-defense/' },
+    { icon: '🏭', name: '순수본 2공장 스마트팩토리', desc: '생산 관리 (별도 사이트)', url: 'https://wooms19-del.github.io/ssbon-2factory/' },
+    { icon: '✅', name: '순수본 HACCP 스마트팩토리', desc: 'HACCP 관리 (별도 사이트)', url: 'https://ssbon.haccp-app.workers.dev/' }
   ]
 };
