@@ -908,7 +908,7 @@
       h += `</table></div><div class="hint">· 설계 대비 = 실측 ÷ 설계값. <span class="wq-hi">100% 넘음</span> <span class="wq-mid">80~100%</span> <span class="wq-ok">80% 미만</span> · 기준 대비 = 방류수 ÷ 배출허용기준(국가식품클러스터 폐수종말처리시설 유입기준) · 불검출은 0으로 계산</div>`;
       h += wqSummary();
       h += '</div>';
-      h += wqBillCard() + wqLoadCard() + wqTrendCard() + wqFlowDesignCard() + wqInputCard();
+      h += wqBillCard() + wqLoadCard() + wqTrendCard() + wqFlowDesignCard() + wqDvaCard() + wqInputCard();
       el.innerHTML = h;
     }
     function wqSummary() {
@@ -1009,6 +1009,62 @@
       h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
       R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}</tr>`; });
       return h + `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div></div>`;
+    }
+    // ---- 설계(인허가) vs 실제: 공정별 폐수·용수 ----
+    //  증숙 배수 = 자숙 회차 × 1.33㎥ · 살균 냉각수 = 레토르트 배치 × 1.11㎥ (1차 945L + 2차 1톤/일 ÷ 6배치) · 세척·청소·기타 = 실제 폐수 − 두 몫
+    //  자숙·레토르트 회차는 생산 웹사이트(ssbon-factory)에서 읽기만 함
+    const DVA = { cook: 1.33, ret: 1.11, design: { cook: 16, ret: 27, wash: 67, ww: 110, cookN: 12, retN: 24 } };
+    let PCNT = null, PCNT_ERR = '', dvaYm = null;
+    function fsVal(v) { if (!v || typeof v !== 'object') return null; if ('doubleValue' in v) return Number(v.doubleValue); if ('integerValue' in v) return Number(v.integerValue); if ('stringValue' in v) return v.stringValue; if ('timestampValue' in v) return v.timestampValue; if ('booleanValue' in v) return v.booleanValue; return null; }
+    async function fsList(col, fields) {
+      const base = `https://firestore.googleapis.com/v1/projects/ssbon-factory/databases/(default)/documents/${col}`, mask = fields.map(f => 'mask.fieldPaths=' + f).join('&'), out = []; let tok = '';
+      for (let i = 0; i < 60; i++) { const r = await fetch(`${base}?pageSize=300&${mask}${tok ? '&pageToken=' + encodeURIComponent(tok) : ''}`, { method: 'GET', cache: 'no-store' }); if (!r.ok) throw new Error(col + ' HTTP ' + r.status);
+        const j = await r.json(); (j.documents || []).forEach(doc => out.push(Object.fromEntries(Object.entries(doc.fields || {}).map(([k, v]) => [k, fsVal(v)])))); tok = j.nextPageToken; if (!tok) break; }
+      return out;
+    }
+    async function loadPcnt() {
+      if (PCNT || PCNT_ERR) return; try { const [ck, rt] = await Promise.all([fsList('cooking', ['date']), fsList('retort', ['date'])]); const o = {};
+        ck.forEach(x => { const d = String(x.date || '').slice(0, 10); if (d) (o[d] = o[d] || { c: 0, r: 0 }).c++; }); rt.forEach(x => { const d = String(x.date || '').slice(0, 10); if (d) (o[d] = o[d] || { c: 0, r: 0 }).r++; });
+        PCNT = o; PCNT._cFrom = ck.map(x => String(x.date || '').slice(0, 10)).filter(Boolean).sort()[0] || null; PCNT._rFrom = rt.map(x => String(x.date || '').slice(0, 10)).filter(Boolean).sort()[0] || null; }
+      catch (e) { PCNT_ERR = e.message || String(e); }
+    }
+    function dvaMonth(ym) { // 생산일 = 폐수를 0.5㎥ 넘게 배출한 날 (일한 날) · 회차 기록을 시작한 달은 시작일부터만
+      const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), from = PCNT && PCNT._cFrom && PCNT._cFrom.slice(0, 7) === ym ? PCNT._cFrom : null; let pd = 0, c = 0, r = 0, ww = 0, wt = 0, nw = 0, nt = 0;
+      for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`; if (ds >= todayStr) break; if (from && ds < from) continue; const p = (PCNT || {})[ds]; if (p) { c += p.c; r += p.r; }
+        const u = pair(ds, g('폐수방류량')).use, w = pair(ds, gWater).use; if (u !== null && u >= 0) { ww += u; nw++; if (u > 0.5) pd++; } if (w !== null && w >= 0) { wt += w; nt++; } }
+      const has = !!(PCNT && PCNT._cFrom && ym >= PCNT._cFrom.slice(0, 7));
+      const eC = has ? c * DVA.cook : null, eR = has ? r * DVA.ret : null;
+      return { ym, pd, c, r, ww: nw ? ww : null, wt: nt ? wt : null, eC, eR, rest: has && nw ? ww - eC - eR : null, has, from };
+    }
+    function wqDvaCard() {
+      if (!PCNT && !PCNT_ERR) { loadPcnt().then(() => { if (document.getElementById('dva-card')) renderWq(); }); return `<div class="card" id="dva-card"><b>설계(인허가) vs 실제 — 공정별 폐수·용수</b><div class="hint">생산 웹사이트에서 자숙·레토르트 회차 불러오는 중...</div></div>`; }
+      if (PCNT_ERR) return `<div class="card" id="dva-card"><b>설계(인허가) vs 실제 — 공정별 폐수·용수</b><div class="hint">생산 웹사이트 자료를 읽지 못했습니다: ${esc(PCNT_ERR)} (회사 네트워크에서 firestore.googleapis.com 접속이 막혔을 수 있음)</div></div>`;
+      const ms = []; { const d = new Date(); for (let i = 12; i >= 1; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i + 1, 1); ms.push(`${x.getFullYear()}-${pad2(x.getMonth() + 1)}`); } }
+      const rows = ms.map(dvaMonth).filter(x => x.pd || x.ww !== null), last = rows.filter(x => x.has && x.pd).slice(-1)[0];
+      if (!dvaYm || !rows.some(x => x.ym === dvaYm)) dvaYm = (rows.filter(x => x.has && x.pd && x.ym < todayStr.slice(0, 7)).slice(-1)[0] || last || rows[rows.length - 1] || {}).ym;
+      const R = rows.find(x => x.ym === dvaYm) || {}, pd = R.pd || 0, per = v => v === null || v === undefined || !pd ? null : v / pd, D = DVA.design, wPermit = wqPermit('qwater');
+      const pc = (a, d) => { if (a === null || !d) return '<td>-</td>'; const v = a / d * 100; return `<td class="${v > 100 ? 'wq-hi' : v > 80 ? 'wq-mid' : ''}">${nf(v, 0)}%</td>`; };
+      const line = (n, basis, d, a, extra) => `<tr><td class="l">${n}</td><td class="l hint">${basis}</td><td>${nf(d, 1)}</td><td><b>${a === null ? '-' : nf(a, 1)}</b>${extra ? `<div class="hint">${extra}</div>` : ''}</td>${pc(a, d)}<td>${a === null ? '-' : nf(d - a, 1)}</td></tr>`;
+      let h = `<div class="card" id="dva-card"><div class="toolbar"><b>설계(인허가) vs 실제 — 공정별 폐수·용수</b><span class="seg">${rows.filter(x => x.has || x.ww !== null).map(x => `<button class="${x.ym === dvaYm ? 'on' : ''}" onclick="dvaYm='${x.ym}';renderWq()">${Number(x.ym.slice(5))}월</button>`).join('')}</span></div>
+        <div class="hint">${ymKor(dvaYm + '-01')}${R.from ? ` (회차 기록 시작 ${Number(R.from.slice(5, 7))}/${Number(R.from.slice(8))}부터)` : ''} · 일한 날(폐수 0.5㎥ 넘게 배출) ${pd}일의 <b>하루 평균</b> ↔ 인허가 하루 값 (㎥/일)${R.has ? '' : ' · <b>이 달은 자숙·레토르트 기록이 없어 공정별로 못 나눔</b>'}</div>
+        <div class="tbl-x"><table class="wq"><tr><th>공정</th><th>설계 근거</th><th>설계 (인허가)</th><th>실제 (일한 날 하루 평균)</th><th>설계 대비</th><th>여유</th></tr>
+        ${line('증숙 배수', `증숙기 1.33㎥ × 6대 × 2회`, D.cook, R.has ? per(R.eC) : null, R.has ? `자숙 하루 ${nf(per(R.c), 1)}회 × 1.33 (설계 ${D.cookN}회)` : '자숙 기록 없음')}
+        ${line('살균 냉각수', `레토르트 4대 × 6배치 × (945L + 2차 1톤/일÷6)`, D.ret, R.has ? per(R.eR) : null, R.has ? `레토르트 하루 ${nf(per(R.r), 1)}배치 × 1.11 (설계 ${D.retN}배치)` : '')}
+        ${line('세척·청소·기타', `세척·청소 65 + 소스·보일러·콤프레샤 2`, D.wash, R.has ? per(R.rest) : null, '실제 폐수 − 위 두 몫')}
+        <tr style="font-weight:700;background:#f3f6fa"><td class="l">폐수 합계</td><td class="l hint">설비검침 폐수방류량</td><td>${nf(D.ww, 1)}</td><td>${R.ww === null || R.ww === undefined ? '-' : nf(per(R.ww), 1)}</td>${pc(per(R.ww ?? null), D.ww)}<td>${R.ww == null ? '-' : nf(D.ww - per(R.ww), 1)}</td></tr>
+        <tr style="font-weight:700"><td class="l">용수 사용량</td><td class="l hint">설비검침 상수도 40A + 50A</td><td>${wPermit ? nf(wPermit, 2) : '<span class="hint">값 없음</span>'}</td><td>${R.wt === null || R.wt === undefined ? '-' : nf(per(R.wt), 1)}</td>${pc(per(R.wt ?? null), wPermit)}<td>${R.wt == null || !wPermit ? '-' : nf(wPermit - per(R.wt), 1)}</td></tr></table></div>`;
+      // 월별 쌓은 막대: 생산일 하루 평균 (증숙·냉각·세척) + 설계 110 점선
+      const W = 1040, H = 220, L = 46, B = 26, T = 14, Rt = 20, bw = (W - L - Rt) / Math.max(1, rows.length), xs = i => L + bw * i + bw / 2;
+      const mx = Math.max(D.ww, wPermit || 0, ...rows.map(x => x.pd ? (x.wt || 0) / x.pd : 0), ...rows.map(x => x.pd ? (x.ww || 0) / x.pd : 0)) * 1.12, ys = v => T + (H - T - B) * (1 - v / mx);
+      let g2 = `<svg viewBox="0 0 ${W} ${H}" class="wq-svg">`; for (let k = 0; k <= 4; k++) { const v = mx * k / 4; g2 += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="#eee"/><text x="${L - 4}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#888">${nf(v, 0)}</text>`; }
+      rows.forEach((x, i) => { g2 += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="${x.ym === dvaYm ? '#111' : '#666'}" font-weight="${x.ym === dvaYm ? 700 : 400}">${Number(x.ym.slice(5))}월</text>`; if (!x.pd) return;
+        const parts = x.has ? [[x.eC, '#e0482b', '증숙'], [x.eR, '#1565c0', '냉각'], [Math.max(0, x.rest || 0), '#9aa5b1', '세척·기타']] : [[x.ww || 0, '#9aa5b1', '폐수']]; let acc = 0;
+        parts.forEach(([v, c, n]) => { const a = (v || 0) / x.pd; g2 += `<rect x="${xs(i) - bw * 0.3}" y="${ys(acc + a)}" width="${bw * 0.42}" height="${Math.max(0, ys(acc) - ys(acc + a))}" fill="${c}" opacity=".85"><title>${x.ym} ${n} 하루 ${nf(a, 1)}㎥</title></rect>`; acc += a; });
+        if (x.wt !== null) { const a = x.wt / x.pd; g2 += `<rect x="${xs(i) + bw * 0.14}" y="${ys(a)}" width="${bw * 0.18}" height="${ys(0) - ys(a)}" fill="#1D7A5C" opacity=".6"><title>${x.ym} 용수 하루 ${nf(a, 1)}㎥</title></rect>`; } });
+      [[D.ww, `설계 폐수 ${D.ww}`, '#c62828'], ...(wPermit ? [[wPermit, `인허가 용수 ${nf(wPermit, 1)}`, '#1D7A5C']] : [])].forEach(([v, t, c]) => { g2 += `<line x1="${L}" x2="${W - Rt}" y1="${ys(v)}" y2="${ys(v)}" stroke="${c}" stroke-dasharray="6 4"/><text x="${W - Rt}" y="${ys(v) - 3}" text-anchor="end" font-size="10.5" fill="${c}">${t}</text>`; });
+      h += `<div class="hint" style="margin-top:10px">월별 일한 날 하루 평균 (㎥/일) — 쌓은 막대 (자숙·레토르트 기록 전 달은 폐수 합계만 회색): <span style="color:#e0482b">■ 증숙 배수</span> <span style="color:#1565c0">■ 살균 냉각수</span> <span style="color:#9aa5b1">■ 세척·청소·기타</span> · 옆 <span style="color:#1D7A5C">■ 용수</span> · 점선 = 인허가</div>${g2}</svg>
+        <div class="hint">· 회차는 생산 웹사이트 자숙·레토르트 기록 (기록 시작: 자숙 ${PCNT._cFrom || '-'} · 레토르트 ${PCNT._rFrom || '-'}) · 계수: 자숙 1회 1.33㎥, 레토르트 1배치 1.11㎥ (인허가 산출근거) · 「세척·청소·기타」는 실제 폐수에서 두 몫을 뺀 나머지라 계수가 실제와 다르면 같이 달라짐 · 용수 인허가 값은 위 「월별 추이 → 용수량」에서 바꿈</div></div>`;
+      return h;
     }
     // 인허가 자료: 수질오염물질 발생 예측서 · 폐수배출공정흐름도 (변경신고 2026.06.08)
     const WQ_PRED = { cols: ['폐수발생량<br>(㎥/일)', 'pH', 'BOD', 'TOC', 'SS', 'T-N', 'T-P', 'N-H (광)', '구리'],
