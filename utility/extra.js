@@ -92,9 +92,11 @@
     }
     const lastCompleteYm = () => { let ym = thisYm; for (let i = 0; i < 3 && !UT.monthComplete(DAILY, ym); i++) ym = UT.prevYm(ym); return UT.monthComplete(DAILY, ym) ? ym : UT.prevYm(thisYm); };
     // 한 달 데이터 (실적 + 날씨)
+    // 원육 투입량을 아직 안 넣은 지난달·이번 달: 생산 대시보드 일별 원육 합으로 잠정 (가마감 보고용)
+    function prodEst(ym) { if (!PRODD || ym < UT.prevYm(thisYm)) return null; let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0) { t += p.rm; n++; } } return n ? t : null; }
     function monthRow(ym) {
       const s = S(ym), w = UT.monthWeather(ym, TEMPS || {});
-      const r = { ym, days: w.days, op: UT.opDays(DAILY, ym, MONTHLY), prod: s.production, hdd: w.hdd, cdd: w.cdd, s };
+      const r = { ym, days: w.days, op: UT.opDays(DAILY, ym, MONTHLY), prod: s.production ?? prodEst(ym), hdd: w.hdd, cdd: w.cdd, s };
       UT.UTILS.forEach(u => { r[u.k] = s[u.k].usage; r[u.k + '_cost'] = s[u.k].cost; });
       return r;
     }
@@ -1537,15 +1539,21 @@
       document.getElementById('brief-month').textContent = ymLabel(brYm);
       const y = Number(brYm.slice(0, 4)), m = Number(brYm.slice(5));
       const fc = FC(brYm);
-      const s = fc || S(brYm), prev = S(UT.prevYm(brYm)), ly = S(UT.ym(y - 1, m));
+      let s = fc || S(brYm); const prev = S(UT.prevYm(brYm)), ly = S(UT.ym(y - 1, m));
+      if (!fc && (s.production === null || s.production === undefined) && brYm >= UT.prevYm(thisYm)) { // 원육 투입량 입력 전 → 생산 대시보드 일별 합으로 잠정
+        if (!PRODD) { if (!renderBrief._ld) { renderBrief._ld = 1; loadProdDaily().then(() => renderBrief()).catch(() => {}); } }
+        else { const pe = prodEst(brYm); if (pe) s = Object.assign({}, s, { production: pe, _prodEst: true }); } }
+      const prov = !fc && UT.UTILS.some(u => s[u.k].status === '가마감');
       const yt = ytd(y, brYm);
       const uc = x => ratio(x.total, x.production);
       const tile = (lab, val, sub) => `<div class="br-kpi"><div class="l">${lab}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
-      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : (s.status === '가마감' ? ' · 일부 가마감(고지서 전)' : '')}</div></div>
+      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : prov ? ' · <b style="color:#8a5300">가마감 기준 (고지서 전 예상값)</b>' : ''}</div></div>
         <table class="br-sign"><tr><td>작성</td><td>검토</td><td>승인</td></tr><tr><td></td><td></td><td></td></tr></table></div>`;
+      if (prov || fc || s._prodEst) h += `<div class="br-prov">${fc ? '<b>월말 예측</b> — 어제까지 검침 + 남은 날은 평일·주말 평균으로 추정한 값입니다.' : `<b>가마감 보고</b> — 고지서가 오기 전 자체 검침으로 계산한 예상값입니다. 고지서 확정(지출결의) 후 금액이 조금 바뀔 수 있습니다.`}
+        <span>${UT.UTILS.filter(u => s[u.k].status !== '확정').map(u => `${u.name}: ${{ elec: '파워플래너 사용량 × 요금표', gas: '보일러·식당 검침 × 단가·열량계수', water: '검침 기간 사용량 × 상수도 요금표', ww: '폐수 발생량 × 전월 단가' }[u.k]}`).join(' · ')}${s._prodEst ? ' · 원육 투입량: 생산 대시보드 일별 원육 합 (잠정 — 월 원육 투입량 입력 전)' : ''}</span></div>`;
       h += `<div class="br-kpis">` +
         tile('유틸리티 총비용', man(s.total), `전월 ${pctTxt(s.total, prev.total)} · 전년 ${pctTxt(s.total, ly.total)}`) +
-        tile('원육 투입량', `${f0(s.production)} kg`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
+        tile('원육 투입량', `${f0(s.production)} kg${s._prodEst ? ' <small style="font-size:11px;color:#8a5300">잠정</small>' : ''}`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
         tile('원육 kg당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))} · 전년 ${pctTxt(uc(s), uc(ly))}`) +
         tile(`${y}년 누적 (1~${m}월)`, man(yt.total), `원단위 ${f0(ratio(yt.total, yt.production))} 원/kg`) +
         `</div>`;
