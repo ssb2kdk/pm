@@ -231,10 +231,12 @@
         <div class="hint" style="margin-bottom:8px">회로 목록 = 후크메타 부하 측정에 등록한 분전반·차단기 (순서 그대로) · 측정값을 넣으면 판정 자동 · ∞·OL도 적을 수 있음<br>${LV_NOTE}</div>`;
       if (!BRK.length) return h + '<div class="hint">후크메타 부하 측정에 등록한 차단기가 없습니다.</div>';
       h += `<div class="tw"><table class="t"><tr><th>점검대상</th><th>사용전압(V)</th><th>기준치</th><th>측정치 (${unit})</th><th>판정</th><th>비고</th></tr>`;
-      ps.forEach(p => { const L = brkOf(p); if (!L.length) return; h += `<tr class="grp"><td colspan="6">${esc(p)} PNL</td></tr>`;
+      ps.forEach((p, pi) => { const L = brkOf(p); if (!L.length) return; h += `<tr class="grp"><td colspan="6">${esc(p)} PNL <span style="font-weight:400;margin-left:12px" class="hint">이 분전반 같은 값 <input class="n" id="pf-${pi}" placeholder="${unit}"> <button class="chip" onclick="fillPanel(${pi},false)">빈칸에 넣기</button> <button class="chip" onclick="fillPanel(${pi},true)">모두 바꾸기</button></span></td></tr>`;
         L.forEach(b => { const v = (D.vals || {})[b.id], j = lvJudge(v); h += `<tr><td class="l">${esc(b.name)}</td><td>${b.volt === 220 ? '220' : '380/220'}</td><td>${D.method === 'ma' ? '1' : esc(D.std)}</td><td><input class="n" value="${esc(v ?? '')}" oninput="setv('vals.${b.id}',this.value);const j=lvJudge(this.value),c=this.parentNode.nextElementSibling;c.textContent=j===null?'':j?'적합':'부적합';c.className=j===null?'':j?'ok':'ng'"></td><td class="${j === null ? '' : j ? 'ok' : 'ng'}">${passTxt(j, j)}</td><td>${inp('notes.' + b.id, '', '')}</td></tr>`; }); });
       return h + '</table></div>';
     }
+    function fillPanel(pi, all) { const v = document.getElementById('pf-' + pi).value.trim(); if (!v) { alert('넣을 값을 적어 주세요.'); return; } const p = panelOrder()[pi]; draft.data.vals = draft.data.vals || {};
+      brkOf(p).forEach(b => { const cur = draft.data.vals[b.id]; if (all || cur === undefined || cur === null || String(cur).trim() === '') draft.data.vals[b.id] = v; }); dirty(); render(); }
     // ---- 저압 접지저항 (별지 2호 · 2) — 분전반만 ----
     const gk = p => String(p).replace(/[.'"]/g, '_');
     function gJudge(v, std) { const n = num(v); return n === null ? null : n <= std; }
