@@ -144,7 +144,7 @@
     <div class="head">
       <div class="wrap" id="head-wrap">
         <div class="head-row">
-          <span class="title">⚡ 후크메타 부하 측정</span>
+          <span class="title"><a href="../elec/" style="color:#185FA5;text-decoration:none;font-size:13px;font-weight:400">◀ 전기 직무고시</a> · ⚡ 후크메타 부하 측정</span>
           <div class="vtabs">
             <button class="vtab on" data-v="input" onclick="setView('input')">측정</button>
             <button class="vtab" data-v="sum" onclick="setView('sum')">결과·이력</button>
@@ -735,7 +735,7 @@
     window.addEventListener('beforeunload', e => { if (dirtyCount()) { e.preventDefault(); e.returnValue = ''; } });
 
     Portal.start({
-      appId: 'hook',
+      appId: 'elec', // 전기 직무고시 안의 한 탭
       title: '후크메타 부하 측정',
       onReady: async P => {
         sb = P.sb; me = P.me;

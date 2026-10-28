@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>전기 직무고시</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <style>
+    :root { --bg: #f5f6f8; --card: #fff; --border: #e0e3e8; --muted: #888; --blue: #1d3f73; --red: #A32D2D; --red-bg: #FCEBEB; --teal: #1D9E75; --teal-bg: #E1F5EE; --amber-bg: #FAEEDA; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: #1a1a1a; font-size: 14px; }
+    [hidden] { display: none !important; }
+    .head { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 16px; position: sticky; top: 0; z-index: 10; }
+    .head h1 { font-size: 18px; margin: 0 0 8px; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tabs button, .tabs a { border: 1px solid var(--border); background: #fff; border-radius: 18px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: #333; text-decoration: none; font-family: inherit; }
+    .tabs button.on { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: 700; }
+    .tabs a { background: #fffaf0; border-color: #e6c65c; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 14px 16px 60px; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .card h3 { margin: 0 0 8px; font-size: 15px; color: var(--blue); }
+    .hint { font-size: 12px; color: var(--muted); }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .btn { border: none; background: var(--blue); color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .btn.sec { background: #eef1f5; color: #333; } .btn.red { background: var(--red); }
+    .chip { border: 1px solid var(--border); background: #fff; border-radius: 16px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+    .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    input, select, textarea { font-family: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid #ccc; border-radius: 5px; }
+    input.n { width: 74px; text-align: right; } input.s { width: 54px; text-align: center; }
+    .tw { overflow-x: auto; }
+    table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.t th, table.t td { border: 1px solid var(--border); padding: 5px 6px; text-align: center; vertical-align: middle; }
+    table.t th { background: #f3f5f8; font-weight: 600; font-size: 12px; }
+    table.t td.l { text-align: left; } table.t tr.grp td { background: #f7f9fc; font-weight: 700; text-align: left; }
+    td.ok { color: var(--teal); font-weight: 700; } td.ng { color: var(--red); font-weight: 700; background: var(--red-bg); }
+    .seg3 { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .seg3 button { border: none; border-left: 1px solid var(--border); background: #fff; width: 28px; padding: 4px 0; cursor: pointer; font-size: 13px; font-family: inherit; }
+    .seg3 button:first-child { border-left: none; } .seg3 button.on { background: var(--blue); color: #fff; font-weight: 700; } .seg3 button.on.x { background: var(--red); }
+    .recs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .plan td.pc { cursor: pointer; width: 46px; font-weight: 700; } .plan td.done { color: var(--teal); } .plan td.man { cursor: pointer; }
+    .plan tr.na td { color: #aaa; background: #fafafa; }
+    .plan td.doneauto { background: var(--teal-bg); }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+    #print-area { display: none; }
+    @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      body { background: #fff; }
+      #app > :not(#print-area) { display: none !important; }
+      #print-area { display: block; } .toast-x { display: none !important; }
+      .pg { page-break-after: always; } .pg:last-child { page-break-after: auto; }
+      .pf { font-size: 10.5px; } .pf h2 { text-align: center; font-size: 18px; margin: 4px 0 10px; letter-spacing: 4px; }
+      .pf table { border-collapse: collapse; width: 100%; } .pf th, .pf td { border: 1px solid #000; padding: 3px 4px; text-align: center; height: 20px; }
+      .pf td.l { text-align: left; } .pf .meta { display: flex; justify-content: space-between; margin: 4px 0; } .pf .foot { text-align: right; margin-top: 4px; }
+      .pf .sec { font-weight: 700; margin: 8px 0 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="head">
+      <h1>⚡ 전기 직무고시</h1>
+      <div class="tabs" id="tabs"></div>
+    </div>
+    <div class="wrap" id="body"><div class="hint">불러오는 중...</div></div>
+    <div id="print-area"></div>
+  </div>
+  <script>
+    let sb = null, me = null, LOGS = [], PANELS = [], BRK = [], HOOKD = new Set(), tab = 'plan', sel = {}, draft = null, planY = new Date().getFullYear(), loadErr = '';
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const pad2 = n => String(n).padStart(2, '0'), ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`, todayStr = ymd(new Date());
+    const num = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+    const errMsg = e => (e && (e.message || e.error_description)) || String(e);
+    const isAdmin = () => me && me.role === 'admin', myName = () => (me && (me.name || me.username)) || '';
+    const clone = o => JSON.parse(JSON.stringify(o));
+
+    // ---------------- 서식 정의 (엑셀 「전기 직무고시」 그대로) ----------------
+    const TABS = [['plan', '연간 점검 계획표'], ['monthly', '월차 점검'], ['lvins', '저압 절연저항·누설전류'], ['lvgnd', '저압 접지저항'], ['hv', '고압 설비'], ['tr', '변압기']];
+    const PLAN_ROWS = [ // key, 대분류, 항목, 기본 계획(1~12월), 실시: auto=기록에서 자동 / man=눌러서 표시 / na=미해당
+      ['load', '전체설비 외관 점검 및 부하측정', '', 'OOOOOOOOOOOO', 'auto'],
+      ['lv_ins', '저압 전기 설비 점검', '절연저항', '     O     △', 'auto'], ['lv_leak', '', '누설전류', '     △     △', 'auto'], ['lv_gnd', '', '접지저항', '     O     O', 'auto'], ['lv_ir', '', '적외선 열화상', '  O  O  O  O', 'man'],
+      ['hv_ins', '고압 전기 설비 점검', '절연저항', '     O      ', 'auto'], ['hv_gnd', '', '접지저항', '     O      ', 'auto'], ['hv_diel', '', '절연내력', '     O      ', 'auto'], ['hv_ir', '', '적외선 열화상', '  O  O  O  O', 'man'],
+      ['tr_ins', '변압기 점검', '절연저항', '     O      ', 'auto'], ['tr_oil', '', '절연내력, 산가도(절연유)', '     △      ', 'auto'], ['tr_ir', '', '적외선 열화상', '  O  O  O  O', 'man'],
+      ['relay', '계전기 및 차단기 동작시험 (미해당)', '', '            ', 'na'],
+      ['gen_ins', '예비발전설비 (미해당)', '절연 및 접지저항', '            ', 'na'], ['gen_bat', '', '축전지 및 충전장치', '            ', 'na'], ['gen_load', '', '무부하 또는 부하시험', '            ', 'na'],
+      ['pq', '전원품질분석', '', '     O      ', 'man']];
+    const MON_LV = [['인 입 구 배 선', '/'], ['배 ․ 분 전 반', ''], ['배 선 용 차 단 기', ''], ['누 전 차 단 기', ''], ['개 폐 기', ''], ['배 선', ''], ['전 동 기', ''], ['전 열 설 비', ''], ['용 접 기', ''], ['콘 덴 서', ''], ['조 명 설 비', ''], ['구 내 전 선 로', ''], ['기 타 설 비', ''], ['발전설비 · 발 전 기', '/'], ['발전설비 · 차단장치', '/'], ['발전설비 · 축전장치', '/']];
+    const MON_HV = [['가 공 전 선 로', ''], ['지 중 전 선 로', '/'], ['수배전용개폐기', ''], ['배 선 (모 선)', ''], ['피 뢰 기', ''], ['변 성 기', ''], ['전 력 퓨 즈', ''], ['변 압 기', ''], ['수 배 전 반', '/'], ['계 전 기 류', '/'], ['차 단 기 류', '/'], ['전 력 용 콘 덴 서', ''], ['보 호 설 비', ''], ['부 하 설 비', '/'], ['접 지 시 설', ''], ['기 타 설 비', '']];
+    const HV_INS = ['COS 2차 ~ ASS 1차', 'ASS 2차 ~ PF 1차', 'PF 2차 ~ TR COS 1차'];
+    const HV_GND = [['개폐기', 'TFR-GV 25sq', 10], ['피뢰기', 'TFR-GV 70sq', 10], ['MOF 외함', 'TFR-GV 25sq', 10], ['변압기 외함', 'TFR-GV 25sq', 10], ['차단기 외함', 'TFR-GV 25sq', 10], ['철구 및 가공지선', 'TFR-GV 25sq', 10], ['제2종접지', 'TFR-GV 95sq', 5], ['보호울타리', 'TFR-GV 25sq', 10]];
+    const HV_DIEL = ['개폐기', '피뢰기', 'MOF', 'PT, CT', 'VCB'];
+    const TR_DEF = { spec: '3상 950KVA', volt: '22.9 / 380/220', maker: '부여국제전기주식회사', no: '18263', place: '옥외' };
+    const LV_NOTE = '절연저항: SELV·PELV 0.5㏁, FELV 1㏁ 적용 — 다만 2020.12.31. 이전 전기설비는 대지전압 150V 이하 0.1㏁, 300V 이하 0.2㏁, 400V 미만 0.3㏁, 400V 이상 0.4㏁ · 저항성 누설전류 1㎃ 이하';
+
+    // ---------------- 불러오기 ----------------
+    async function fetchAll(q) { const out = []; for (let f = 0; ; f += 1000) { const { data, error } = await q().range(f, f + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; } return out; }
+    async function loadAll() {
+      loadErr = '';
+      try { LOGS = await fetchAll(() => sb.from('elec_logs').select('*').order('d', { ascending: false })); } catch (e) { LOGS = []; loadErr = errMsg(e); }
+      try { PANELS = await fetchAll(() => sb.from('hook_panels').select('*').order('sort')); } catch (e) { PANELS = []; }
+      try { BRK = (await fetchAll(() => sb.from('hook_breakers').select('*').order('panel').order('sort'))).filter(b => b.active !== false && String(b.name || '').trim()); } catch (e) { BRK = []; }
+      try { const r = await fetchAll(() => sb.from('hook_readings').select('d').gte('d', `${planY - 1}-01-01`)); HOOKD = new Set(r.map(x => String(x.d).slice(0, 7))); } catch (e) { HOOKD = new Set(); }
+    }
+    // 분전반 순서: 후크메타와 같게 (위 분전반 → 하위 분전반)
+    function panelOrder() {
+      const names = [...new Set(PANELS.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(p => p.name).concat(BRK.map(b => b.panel)))];
+      const par = n => { const r = PANELS.find(p => p.name === n); if (r && r.parent && r.parent !== n) return r.parent; const f = BRK.find(b => String(b.feeds || '').trim() === n && b.panel !== n); return f ? f.panel : ''; };
+      const out = [], seen = new Set(), walk = n => { if (seen.has(n)) return; seen.add(n); out.push(n); names.filter(x => x !== n && par(x) === n).forEach(walk); };
+      names.filter(n => !par(n) || !names.includes(par(n))).forEach(walk); names.forEach(walk); return out;
+    }
+    const brkOf = p => BRK.filter(b => b.panel === p).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0));
+    const logsOf = k => LOGS.filter(x => x.kind === k).sort((a, b) => a.d < b.d ? 1 : -1);
+
+    // ---------------- 화면 ----------------
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = TABS.map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" onclick="go('${k}')">${n}</button>`).join('') + `<a href="../hook/">🔌 후크메타 부하 측정 →</a>`;
+    }
+    function go(k) { if (draft && draft._dirty && !confirm('저장하지 않은 내용이 있습니다. 버리고 이동할까요?')) return; tab = k; draft = null; render(); window.scrollTo(0, 0); }
+    function render() {
+      renderTabs(); const el = document.getElementById('body');
+      if (loadErr) { el.innerHTML = `<div class="card" style="border-color:var(--red)"><b>일지 표를 불러오지 못했습니다.</b><div class="hint">${esc(loadErr)}<br>Supabase에 <b>38번 SQL (38_elec_duty.sql)</b>을 실행해 주세요.</div></div>`; return; }
+      if (tab === 'plan') return renderPlan(el);
+      renderLog(el);
+    }
+
+    // ---- 연간 점검 계획표 ----
+    function planRec(y) { return LOGS.find(x => x.kind === 'plan' && String(x.d).startsWith(String(y))); }
+    function planOf(y) { const r = planRec(y), p = (r && r.data && r.data.plan) || {}; const o = {}; PLAN_ROWS.forEach(([k, , , def]) => { o[k] = Array.isArray(p[k]) ? p[k] : def.split('').map(c => c.trim()); }); return o; }
+    function autoDone(k, y, m) { // 그 달에 기록이 있으면 실시
+      const ym = `${y}-${pad2(m)}`, inM = kind => LOGS.filter(x => x.kind === kind && String(x.d).startsWith(ym)), has = (L, f) => L.some(x => f(x.data || {}));
+      const any = o => o && Object.values(o).some(v => v !== null && v !== undefined && v !== '' && !(typeof v === 'object' && !Object.values(v).some(w => w !== null && w !== '')));
+      switch (k) {
+        case 'load': return inM('monthly').length > 0 || HOOKD.has(ym);
+        case 'lv_ins': return has(inM('lvins'), d => d.method !== 'ma' && any(d.vals));
+        case 'lv_leak': return has(inM('lvins'), d => d.method === 'ma' && any(d.vals));
+        case 'lv_gnd': return has(inM('lvgnd'), d => any(d.vals));
+        case 'hv_ins': return has(inM('hv'), d => any(d.ins)); case 'hv_gnd': return has(inM('hv'), d => any(d.gnd)); case 'hv_diel': return has(inM('hv'), d => any(d.diel));
+        case 'tr_ins': return has(inM('tr'), d => (d.rows || []).some(r => r.i1 || r.i2 || r.i12)); case 'tr_oil': return has(inM('tr'), d => (d.rows || []).some(r => r.otv || r.acid));
+      } return false;
+    }
+    function renderPlan(el) {
+      const P = planOf(planY), R = planRec(planY), man = (R && R.data && R.data.done) || {}, ad = isAdmin();
+      let h = `<div class="card"><div class="bar"><button class="chip" onclick="planY--;render()">◀</button><b style="font-size:16px">${planY}년 전기설비 예방정비 일정표</b><button class="chip" onclick="planY++;render()">▶</button>
+        <button class="btn sec" onclick="printPlan()">🖨 인쇄</button></div>
+        <div class="hint" style="margin-bottom:8px">· 「계획」 칸: ${ad ? '눌러서 O → △ → 빈칸 (관리자)' : '관리자가 정함'} · 「실시」 칸: 각 탭에 기록하면 그 달에 <b style="color:var(--teal)">✓</b> 자동 표시 (부하측정은 월차 점검 또는 후크메타 측정이 있으면) · 적외선 열화상·전원품질분석은 별도로 하므로 눌러서 직접 표시</div>
+        <div class="tw"><table class="t plan"><tr><th colspan="2">측정 시험 항목</th><th>월별</th>${[...Array(12)].map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>`;
+      PLAN_ROWS.forEach(([k, g, item, , mode], idx) => {
+        const span = PLAN_ROWS.slice(idx).findIndex((r, j) => j > 0 && r[1]); const gSpan = g ? (span < 0 ? PLAN_ROWS.length - idx : span) * 2 : 0;
+        const head = g ? (item ? `<td class="l" rowspan="${gSpan}"><b>${esc(g)}</b></td><td class="l" rowspan="2">${esc(item)}</td>` : `<td class="l" colspan="2" rowspan="2"><b>${esc(g)}</b></td>`) : `<td class="l" rowspan="2">${esc(item)}</td>`;
+        h += `<tr class="${mode === 'na' ? 'na' : ''}">${head}<td>계획</td>${P[k].map((v, m) => `<td class="pc" ${ad && mode !== 'na' ? `onclick="planCycle('${k}',${m})"` : ''}>${esc(v || '')}</td>`).join('')}</tr>`;
+        h += `<tr class="${mode === 'na' ? 'na' : ''}"><td>실시</td>${[...Array(12)].map((_, m) => { const a = mode === 'auto' && autoDone(k, planY, m + 1), mm = (man[k] || {})[m + 1];
+          return `<td class="${a ? 'doneauto done' : mm ? 'done' : ''} ${mode === 'man' ? 'man' : ''}" ${mode === 'man' ? `onclick="planMan('${k}',${m + 1})" title="눌러서 실시 표시"` : ''}>${a || mm ? '✓' : ''}</td>`; }).join('')}</tr>`;
+      });
+      h += `</table></div></div>`; el.innerHTML = h;
+    }
+    async function planSave(fn) {
+      const r = planRec(planY), data = r ? clone(r.data || {}) : {}; data.plan = data.plan || planOf(planY); data.done = data.done || {}; fn(data);
+      const row = { kind: 'plan', d: `${planY}-01-01`, data, by_name: myName(), updated_at: new Date().toISOString() };
+      const q = r ? sb.from('elec_logs').update(row).eq('id', r.id).select().single() : sb.from('elec_logs').insert(row).select().single();
+      const { data: out0, error } = await q; const out = Array.isArray(out0) ? out0[0] : out0; if (error) { alert('저장 실패: ' + errMsg(error)); return; }
+      LOGS = LOGS.filter(x => x.id !== out.id).concat([out]); render();
+    }
+    function planCycle(k, m) { planSave(d => { const a = (d.plan[k] || Array(12).fill('')).slice(); a[m] = a[m] === 'O' ? '△' : a[m] === '△' ? '' : 'O'; d.plan[k] = a; }); }
+    function planMan(k, m) { planSave(d => { d.done[k] = Object.assign({}, d.done[k] || {}); if (d.done[k][m]) delete d.done[k][m]; else d.done[k][m] = true; }); }
+
+    // ---- 일지 (월차·절연·접지·고압·변압기) 공통 ----
+    function blank(k) {
+      const b = { d: todayStr, data: {} };
+      if (k === 'monthly') b.data = { type: '월차', cnt: '-', lv: Object.fromEntries(MON_LV.map(([n, v]) => [n, { j: v }])), hv: Object.fromEntries(MON_HV.map(([n, v]) => [n, { j: v }])), meas: [{ loc: 'LV-1 ACB' }, { loc: '' }, { loc: '' }], mult: 720 };
+      if (k === 'lvins') b.data = { method: 'mohm', std: 0.2, device: '절연저항계(500V)', vals: {}, notes: {} };
+      if (k === 'lvgnd') b.data = { std: 100, vals: {}, notes: {} };
+      if (k === 'hv') b.data = { device: '1000V 절연저항계', ins: {}, gnd: {}, diel: {} };
+      if (k === 'tr') b.data = { device: '', rows: [Object.assign({}, TR_DEF)] };
+      return b;
+    }
+    function renderLog(el) {
+      const L = logsOf(tab), name = TABS.find(t => t[0] === tab)[1];
+      if (!draft) { const cur = L.find(x => x.id === sel[tab]) || L[0]; draft = cur ? clone(cur) : Object.assign(blank(tab), { _new: true }); if (!draft.data) draft.data = {}; }
+      let h = `<div class="card"><div class="bar"><b>${esc(name)}</b> <span class="hint">기록 ${L.length}건</span>
+        <button class="btn sec" onclick="newRec()">＋ 새 기록</button></div>
+        <div class="recs">${L.slice(0, 24).map(x => `<button class="chip ${draft.id === x.id ? 'on' : ''}" onclick="openRec('${x.id}')">${String(x.d).slice(2).replace(/-/g, '.')}</button>`).join('') || '<span class="hint">아직 기록이 없습니다 — 아래에 적고 저장하세요.</span>'}</div></div>`;
+      h += `<div class="card"><div class="bar">점검일 <input type="date" value="${esc(draft.d)}" onchange="draft.d=this.value;dirty()"> ${draft._new ? '<span class="chip on">새 기록</span>' : `<span class="hint">${esc(draft.by_name || '')} 작성</span>`}
+        <span style="flex:1"></span><button class="btn" onclick="saveRec()">저장</button><button class="btn sec" onclick="printRec()">🖨 인쇄 (서식)</button>${!draft._new && (isAdmin() || draft.created_by === (me && me.id)) ? '<button class="btn red" onclick="delRec()">삭제</button>' : ''}</div>`;
+      h += ({ monthly: formMonthly, lvins: formLvins, lvgnd: formLvgnd, hv: formHv, tr: formTr })[tab]() + '</div>';
+      el.innerHTML = h;
+    }
+    function dirty() { if (draft) draft._dirty = true; }
+    function newRec() { if (draft && draft._dirty && !confirm('저장하지 않은 내용이 있습니다. 버리고 새로 쓸까요?')) return; const last = logsOf(tab)[0]; draft = Object.assign(blank(tab), { _new: true });
+      if (last && tab === 'monthly') { draft.data.meas = clone(last.data.meas || draft.data.meas).map(m => ({ loc: m.loc })); draft.data.mult = last.data.mult || 720; ['lv', 'hv'].forEach(s => Object.keys(draft.data[s]).forEach(k => { const j = ((last.data[s] || {})[k] || {}).j; if (j === '/') draft.data[s][k].j = '/'; })); }
+      if (last && tab === 'tr') draft.data.rows = (last.data.rows || []).map(r => ({ spec: r.spec, volt: r.volt, maker: r.maker, no: r.no, place: r.place }));
+      if (last && tab === 'lvins') { draft.data.std = last.data.std ?? 0.2; draft.data.method = last.data.method || 'mohm'; }
+      render(); }
+    function openRec(id) { if (draft && draft._dirty && !confirm('저장하지 않은 내용이 있습니다. 버리고 열까요?')) return; sel[tab] = id; draft = null; render(); }
+    async function saveRec() {
+      if (!draft.d) { alert('점검일을 넣어 주세요.'); return; }
+      const row = { kind: tab, d: draft.d, data: draft.data, by_name: draft.by_name || myName(), updated_at: new Date().toISOString() };
+      const q = draft._new ? sb.from('elec_logs').insert(row).select().single() : sb.from('elec_logs').update(row).eq('id', draft.id).select().single();
+      const { data: out0, error } = await q; const out = Array.isArray(out0) ? out0[0] : out0; if (error) { alert('저장 실패: ' + errMsg(error) + (/relation|does not exist|schema cache/i.test(errMsg(error)) ? '\n(Supabase에 38번 SQL을 실행했는지 확인해 주세요)' : '')); return; }
+      LOGS = LOGS.filter(x => x.id !== out.id).concat([out]); sel[tab] = out.id; draft = null; render(); toast('저장했습니다');
+    }
+    async function delRec() { if (!confirm(`${draft.d} 기록을 지울까요?`)) return; const { error } = await sb.from('elec_logs').delete().eq('id', draft.id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; } LOGS = LOGS.filter(x => x.id !== draft.id); sel[tab] = null; draft = null; render(); }
+    function toast(t) { const e = document.createElement('div'); e.className = 'toast-x'; e.textContent = t; e.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;z-index:99'; document.body.appendChild(e); setTimeout(() => e.remove(), 1600); }
+    // 값 넣기: path = 'a.b.c'
+    function setv(path, v, re) { let o = draft.data; const p = path.split('.'); p.slice(0, -1).forEach(k => { if (o[k] === undefined || o[k] === null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }); o[p[p.length - 1]] = v; dirty(); if (re) render(); }
+    const gv = path => path.split('.').reduce((o, k) => o && o[k] !== undefined ? o[k] : undefined, draft.data);
+    const inp = (path, cls = 'n', ph = '') => `<input class="${cls}" value="${esc(gv(path) ?? '')}" placeholder="${ph}" oninput="setv('${path}',this.value)">`;
+    const seg = (path, opts = ['○', '×', '/']) => `<span class="seg3">${opts.map(o => `<button class="${gv(path) === o ? 'on' : ''} ${o === '×' ? 'x' : ''}" onclick="setv('${path}',${JSON.stringify(gv(path) === o ? '' : o).replace(/"/g, "'")},true)">${o}</button>`).join('')}</span>`;
+    const passTxt = (v, ok) => v === null ? '' : ok ? '적합' : '부적합';
+
+    // ---- 월차 점검 (별지 1호) ----
+    function formMonthly() {
+      const D = draft.data, items = (s, L) => L.map(([n]) => `<tr><td class="l">${esc(n)}</td><td>${seg(`${s}.${n}.j`)}</td><td>${inp(`${s}.${n}.inc`, 's')}</td><td>${inp(`${s}.${n}.dec`, 's')}</td><td>${inp(`${s}.${n}.bad`, 's')}</td><td>${inp(`${s}.${n}.fix`, 's')}</td></tr>`).join('');
+      const head = t => `<tr><th rowspan="2">${t}</th><th rowspan="2">점검결과<br>판정</th><th colspan="2">설비현황</th><th rowspan="2">부적합<br>수량</th><th rowspan="2">개수<br>수량</th></tr><tr><th>증</th><th>감</th></tr>`;
+      const allOk = s => `<button class="chip" onclick="['${s}'].forEach(s=>Object.keys(draft.data[s]).forEach(k=>{if(draft.data[s][k].j!=='/')draft.data[s][k].j='○'}));dirty();render()">「/」 빼고 모두 ○</button>`;
+      return `<div class="bar">점검종별 <select onchange="setv('type',this.value)">${['월차', '분기', '반기', '연차', '임시'].map(t => `<option ${D.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select> 점검회수 ${inp('cnt', 's')} <span class="hint">수전 22,900V / 950kW · 판정 ○ 적합 · × 부적합 · / 해당 없음</span></div>
+        <div class="two"><div><div class="bar"><b>저압 설비</b> ${allOk('lv')}</div><div class="tw"><table class="t">${head('저압 설비')}${items('lv', MON_LV)}</table></div></div>
+        <div><div class="bar"><b>특고(고압) 설비</b> ${allOk('hv')}</div><div class="tw"><table class="t">${head('특고(고압)설비')}${items('hv', MON_HV)}</table></div></div></div>
+        <div class="bar" style="margin-top:12px"><b>측정</b> <span class="hint">측정개소마다 A·B·C·N 상 전압·전류·누설전류</span></div>
+        <div class="tw"><table class="t"><tr><th>측정개소</th><th>상</th><th>전압(V)</th><th>전류(A)</th><th>누설전류(㎃)</th></tr>${(D.meas || []).map((m, i) => ['A', 'B', 'C', 'N'].map((ph, j) => `<tr>${j === 0 ? `<td rowspan="4">${inp(`meas.${i}.loc`, '', '측정개소')}</td>` : ''}<td>${ph}</td><td>${inp(`meas.${i}.${ph}.v`)}</td><td>${inp(`meas.${i}.${ph}.a`)}</td><td>${inp(`meas.${i}.${ph}.ma`)}</td></tr>`).join('')).join('')}</table></div>
+        <div class="bar" style="margin-top:10px">역률(%) 주간 ${inp('pf_day')} 심야 ${inp('pf_night')} · 유효전력량(kWh) ${inp('kwh', 'n', '지침')} · 무효전력량(kVar) ${inp('kvarh', 'n', '지침')} · 최대전력(kW) ${inp('maxkw')} · 배율 ${inp('mult', 's')}</div>
+        <div><b>종합의견</b><br><textarea style="width:100%;min-height:70px" oninput="setv('opinion',this.value)">${esc(D.opinion || '')}</textarea></div>
+        <div class="bar" style="margin-top:8px">점검확인자 ${inp('checker', '', '이름')} 점검담당자 ${inp('staff', '', '이름')}</div>`;
+    }
+    // ---- 저압 절연저항·누설전류 (별지 2호 · 1) ----
+    function lvJudge(v) { const s = String(v ?? '').trim(); if (!s) return null; const D = draft.data; if (/^(∞|OL|>|OVER)/i.test(s)) return D.method === 'ma' ? false : true; const n = num(s); if (n === null) return null; return D.method === 'ma' ? n <= 1 : n >= (num(D.std) ?? 0.2); }
+    function formLvins() {
+      const D = draft.data, ps = panelOrder(), unit = D.method === 'ma' ? '㎃' : '㏁';
+      let h = `<div class="bar">측정 <span class="seg3" style="width:auto"><button style="width:auto;padding:4px 10px" class="${D.method !== 'ma' ? 'on' : ''}" onclick="setv('method','mohm',true)">절연저항(㏁)</button><button style="width:auto;padding:4px 10px" class="${D.method === 'ma' ? 'on' : ''}" onclick="setv('method','ma',true)">누설전류(㎃)</button></span>
+        기준치 ${D.method === 'ma' ? '<b>1㎃ 이하</b>' : `${inp('std', 's')}㏁ 이상`} · 측정장비 ${inp('device', '', '절연저항계(500V)')}</div>
+        <div class="hint" style="margin-bottom:8px">회로 목록 = 후크메타 부하 측정에 등록한 분전반·차단기 (순서 그대로) · 측정값을 넣으면 판정 자동 · ∞·OL도 적을 수 있음<br>${LV_NOTE}</div>`;
+      if (!BRK.length) return h + '<div class="hint">후크메타 부하 측정에 등록한 차단기가 없습니다.</div>';
+      h += `<div class="tw"><table class="t"><tr><th>점검대상</th><th>사용전압(V)</th><th>기준치</th><th>측정치 (${unit})</th><th>판정</th><th>비고</th></tr>`;
+      ps.forEach(p => { const L = brkOf(p); if (!L.length) return; h += `<tr class="grp"><td colspan="6">${esc(p)} PNL</td></tr>`;
+        L.forEach(b => { const v = (D.vals || {})[b.id], j = lvJudge(v); h += `<tr><td class="l">${esc(b.name)}</td><td>${b.volt === 220 ? '220' : '380/220'}</td><td>${D.method === 'ma' ? '1' : esc(D.std)}</td><td><input class="n" value="${esc(v ?? '')}" oninput="setv('vals.${b.id}',this.value);const j=lvJudge(this.value),c=this.parentNode.nextElementSibling;c.textContent=j===null?'':j?'적합':'부적합';c.className=j===null?'':j?'ok':'ng'"></td><td class="${j === null ? '' : j ? 'ok' : 'ng'}">${passTxt(j, j)}</td><td>${inp('notes.' + b.id, '', '')}</td></tr>`; }); });
+      return h + '</table></div>';
+    }
+    // ---- 저압 접지저항 (별지 2호 · 2) — 분전반만 ----
+    const gk = p => String(p).replace(/[.'"]/g, '_');
+    function gJudge(v, std) { const n = num(v); return n === null ? null : n <= std; }
+    function formLvgnd() {
+      const D = draft.data, ps = panelOrder();
+      let h = `<div class="hint" style="margin-bottom:8px">측정대상 = 후크메타에 등록한 분전반 · 제3종접지 기준 100Ω 이하</div><div class="tw"><table class="t"><tr><th>측정대상</th><th>사용전압(V)</th><th>기준치(Ω)</th><th>측정치(Ω)</th><th>결과</th><th>비고</th></tr>`;
+      ps.forEach(p => { const v = (D.vals || {})[gk(p)], j = gJudge(v, 100); h += `<tr><td class="l">${esc(p)} PNL</td><td>380/220</td><td>100 이하</td><td><input class="n" value="${esc(v ?? '')}" oninput="setv('vals.${esc(gk(p))}',this.value);const j=gJudge(this.value,100),c=this.parentNode.nextElementSibling;c.textContent=j===null?'':j?'적합':'부적합';c.className=j===null?'':j?'ok':'ng'"></td><td class="${j === null ? '' : j ? 'ok' : 'ng'}">${passTxt(j, j)}</td><td>${inp('notes.' + gk(p), '', '')}</td></tr>`; });
+      return h + '</table></div>';
+    }
+    // ---- 고압 설비 (별지 3호) ----
+    function formHv() {
+      const res = path => `<select onchange="setv('${path}',this.value)">${['', '적합', '부적합'].map(o => `<option ${gv(path) === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+      let h = `<div class="bar"><b>1. 절연저항</b> 측정장비 ${inp('device', '', '1000V 절연저항계')}</div><div class="tw"><table class="t"><tr><th rowspan="2">측정회로 및 기기</th><th rowspan="2">전선-대지 (㏁)</th><th colspan="3">전선 상호간 (㏁)</th><th rowspan="2">결과</th><th rowspan="2">비고</th></tr><tr><th>A-B</th><th>B-C</th><th>C-A</th></tr>` +
+        HV_INS.map((n, i) => `<tr><td class="l">${esc(n)}</td><td>${inp(`ins.${i}.e`)}</td><td>${inp(`ins.${i}.ab`)}</td><td>${inp(`ins.${i}.bc`)}</td><td>${inp(`ins.${i}.ca`)}</td><td>${res(`ins.${i}.r`)}</td><td>${inp(`ins.${i}.note`, '')}</td></tr>`).join('') + '</table></div>';
+      h += `<div class="bar" style="margin-top:12px"><b>2. 접지저항</b></div><div class="tw"><table class="t"><tr><th>설비 명칭</th><th>접지선 종류 및 굵기</th><th>기준치(Ω)</th><th>측정치(Ω)</th><th>결과</th><th>비고</th></tr>` +
+        HV_GND.map(([n, w, s], i) => { const j = gJudge(gv(`gnd.${i}.v`), s); return `<tr><td class="l">${esc(n)}</td><td>${esc(w)}</td><td>${s}Ω 이하</td><td><input class="n" value="${esc(gv(`gnd.${i}.v`) ?? '')}" oninput="setv('gnd.${i}.v',this.value);const j=gJudge(this.value,${s}),c=this.parentNode.nextElementSibling;c.textContent=j===null?'':j?'적합':'부적합';c.className=j===null?'':j?'ok':'ng'"></td><td class="${j === null ? '' : j ? 'ok' : 'ng'}">${passTxt(j, j)}</td><td>${inp(`gnd.${i}.note`, '')}</td></tr>`; }).join('') + '</table></div>';
+      h += `<div class="bar" style="margin-top:12px"><b>3. 절연내력</b> <span class="hint">이상 패턴이면 요주의 → 정밀점검·정전점검으로 확인</span></div><div class="tw"><table class="t"><tr><th>측정 설비</th><th>결과</th><th>비고</th></tr>` +
+        HV_DIEL.map((n, i) => `<tr><td class="l">${esc(n)}</td><td><select onchange="setv('diel.${i}.r',this.value)">${['', '양호', '요주의'].map(o => `<option ${gv(`diel.${i}.r`) === o ? 'selected' : ''}>${o}</option>`).join('')}</select></td><td>${inp(`diel.${i}.note`, '')}</td></tr>`).join('') + '</table></div>';
+      return h;
+    }
+    // ---- 변압기 (별지 4호) ----
+    function formTr() {
+      const D = draft.data; D.rows = D.rows && D.rows.length ? D.rows : [Object.assign({}, TR_DEF)];
+      return `<div class="bar">측정장비 ${inp('device', '', '절연저항계 등')} <button class="chip" onclick="draft.data.rows.push({});dirty();render()">＋ 변압기 추가</button></div>
+        <div class="tw"><table class="t"><tr><th rowspan="2">상수 및 용량</th><th rowspan="2">전압 (KV/V)</th><th rowspan="2">제작회사</th><th rowspan="2">제작번호</th><th rowspan="2">외부점검<br>양부</th><th colspan="3">절연저항 (㏁)</th><th colspan="4">* 내부점검</th><th rowspan="2">결과</th><th rowspan="2">비고<br>(설치장소)</th></tr>
+        <tr><th>1차-대지</th><th>2차-대지</th><th>1차-2차</th><th>OT 내압</th><th>OT 산가도</th><th>유량</th><th>탭위치</th></tr>` +
+        D.rows.map((r, i) => `<tr><td>${inp(`rows.${i}.spec`, '', '')}</td><td>${inp(`rows.${i}.volt`, '', '')}</td><td>${inp(`rows.${i}.maker`, '', '')}</td><td>${inp(`rows.${i}.no`, 's')}</td><td>${seg(`rows.${i}.ext`, ['O', 'X'])}</td><td>${inp(`rows.${i}.i1`, 's')}</td><td>${inp(`rows.${i}.i2`, 's')}</td><td>${inp(`rows.${i}.i12`, 's')}</td><td>${inp(`rows.${i}.otv`, 's')}</td><td>${inp(`rows.${i}.acid`, 's')}</td><td>${inp(`rows.${i}.oil`, 's')}</td><td>${inp(`rows.${i}.tap`, 's')}</td><td><select onchange="setv('rows.${i}.r',this.value)">${['', '적합', '부적합'].map(o => `<option ${r.r === o ? 'selected' : ''}>${o}</option>`).join('')}</select></td><td>${inp(`rows.${i}.place`, 's')}</td></tr>`).join('') + `</table></div>
+        <div class="hint" style="margin-top:6px">1. *표 항목은 필요시에 실시 · 2. 외부점검란은 O, X로 표기 · 3. 내부점검(OT 내압·산가도)은 시험성적서로 대체</div>`;
+    }
+
+    // ---------------- 인쇄 (엑셀 서식 모양) ----------------
+    const ymdK = d => { const [y, m, dd] = String(d || '').split('-'); return y ? `${y} 년 ${Number(m)} 월 ${Number(dd)} 일` : '년 월 일'; };
+    function doPrint(html) { document.getElementById('print-area').innerHTML = html; setTimeout(() => { window.print(); }, 50); }
+    function printPlan() {
+      const P = planOf(planY), R = planRec(planY), man = (R && R.data && R.data.done) || {};
+      let h = `<div class="pf pg"><h2>${planY}년 전기설비 예방정비 일정표</h2><table><tr><th colspan="2">측정 시험 항목</th><th>월별</th>${[...Array(12)].map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>`;
+      PLAN_ROWS.forEach(([k, g, item, , mode], idx) => { const span = PLAN_ROWS.slice(idx).findIndex((r, j) => j > 0 && r[1]); const gSpan = g ? (span < 0 ? PLAN_ROWS.length - idx : span) * 2 : 0;
+        const head = g ? (item ? `<td class="l" rowspan="${gSpan}">${esc(g)}</td><td class="l" rowspan="2">${esc(item)}</td>` : `<td class="l" colspan="2" rowspan="2">${esc(g)}</td>`) : `<td class="l" rowspan="2">${esc(item)}</td>`;
+        h += `<tr>${head}<td>계획</td>${P[k].map(v => `<td>${esc(v || '')}</td>`).join('')}</tr><tr><td>실시</td>${[...Array(12)].map((_, m) => `<td>${(mode === 'auto' && autoDone(k, planY, m + 1)) || (man[k] || {})[m + 1] ? 'O' : ''}</td>`).join('')}</tr>`; });
+      doPrint(h + '</table></div>');
+    }
+    function printRec() {
+      const D = draft.data, d = draft.d;
+      if (tab === 'monthly') {
+        const row = (a, b, i) => { const L = a ? (D.lv || {})[a[0]] || {} : {}, H = b ? (D.hv || {})[b[0]] || {} : {}, m = D.meas || [], mi = Math.floor(i / 4), ph = ['A', 'B', 'C', 'N'][i % 4], M = m[mi] || {};
+          const meas = i < 12 ? `${i % 4 === 0 ? `<td rowspan="4">측정개소 :<br>${esc(M.loc || '')}</td>` : ''}<td>${ph}</td><td>${esc((M[ph] || {}).v || '')}</td><td>${esc((M[ph] || {}).a || '')}</td><td>${esc((M[ph] || {}).ma || '')}</td>`
+            : i === 12 ? `<td>역률(%)</td><td colspan="2">∘주간: ${esc(D.pf_day || '')}</td><td colspan="2">∘심야: ${esc(D.pf_night || '')}</td>` : i === 13 ? `<td>유효전력량(kWh)</td><td colspan="4">${esc(D.kwh || '')}</td>` : i === 14 ? `<td>무효전력량(kVar)</td><td colspan="4">${esc(D.kvarh || '')}</td>` : `<td>최대전력(kW)</td><td colspan="2">${esc(D.maxkw || '')}</td><td>배율</td><td>${esc(D.mult || '')}</td>`;
+          return `<tr><td class="l">${a ? esc(a[0]) : ''}</td><td>${esc(L.j || '')}</td><td>${esc(L.inc || '')}</td><td>${esc(L.dec || '')}</td><td>${esc(L.bad || '')}</td><td>${esc(L.fix || '')}</td><td class="l">${b ? esc(b[0]) : ''}</td><td>${esc(H.j || '')}</td><td>${esc(H.inc || '')}</td><td>${esc(H.dec || '')}</td><td>${esc(H.bad || '')}</td><td>${esc(H.fix || '')}</td>${meas}</tr>`; };
+        let h = `<div class="pf pg"><h2>전기설비 점검결과 기록표</h2><div>상호 : 순수본 ㈜</div><div class="sec">1. 기본사항</div>
+          <table><tr><td>수전전압/용량</td><td colspan="3">22,900V / 950 kW</td><td>발전전압/용량</td><td>-</td><td>태양광</td><td>-</td></tr><tr><td>점검일자</td><td colspan="3">${ymdK(d)}</td><td>점검종별</td><td>${esc(D.type || '월차')}</td><td>점검회수</td><td>${esc(D.cnt || '-')}</td></tr></table>
+          <div class="sec">2. 점검내역</div><table><tr><th rowspan="2">저 압 설 비</th><th rowspan="2">점검결과<br>판정</th><th colspan="2">설비현황</th><th rowspan="2">부적합<br>수량</th><th rowspan="2">개수<br>수량</th><th rowspan="2">특고(고압)설비</th><th rowspan="2">점검결과<br>판정</th><th colspan="2">설비현황</th><th rowspan="2">부적합<br>수량</th><th rowspan="2">개수<br>수량</th><th colspan="2" rowspan="2">구 분</th><th rowspan="2">전압(V)</th><th rowspan="2">전류(A)</th><th rowspan="2">누설전류(㎃)</th></tr><tr><th>증</th><th>감</th><th>증</th><th>감</th></tr>`;
+        for (let i = 0; i < 16; i++) h += row(MON_LV[i], MON_HV[i], i);
+        h += `</table><div style="font-size:9.5px;margin-top:2px">※ 점검결과의 판정은 ○(적합), ×(부적합) /(해당 없음)으로 표시한다.</div><div class="sec">3. 종합의견</div><div style="border:1px solid #000;min-height:150px;padding:6px;white-space:pre-wrap">${esc(D.opinion || '')}</div>
+          <div style="font-size:9.5px;margin-top:4px">※ 전기설비의 개·보수 작업은 반드시 정전상태에서 시행하시기 바랍니다.</div>
+          <table style="width:50%;margin:8px 0 0 auto"><tr><td rowspan="2" style="width:50px">확 인</td><td>점검확인자</td><td>${esc(D.checker || '')}</td><td>(인)</td></tr><tr><td>점검담당자</td><td>${esc(D.staff || '')}</td><td>(인)</td></tr></table><div class="foot">별지 제1호서식</div></div>`;
+        return doPrint(h);
+      }
+      if (tab === 'lvins') {
+        const items = []; panelOrder().forEach(p => { const L = brkOf(p); if (!L.length) return; items.push({ g: `${p} PNL` }); L.forEach(b => { const v = (D.vals || {})[b.id], j = lvJudge(v); items.push({ n: b.name, volt: b.volt === 220 ? '220' : '380/220', v: v ?? '', j: passTxt(j, j) }); }); });
+        const per = 64, pages = []; for (let i = 0; i < items.length; i += per) pages.push(items.slice(i, i + per));
+        const cell = x => !x ? '<td></td><td></td><td></td><td></td><td></td>' : x.g ? `<td class="l" colspan="5"><b>${esc(x.g)}</b></td>` : `<td class="l">${esc(x.n)}</td><td>${x.volt}</td><td>${D.method === 'ma' ? '1' : esc(D.std)}</td><td>${esc(x.v)}</td><td>${x.j}</td>`;
+        const hd = `<th rowspan="2">점검대상</th><th rowspan="2">사용전압(V)</th><th rowspan="2">기준치</th><th>${D.method === 'ma' ? '□' : '■'} 절연저항(㏁)<br>${D.method === 'ma' ? '■' : '□'} 누설전류(㎃)</th><th>판 정</th>`;
+        return doPrint(pages.map((P, pi) => { const half = Math.ceil(P.length / 2); let h = `<div class="pf pg"><h2>저압 전기설비 점검기록표</h2><div class="sec">1. 절연저항·누설전류 측정기록표</div><div class="meta"><span>측정장비: ${esc(D.device || '')}</span><span>${ymdK(d)}</span></div><table><tr>${hd}${hd}</tr><tr><th>측정치</th><th>결 과</th><th>측정치</th><th>결 과</th></tr>`;
+          for (let i = 0; i < half; i++) h += `<tr>${cell(P[i])}${cell(P[i + half])}</tr>`;
+          return h + `</table>${pi === pages.length - 1 ? `<div style="font-size:9px;margin-top:4px">[비고] ${esc(LV_NOTE)}</div>` : ''}<div class="foot">별지 제2호서식</div></div>`; }).join(''));
+      }
+      if (tab === 'lvgnd') {
+        const ps = panelOrder(), half = Math.ceil(ps.length / 2), c = p => { if (!p) return '<td></td><td></td><td></td><td></td><td></td><td></td>'; const v = (D.vals || {})[gk(p)], j = gJudge(v, 100); return `<td class="l">${esc(p)} PNL</td><td>380/220</td><td>100이하</td><td>${esc(v ?? '')}</td><td>${passTxt(j, j)}</td><td>${esc((D.notes || {})[gk(p)] || '')}</td>`; };
+        let h = `<div class="pf pg"><h2>저압 전기설비 점검기록표</h2><div class="meta"><span class="sec">2. 접지저항 측정기록표</span><span>${ymdK(d)}</span></div><table><tr>${'<th>측정대상</th><th>사용 전압(V)</th><th>기준치(Ω)</th><th>측정치(Ω)</th><th>결과</th><th>비고</th>'.repeat(2)}</tr>`;
+        for (let i = 0; i < Math.max(half, 12); i++) h += `<tr>${c(ps[i])}${c(ps[i + half])}</tr>`;
+        return doPrint(h + `</table><div style="margin-top:4px">1. 제 3종접지 기준 100Ω 이하</div><div class="foot">별지 제2호서식</div></div>`);
+      }
+      if (tab === 'hv') {
+        const g = p => esc(gv(p) ?? '');
+        let h = `<div class="pf pg"><h2>고압 전기설비 점검기록표</h2><div class="sec">1. 절연저항 측정기록표</div><div class="meta"><span>측정장비: ${esc(D.device || '')}</span><span>${ymdK(d)}</span></div>
+          <table><tr><th rowspan="2">측정회로 및 기기</th><th rowspan="2">전선 - 대지 (㏁)</th><th colspan="3">전 선 상 호 간 (㏁)</th><th rowspan="2">결 과</th><th rowspan="2">비 고</th></tr><tr><th>A-B</th><th>B-C</th><th>C-A</th></tr>${HV_INS.map((n, i) => `<tr><td class="l">${esc(n)}</td><td>${g(`ins.${i}.e`)}</td><td>${g(`ins.${i}.ab`)}</td><td>${g(`ins.${i}.bc`)}</td><td>${g(`ins.${i}.ca`)}</td><td>${g(`ins.${i}.r`)}</td><td>${g(`ins.${i}.note`)}</td></tr>`).join('')}</table>
+          <div class="sec">2. 접지저항 측정기록표</div><table><tr><th>설 비 명 칭</th><th>접지선 종류 및 굵기</th><th>기 준 치(Ω)</th><th>측 정 치(Ω)</th><th>결 과</th><th>비 고</th></tr>${HV_GND.map(([n, w, s], i) => { const j = gJudge(gv(`gnd.${i}.v`), s); return `<tr><td class="l">${esc(n)}</td><td>${esc(w)}</td><td>${s}Ω이하</td><td>${g(`gnd.${i}.v`)}</td><td>${passTxt(j, j)}</td><td>${g(`gnd.${i}.note`)}</td></tr>`; }).join('')}</table>
+          <div class="sec">3. 절연내력 측정기록표</div><table><tr><th>측정 설비</th><th>판단기준</th><th>결 과</th><th>비 고</th></tr>${HV_DIEL.map((n, i) => `<tr><td class="l">${esc(n)}</td>${i === 0 ? `<td rowspan="${HV_DIEL.length}" style="font-size:9.5px" class="l">아래 표와 같은 이상 패턴인 경우 요주의 판단한다. 요주의로 판단된 경우에는 정밀점검 또는 정전점검등을 통하여 이상 유무를 확인한다.</td>` : ''}<td>${g(`diel.${i}.r`)}</td><td>${g(`diel.${i}.note`)}</td></tr>`).join('')}</table><div class="foot">별지 제3호서식</div></div>`;
+        return doPrint(h);
+      }
+      if (tab === 'tr') {
+        const R = D.rows || [], g = (r, k) => esc(r[k] ?? '');
+        let h = `<div class="pf pg"><h2>변압기 점검기록표</h2><div class="sec">1. 변압기 점검기록표</div><div class="meta"><span>측정장비 : ${esc(D.device || '')}</span><span>${ymdK(d)}</span></div>
+          <table><tr><th rowspan="2">상수 및 용량</th><th rowspan="2">전 압<br>(KV/V)</th><th rowspan="2">제작회사</th><th rowspan="2">제작번호</th><th rowspan="2">외부점검<br>양부</th><th colspan="3">절연저항(㏁)</th><th colspan="4">* 내 부 점 검</th><th rowspan="2">결 과</th><th rowspan="2">비 고<br>(설치장소)</th></tr><tr><th>1차대지</th><th>2차대지</th><th>1차,2차</th><th>OT 내압시험</th><th>OT 산가도</th><th>유량</th><th>탭위치</th></tr>
+          ${R.map(r => `<tr><td>${g(r, 'spec')}</td><td>${g(r, 'volt')}</td><td>${g(r, 'maker')}</td><td>${g(r, 'no')}</td><td>${g(r, 'ext')}</td><td>${g(r, 'i1')}</td><td>${g(r, 'i2')}</td><td>${g(r, 'i12')}</td><td>${g(r, 'otv')}</td><td>${g(r, 'acid')}</td><td>${g(r, 'oil')}</td><td>${g(r, 'tap')}</td><td>${g(r, 'r')}</td><td>${g(r, 'place')}</td></tr>`).join('')}${'<tr>' + '<td></td>'.repeat(14) + '</tr>'}</table>
+          <div style="font-size:9.5px;margin-top:4px">[비고] 1. *표 항목은 필요시에 실시함 · 2. 외부 점검란은 O, X로 표기 · 3. 내부점검(OT내압·산가도)은 시험성적서로 대체</div><div class="foot">별지 제4호서식</div></div>`;
+        return doPrint(h);
+      }
+    }
+
+    Portal.start({
+      appId: 'elec',
+      title: '전기 직무고시',
+      onReady: async P => {
+        sb = P.sb; me = P.me;
+        await loadAll(); render();
+      }
+    });
+  </script>
+</body>
+</html>
