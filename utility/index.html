@@ -1415,7 +1415,7 @@
       const split = r => ({ base: baseOf(r) * bdays(r), var: unit * (r.prod || 0), adj: r.ym ? loadAdjMonth(r.ym, uk) : 0 });
       rows.forEach(r => { r.pred = r.base + unit * r.prod + r.adj; r.err = (r.pred / r[uk] - 1) * 100; });
       const mape = rows.reduce((a, r) => a + Math.abs(r.err), 0) / rows.length;
-      let mapeU = null; if (GB) { const u0 = rows.reduce((a, r) => a + r[uk] - r.adj, 0) / sp; mapeU = rows.reduce((a, r) => a + Math.abs((u0 * r.prod + r.adj) / r[uk] - 1) * 100, 0) / rows.length; }
+      let mapeU = null; if (GB || BD) { const u0 = rows.reduce((a, r) => a + r[uk] - r.adj, 0) / sp; mapeU = rows.reduce((a, r) => a + Math.abs((u0 * r.prod + r.adj) / r[uk] - 1) * 100, 0) / rows.length; }
       return { simple: true, uk, BD, GB, HB: !!(BD || GB), unit, rows, n: rows.length, mape, mapeU, r2: null, feats: [], coef: [], split,
         predict: r => { if (r.prod === null || r.prod === undefined) return null; const q = split(r); return Math.max(0, q.base + q.var + q.adj); } };
     }
@@ -2135,7 +2135,7 @@
               <td class="l">${ro ? `<span class="hint">${esc(note) || '-'}</span>` : `<input class="tg-note" style="width:100%;text-align:left" value="${esc(note)}" placeholder="예) 26.5~8월 악취 희석용 물 추가" oninput="setBaseNote('${u.k}',this.value)">`}</td></tr>`; }).join('') + '</table>';
         h += `<table class="t tg" style="margin-top:10px;width:100%"><tr><th class="l">항목</th><th class="l">기본 사용량 (하루)</th><th>원단위 (원육 kg당)</th><th>기준 달 오차 ${Portal.tip('tgerr')}</th></tr>` + UT.UTILS.map(u => { const m = models[u.k];
           if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달 자료가 부족합니다</td></tr>`;
-          const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>`
+          const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>` + (m.mapeU !== null ? `<br><span class="hint">원단위만 쓰면 기준 달 오차 ±${nf1.format(m.mapeU)}% → 기본 사용량 넣어서 ±${nf1.format(m.mape)}%</span>` : '')
             : m.GB ? `보일러 켠 시간 × 시간당 대기 — ${['winter', 'spring', 'summer', 'fall'].map(k => `${SEASON_NAME[k].split('(')[0]} ${ro ? `<b>${m.GB[k].m3h === null ? '-' : nf1.format(m.GB[k].m3h)}</b>` : `<input class="tg-gs" type="number" step="0.5" style="width:56px" value="${m.GB[k].m3h === null ? '' : Math.round(m.GB[k].m3h * 10) / 10}" onchange="gasStbySet('${k}',this.value)">`}㎥/h <span class="hint">(${m.GB[k].src}${m.GB[k].est !== null && m.GB[k].src !== `생산일 ${m.GB[k].n}일로 추정` ? ` · 자료 추정 ${nf1.format(m.GB[k].est)}` : ''})</span>`).join(' · ')}${m.mapeU !== null ? `<br><span class="hint">원단위만 쓰면 기준 달 오차 ±${nf1.format(m.mapeU)}% → 대기 몫 넣어서 ±${nf1.format(m.mape)}% · 칸을 비우면 원래 값(겨울 실측 35·나머지 자료 추정)</span>` : ''}`
             : '<span class="hint">없음 — 생산할 때만 씀</span>';
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
