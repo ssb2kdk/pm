@@ -1373,27 +1373,42 @@
       months.forEach(ym => { for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d); if (isIdleDay(ds) !== true) continue; const u0 = UT.dailyUsage(DAILY, ds).elec; if (u0 === null || u0 <= 0) continue; const u = u0 - loadAdjDay(ds, 'elec'); by[SEASON(Number(ym.slice(5)))].push({ ds, u }); all.push(u); } });
       const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null, out = {};
       Object.keys(by).forEach(k => { out[k] = by[k].length >= 3 ? { v: avg(by[k].map(x => x.u)), n: by[k].length, src: '' } : null; });
+      const NW = ['spring', 'summer', 'fall'].flatMap(k => by[k]); let pooled = null; // 겨울 빼고 합쳐서 한 번 더 추정
+      if (NW.length >= 10) { const c = UT.ols(NW.map(q => [q.h, q.x]), NW.map(q => q.y)); if (c && c[0] > 0 && c[1] > 0) pooled = c[0]; }
+      ['spring', 'summer', 'fall'].forEach(k => { if (out[k].m3h === null && pooled !== null) { out[k].m3h = pooled; out[k].est = pooled; out[k].src = `봄·여름·가을 생산일 ${NW.length}일 합쳐 추정`; } });
       const fb = { spring: 'fall', fall: 'spring', summer: 'spring', winter: 'fall' };
       Object.keys(by).forEach(k => { if (!out[k]) { const o = out[fb[k]] || (all.length >= 3 ? { v: avg(all), n: all.length } : null); out[k] = o ? { v: o.v, n: o.n, src: out[fb[k]] ? `${SEASON_NAME[fb[k]].split('(')[0]} 값으로 대신` : '전체 평균으로 대신' } : { v: 0, n: 0, src: '생산 없는 날 기록 없음' }; } });
       out._days = by; out._skip = skip; return out;
     }
-    // 가스 기본: 보일러를 켠 생산일마다 원육 양과 상관없이 드는 몫 (예열·배관·대기 열손실)
-    //  기준 달의 생산일(원육 투입 있음)별 「보일러 가스 일일 검침 ↔ 그날 원육」 직선의 시작점(원육 0일 때) — 튀는 날은 한 번 걸러냄
+    // 가스 기본 = 보일러 켠 시간 × 시간당 대기 가스 (계절별)
+    //  · 겨울: 실측 — 26.1.24~25 주말 생산 없이 보일러 1대 24시간 켬 → 하루 약 835㎥ = 시간당 약 35㎥ (목표 화면에서 고칠 수 있음)
+    //  · 다른 계절: 기준 달 생산일의 「보일러 가스 일일 검침 = 시간당 × 켠 시간 + 원육 kg당 × 원육」으로 추정 (실측 넣으면 그 값)
+    const GAS_STBY_WINTER = 35; // ㎥/h
     function gasProdDays(ym) { if (!PRODD) return null; let n = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && (p.rm || 0) > 0) n++; } return n; }
-    function gasBaseDay(months) {
-      if (!PRODD) return null; const pts = [], H = gasHeat();
-      months.filter(ym => !IDLE_SKIP.includes(ym)).forEach(ym => { for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d), p = PRODD[ds]; if (!p || !(p.rm > 0)) continue; const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g === null || g === undefined || g <= 50) continue; pts.push({ ds, x: p.rm, y: g * H - loadAdjDay(ds, 'gas') }); } });
-      const fit = P => { const n = P.length; if (n < 15) return null; const mx = P.reduce((a, q) => a + q.x, 0) / n, my = P.reduce((a, q) => a + q.y, 0) / n; let sxy = 0, sxx = 0, syy = 0; P.forEach(q => { sxy += (q.x - mx) * (q.y - my); sxx += (q.x - mx) ** 2; syy += (q.y - my) ** 2; }); if (!sxx) return null; const b = sxy / sxx, a = my - b * mx; return { a, b, r2: syy ? sxy * sxy / (sxx * syy) : 0, n }; };
-      let f = fit(pts); if (!f) return null;
-      const res = pts.map(q => q.y - (f.a + f.b * q.x)), sd = Math.sqrt(res.reduce((a, v) => a + v * v, 0) / res.length), keep = pts.filter((q, i) => Math.abs(res[i]) <= 2.5 * sd), drop = pts.filter((q, i) => Math.abs(res[i]) > 2.5 * sd);
-      const f2 = fit(keep); if (f2) f = f2; if (!(f.a > 0) || !(f.b > 0)) return { bad: true, a: f.a, b: f.b, n: f.n };
-      return { v: f.a, slope: f.b, r2: f.r2, n: f.n, drop, heat: H };
+    function gasBoilHours(ym) { if (!PRODD) return null; let h = 0, n = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0 && p.boilH !== undefined && p.boilH !== null) { h += p.boilH; n++; } } return n ? { h, n } : null; }
+    function gasStandby(t, months) {
+      const H = gasHeat(), by = { spring: [], summer: [], fall: [], winter: [] }, hrs = { spring: [], summer: [], fall: [], winter: [] };
+      if (PRODD) months.filter(ym => !IDLE_SKIP.includes(ym)).forEach(ym => { const sn = SEASON(Number(ym.slice(5))); for (let d = 1; d <= UT.daysIn(ym); d++) { const ds = UT.dateStr(ym, d), p = PRODD[ds]; if (!p || !(p.rm > 0) || !(p.boilH > 0)) continue; hrs[sn].push(p.boilH); const g = UT.diffReading(DAILY, ds, ['gas_boiler']); if (g === null || g === undefined || g <= 50) continue; by[sn].push({ h: p.boilH, x: p.rm, y: g - loadAdjDay(ds, 'gas') / H }); } });
+      const ov = (t && t.gasStby) || {}, out = {};
+      ['winter', 'spring', 'summer', 'fall'].forEach(k => { const P = by[k]; let est = null;
+        if (P.length >= 10) { const c = UT.ols(P.map(q => [q.h, q.x]), P.map(q => q.y)); if (c && c[0] > 0 && c[1] > 0) est = c[0]; }
+        const set = ov[k] !== undefined && ov[k] !== null && ov[k] !== '' ? Number(ov[k]) : null;
+        const v = set !== null ? set : k === 'winter' ? GAS_STBY_WINTER : est;
+        out[k] = { m3h: v, src: set !== null ? '직접 넣음' : k === 'winter' ? '1/24~25 실측' : est !== null ? `생산일 ${P.length}일로 추정` : '자료 부족', est, n: P.length, avgH: hrs[k].length ? hrs[k].reduce((a, b) => a + b, 0) / hrs[k].length : null }; });
+      const NW = ['spring', 'summer', 'fall'].flatMap(k => by[k]); let pooled = null; // 겨울 빼고 합쳐서 한 번 더 추정
+      if (NW.length >= 10) { const c = UT.ols(NW.map(q => [q.h, q.x]), NW.map(q => q.y)); if (c && c[0] > 0 && c[1] > 0) pooled = c[0]; }
+      ['spring', 'summer', 'fall'].forEach(k => { if (out[k].m3h === null && pooled !== null) { out[k].m3h = pooled; out[k].est = pooled; out[k].src = `봄·여름·가을 생산일 ${NW.length}일 합쳐 추정`; } });
+      const fb = { spring: 'fall', fall: 'spring', summer: 'spring', winter: 'fall' };
+      Object.keys(out).forEach(k => { if (out[k].m3h === null) { const o = out[fb[k]]; if (o && o.m3h !== null) { out[k].m3h = o.m3h; out[k].src = `${SEASON_NAME[fb[k]].split('(')[0]} 값으로 대신`; } } if (out[k].avgH === null) { const o = out[fb[k]]; out[k].avgH = o ? o.avgH : null; } });
+      out._heat = H; return out;
     }
     function simpleModel(t, y, uk) {
       const months = baseFor(t, y, uk), rows = months.map(monthRow).filter(r => r[uk] !== null && r[uk] !== undefined && r.prod > 0);
-      const BD = uk === 'elec' ? elecBaseDay(months) : null, GB0 = uk === 'gas' ? gasBaseDay(months) : null, GB = GB0 && !GB0.bad ? GB0 : null;
-      const bdays = r => GB ? (r.plan || !r.ym ? (r.op || 0) : (gasProdDays(r.ym) ?? r.op ?? 0)) : (r.days || UT.daysIn(r.ym)); // 가스는 생산일 수, 전기는 달력 날수
-      const baseOf = r => BD ? BD[SEASON(Number(r.ym.slice(5)))].v : GB ? GB.v : 0;
+      const BD = uk === 'elec' ? elecBaseDay(months) : null, GS = uk === 'gas' && PRODD ? gasStandby(t, months) : null, GB = GS && Object.values(GS).some(x => x && x.m3h) ? GS : null;
+      // 기본분: 전기 = 계절 하루 기본 × 날수 · 가스 = 계절 시간당 대기 × 그 달 보일러 켠 시간 (앞으로의 달은 계절 평균 켠 시간 × 생산일)
+      const gasHrs = r => { if (!r.plan && r.ym) { const b = gasBoilHours(r.ym), n = gasProdDays(r.ym); if (b) return b.h + (n > b.n ? (n - b.n) * (b.h / b.n) : 0); } const sn = SEASON(Number(r.ym.slice(5))); return (r.op || 0) * (GB[sn].avgH || 0); };
+      const bdays = r => GB ? gasHrs(r) : (r.days || UT.daysIn(r.ym));
+      const baseOf = r => BD ? BD[SEASON(Number(r.ym.slice(5)))].v : GB ? (GB[SEASON(Number(r.ym.slice(5)))].m3h || 0) * GB._heat : 0;
       rows.forEach(r => { r.days = r.days || UT.daysIn(r.ym); r.bdays = bdays(r); r.base = baseOf(r) * r.bdays; r.adj = loadAdjMonth(r.ym, uk); r.var = r[uk] - r.base - r.adj; });
       const sp = rows.reduce((a, r) => a + r.prod, 0); if (!rows.length || !sp) return null;
       const unit = rows.reduce((a, r) => a + r.var, 0) / sp;
@@ -1401,7 +1416,7 @@
       rows.forEach(r => { r.pred = r.base + unit * r.prod + r.adj; r.err = (r.pred / r[uk] - 1) * 100; });
       const mape = rows.reduce((a, r) => a + Math.abs(r.err), 0) / rows.length;
       let mapeU = null; if (GB) { const u0 = rows.reduce((a, r) => a + r[uk] - r.adj, 0) / sp; mapeU = rows.reduce((a, r) => a + Math.abs((u0 * r.prod + r.adj) / r[uk] - 1) * 100, 0) / rows.length; }
-      return { simple: true, uk, BD, GB, GB0, HB: !!(BD || GB), unit, rows, n: rows.length, mape, mapeU, r2: null, feats: [], coef: [], split,
+      return { simple: true, uk, BD, GB, HB: !!(BD || GB), unit, rows, n: rows.length, mape, mapeU, r2: null, feats: [], coef: [], split,
         predict: r => { if (r.prod === null || r.prod === undefined) return null; const q = split(r); return Math.max(0, q.base + q.var + q.adj); } };
     }
     function fitModels(t, y, autoOnly) {
@@ -2113,7 +2128,7 @@
       if (SIMPLE) {
         const cands = []; for (let ym = UT.ym(y - 2, 1); ym <= UT.ym(y, 12) && ym <= lastCompleteYm(); ym = UT.nextYm(ym)) { const sx = S(ym); if (sx.production && sx.elec.usage) cands.push(ym); }
         const fc = v => Math.abs(v) >= 100 ? f0(v) : Number(Number(v).toPrecision(3)).toLocaleString('ko-KR');
-        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량 — <b>전기</b>: 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 × 날수 · <b>가스</b>: 보일러 켠 생산일마다 원육과 상관없이 드는 몫(예열·대기 열손실) × 생산일 수 · 용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 그날부터 계속되는 설비 신설·반출·운전 변경은 특이사항 탭 「⚡ 설비 부하 변경」에 하루 증감량을 적으면 예상 사용량에 더하거나 뺍니다<br>· 절감 목표(②)는 <b>예상 사용량 전체</b>에 겁니다 (기본분·생산분 모두 — 쉬는 날 공조·폐수·대기전력도 절감 대상)</div>`;
+        let h = `${modeBtn}<div class="story" style="margin-bottom:8px"><b>목표 = 기본 사용량 + 원육 kg당 사용량(원단위) × 원육 투입량</b> ${Portal.tip('simpletg')}<br>· 기본 사용량 — <b>전기</b>: 생산 없는 날(원육·포장 실적 0) 하루 평균을 계절별로 × 날수 · <b>가스</b>: 보일러 켠 시간 × 계절 시간당 대기 가스(겨울 35㎥/h = 1/24~25 실측) — 켜 두기만 해도 드는 몫 · 용수·폐수는 생산할 때만 거의 쓰므로 기본 없이 원단위만<br>· 그날부터 계속되는 설비 신설·반출·운전 변경은 특이사항 탭 「⚡ 설비 부하 변경」에 하루 증감량을 적으면 예상 사용량에 더하거나 뺍니다<br>· 절감 목표(②)는 <b>예상 사용량 전체</b>에 겁니다 (기본분·생산분 모두 — 쉬는 날 공조·폐수·대기전력도 절감 대상)</div>`;
         h += `<div class="hint" style="margin-bottom:6px">기준 달 — 항목마다 따로 고름 (${ro ? '관리자만 바꿀 수 있음' : '눌러서 넣기/빼기'}) · 뺀 이유는 오른쪽 칸에 적어 두세요.</div><table class="t tg" style="width:100%"><tr><th class="l" style="width:70px">항목</th><th class="l">기준 달</th><th class="l" style="width:34%">뺀 이유 메모</th></tr>` +
           UT.UTILS.map(u => { const sel = baseFor(t, y, u.k), note = (t.baseNote || {})[u.k] ?? (!(t.baseU && t.baseU[u.k]) && exclOf(t, u.k).length && EXCL_WHY[u.k] && !Array.isArray((t.excl || {})[u.k]) ? EXCL_WHY[u.k] : '');
             return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b><br><span class="hint">${sel.length}개월</span></td><td class="l"><span class="chips">${cands.map(ym => `<button class="chip mini ${sel.includes(ym) ? 'on' : ''}" ${ro ? 'disabled' : `onclick="toggleBaseU('${u.k}','${ym}')"`}>${ym.slice(2).replace('-', '.')}</button>`).join('')}</span></td>
@@ -2121,14 +2136,14 @@
         h += `<table class="t tg" style="margin-top:10px;width:100%"><tr><th class="l">항목</th><th class="l">기본 사용량 (하루)</th><th>원단위 (원육 kg당)</th><th>기준 달 오차 ${Portal.tip('tgerr')}</th></tr>` + UT.UTILS.map(u => { const m = models[u.k];
           if (!m) return `<tr><td class="l"><b>${u.name}</b></td><td class="l hint" colspan="3">기준 달 자료가 부족합니다</td></tr>`;
           const bd = m.BD ? ['spring', 'summer', 'fall', 'winter'].map(k => `${SEASON_NAME[k].split('(')[0]} <b>${f0(m.BD[k].v)}</b>${m.BD[k].src ? ` <span class="hint">(${m.BD[k].src})</span>` : ` <span class="hint">${m.BD[k].n}일</span>`}`).join(' · ') + ` <span class="hint">${u.unit}/일</span>`
-            : m.GB ? `생산일 하루 <b>${f0(m.GB.v)}</b> MJ <span class="hint">(≈ ${f0(m.GB.v / m.GB.heat)}㎥) · 보일러 켠 날 기본 · 생산일 ${m.GB.n}일 일일 검침으로 계산</span>${m.mapeU !== null ? `<br><span class="hint">원단위만 쓰면 기준 달 오차 ±${nf1.format(m.mapeU)}% → 기본 넣어서 ±${nf1.format(m.mape)}%</span>` : ''}`
-            : u.k === 'gas' && m.GB0 && m.GB0.bad ? '<span class="hint">없음 — 생산일 기본을 못 구함 (일일 검침과 원육 관계가 맞지 않음)</span>' : '<span class="hint">없음 — 생산할 때만 씀</span>';
+            : m.GB ? `보일러 켠 시간 × 시간당 대기 — ${['winter', 'spring', 'summer', 'fall'].map(k => `${SEASON_NAME[k].split('(')[0]} ${ro ? `<b>${m.GB[k].m3h === null ? '-' : nf1.format(m.GB[k].m3h)}</b>` : `<input class="tg-gs" type="number" step="0.5" style="width:56px" value="${m.GB[k].m3h === null ? '' : Math.round(m.GB[k].m3h * 10) / 10}" onchange="gasStbySet('${k}',this.value)">`}㎥/h <span class="hint">(${m.GB[k].src}${m.GB[k].est !== null && m.GB[k].src !== `생산일 ${m.GB[k].n}일로 추정` ? ` · 자료 추정 ${nf1.format(m.GB[k].est)}` : ''})</span>`).join(' · ')}${m.mapeU !== null ? `<br><span class="hint">원단위만 쓰면 기준 달 오차 ±${nf1.format(m.mapeU)}% → 대기 몫 넣어서 ±${nf1.format(m.mape)}% · 칸을 비우면 원래 값(겨울 실측 35·나머지 자료 추정)</span>` : ''}`
+            : '<span class="hint">없음 — 생산할 때만 씀</span>';
           return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b> <span class="hint">${u.unit}</span></td><td class="l">${bd}</td><td><b>${fc(m.unit)}</b> <span class="hint">${u.unit}/kg</span></td><td>±${nf1.format(m.mape)}%</td></tr>`; }).join('') + '</table>';
         h += UT.UTILS.map(u => { const m = models[u.k]; if (!m) return '';
-          return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.HB ? `<th>기본분<br><span class="hint">하루 × ${m.GB ? '생산일' : '날수'}</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>` : ''}${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? '<th>설비 부하 변경</th>' : ''}<th>그 달 원단위</th><th class="l">식</th><th>식으로 계산</th><th>차이</th></tr>` +
-            m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.HB ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}${m.rows.some(x => Math.abs(x.adj) >= 0.5) ? `<td>${Math.abs(r.adj) >= 0.5 ? (r.adj > 0 ? '+' : '−') + f0(Math.abs(r.adj)) : '-'}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td class="l hint" style="white-space:nowrap">${m.HB ? `${f0(r.bdays ? r.base / r.bdays : 0)} × ${r.bdays}일${m.GB ? '(생산일)' : ''} + ` : ''}${Number(m.unit.toPrecision(5))} × ${f0(r.prod)}${Math.abs(r.adj) >= 0.5 ? ` ${r.adj > 0 ? '+' : '−'} ${f0(Math.abs(r.adj))}` : ''}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
+          return `<details class="tg-whyd"><summary>${u.name} — 기준 달마다 계산 보기 (${m.n}개월)</summary><table class="t tg-why"><tr><th class="l">달</th><th>원육 (kg)</th><th>실제</th>${m.HB ? `<th>기본분<br><span class="hint">${m.GB ? '대기 × 켠 시간' : '하루 × 날수'}</span></th><th>생산분<br><span class="hint">실제 − 기본</span></th>` : ''}${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? '<th>설비 부하 변경</th>' : ''}<th>그 달 원단위</th><th class="l">식</th><th>식으로 계산</th><th>차이</th></tr>` +
+            m.rows.map(r => `<tr><td class="l">${r.ym.slice(2).replace('-', '.')}</td><td>${f0(r.prod)}</td><td>${f0(r[u.k])}</td>${m.HB ? `<td>${f0(r.base)}</td><td>${f0(r.var)}</td>` : ''}${m.rows.some(x => Math.abs(x.adj) >= 0.5) ? `<td>${Math.abs(r.adj) >= 0.5 ? (r.adj > 0 ? '+' : '−') + f0(Math.abs(r.adj)) : '-'}</td>` : ''}<td>${fc(r.var / r.prod)}</td><td class="l hint" style="white-space:nowrap">${m.GB ? `${nf1.format(r.bdays ? r.base / r.bdays / m.GB._heat : 0)}㎥/h × ${nf1.format(r.bdays)}h × ${nf1.format(m.GB._heat)} + ` : m.HB ? `${f0(r.bdays ? r.base / r.bdays : 0)} × ${r.bdays}일 + ` : ''}${Number(m.unit.toPrecision(5))} × ${f0(r.prod)}${Math.abs(r.adj) >= 0.5 ? ` ${r.adj > 0 ? '+' : '−'} ${f0(Math.abs(r.adj))}` : ''}</td><td>${f0(r.pred)}</td><td class="${Math.abs(r.err) >= 10 ? 'up' : ''}">${r.err >= 0 ? '+' : ''}${nf1.format(r.err)}%</td></tr>`).join('') +
             `</table><div class="hint" style="margin-top:4px"><b>원단위</b> = ${m.HB ? '생산분' : m.rows.some(r => Math.abs(r.adj) >= 0.5) ? '(실제 − 설비 부하 변경)' : '실제'} 합 ${f0(m.rows.reduce((a, r) => a + r.var, 0))} ÷ 원육 합 ${f0(m.rows.reduce((a, r) => a + r.prod, 0))} = <b>${Number(m.unit.toPrecision(5))}</b> ${u.unit}/kg (달마다 원단위를 평균하지 않고 전체를 한 번에 나눔 — 생산이 적은 달에 휘둘리지 않게)<br>
-              <b>식으로 계산</b> = ${m.BD ? '계절 하루 기본 × 그 달 날수 + ' : m.GB ? '생산일 하루 기본 × 그 달 생산일 수 + ' : ''}원단위 × 그 달 원육 + 설비 부하 변경 (특이사항 탭 ⚡ 하루 증감량 × 날수${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? ' — 원단위를 구할 때는 실제에서 이 몫을 먼저 뺌' : ' — 기준 달엔 없음'}) · <b>차이</b> = (식 − 실제) ÷ 실제 — ＋면 그 달은 식보다 덜 쓴 달, −면 더 쓴 달</div></details>`; }).join('');
+              <b>식으로 계산</b> = ${m.BD ? '계절 하루 기본 × 그 달 날수 + ' : m.GB ? '계절 시간당 대기(㎥/h) × 그 달 보일러 켠 시간 합 × 열량계수(MJ/㎥) + ' : ''}원단위 × 그 달 원육 + 설비 부하 변경 (특이사항 탭 ⚡ 하루 증감량 × 날수${m.rows.some(r => Math.abs(r.adj) >= 0.5) ? ' — 원단위를 구할 때는 실제에서 이 몫을 먼저 뺌' : ' — 기준 달엔 없음'}) · <b>차이</b> = (식 − 실제) ÷ 실제 — ＋면 그 달은 식보다 덜 쓴 달, −면 더 쓴 달</div></details>`; }).join('');
         if (models.elec && models.elec.BD) { const D = models.elec.BD._days; h += `<details class="tg-whyd"><summary>전기 기본 사용량 — 생산 없는 날 목록 보기</summary><div class="hint" style="margin:6px 0">원육·포장 실적이 없는 날의 하루 전기 사용량 (파워플래너) · 쉬는 날에 일부 설비만 돌린 날이 섞였으면 그 달을 기준 달에서 빼거나 알려 주세요.${models.elec.BD._skip.length ? `<br>· <b>뺀 달: ${models.elec.BD._skip.map(x => x.slice(2).replace('-', '.')).join(', ')}</b> — 생산 대시보드에 일별 생산 입력이 없어 생산 없는 날을 가릴 수 없음 (원단위 계산에는 그대로 씀)` : ''}</div>` +
           ['spring', 'summer', 'fall', 'winter'].map(k => D[k].length ? `<div style="margin:4px 0"><b>${SEASON_NAME[k]}</b> <span class="hint">${D[k].length}일 · 평균 ${f0(D[k].reduce((a, x) => a + x.u, 0) / D[k].length)}</span><div class="hint">${D[k].map(x => `${x.ds.slice(5).replace('-', '/')} ${f0(x.u)}`).join(' · ')}</div></div>` : '').join('') + '</details>'; }
         document.getElementById('tg-model').innerHTML = h;
@@ -2231,6 +2246,7 @@
       if (targetDraft.baseNote === undefined || (targetDraft.baseNote || {})[uk] === undefined) { const n = (EXCL_WHY[uk] && exclOf(targetDraft, uk).length && !Array.isArray((targetDraft.excl || {})[uk])) ? EXCL_WHY[uk] : ''; if (n) targetDraft.baseNote = Object.assign({}, targetDraft.baseNote || {}, { [uk]: n }); }
       targetDirty = true; renderTargets(targetDraft);
     }
+    function gasStbySet(k, v) { targetDraft.gasStby = Object.assign({}, targetDraft.gasStby || {}, { [k]: v === '' ? null : Number(v) }); targetDirty = true; renderTargets(targetDraft); }
     function setBaseNote(uk, v) { targetDraft.baseNote = Object.assign({}, targetDraft.baseNote || {}, { [uk]: v }); targetDirty = true; }
     function setAllRates() {
       const v = prompt('모든 항목의 절감률(%)을 몇으로 할까요?', '3'); if (v === null || isNaN(Number(v))) return;
