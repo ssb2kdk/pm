@@ -2611,8 +2611,8 @@
       document.querySelectorAll('#dc-body tr.sim-ref').forEach(t => t.classList.remove('sim-ref'));
     }
     // ---- 폐수(·용수) 공정별 나눠 보기: 인허가 산출근거 단위로 ----
-    //  증숙 배수 = 자숙 회차 × 1.33㎥ (증숙기 1.33㎥/대) · 살균 냉각수 = 레토르트 회차 × 6.67㎥ (1차 5.67 + 2차 1.0) · 세척·청소·기타 = 실제 폐수 − 두 몫
-    let wsCook = 1.33, wsRet = 6.67;
+    //  증숙 배수 = 자숙 회차 × 1.33㎥ (증숙기 1.33㎥/대) · 살균 냉각수 = 레토르트 배치 × 1.11㎥ (1차 945L + 2차 1톤/일 ÷ 6배치) · 세척·청소·기타 = 실제 폐수 − 두 몫
+    let wsCook = 1.33, wsRet = 1.11; // 레토르트 1배치 = 1차 냉각 0.945㎥ + 2차 냉각 1.0㎥/일 ÷ 6배치 ≈ 1.11㎥
     function renderWwSplit() {
       const el = document.getElementById('ws-body'); if (!el || !PRODD) return;
       const yst = UT.addDays(todayStr, -1), ms = []; { let m = yst.slice(0, 7); for (let i = 0; i < 12; i++) { ms.unshift(m); m = UT.prevYm(m); } }
@@ -2626,14 +2626,14 @@
       const P = { c: 16, r: 27, w: 65 }; // 인허가 하루 기준 (증숙 16 · 냉각 27 · 세척·청소 65 ㎥/일)
       let h = `<div class="toolbar" style="flex-wrap:wrap;gap:8px"><span class="hint">계수 (인허가 산출근거 · 바꿔 볼 수 있음, 저장 안 됨)</span>
           자숙 1회당 <input type="number" step="0.01" style="width:64px" value="${wsCook}" onchange="wsCook=Number(this.value)||0;renderWwSplit()">㎥
-          · 레토르트 1회당 <input type="number" step="0.01" style="width:64px" value="${wsRet}" onchange="wsRet=Number(this.value)||0;renderWwSplit()">㎥ <span class="hint">(1차 냉각 5.67 + 2차 냉각 1.0)</span></div>
+          · 레토르트 1회당 <input type="number" step="0.01" style="width:64px" value="${wsRet}" onchange="wsRet=Number(this.value)||0;renderWwSplit()">㎥ <span class="hint">(1배치 1차 냉각 945L + 2차 냉각 하루 1톤 ÷ 6배치 = 약 1.11㎥ · 인허가: 4대 × 6배치 = 하루 24배치 → 27㎥)</span></div>
         <div class="tbl-wrap"><table class="t"><tr><th rowspan="2">월</th><th rowspan="2">생산일</th><th rowspan="2">원육 kg</th><th colspan="2">회차</th><th colspan="4">폐수 ㎥ (아래 작은 글씨 = 생산일 하루 평균)</th><th rowspan="2">용수 ㎥</th><th rowspan="2">용수 − 폐수<br><span class="hint">제품·증발 등</span></th></tr>
           <tr><th>자숙</th><th>레토르트</th><th>증숙 배수<br><span class="hint">자숙 × ${wsCook}</span></th><th>살균 냉각수<br><span class="hint">레토르트 × ${wsRet}</span></th><th>세척·청소·기타<br><span class="hint">실제 − 두 몫</span></th><th>실제 폐수<br><span class="hint">설비검침</span></th></tr>` +
         rows.map(r => `<tr><td>${ymLabel(r.ym)}</td><td>${r.pd}</td><td>${f0(r.rm)}</td><td>${f(r.cook)}</td><td>${f(r.ret)}</td>
           <td>${f(r.eC)}${pdv(r.eC, r)}</td><td>${f(r.eR)}${pdv(r.eR, r)}</td><td class="${r.rest !== null && r.rest < 0 ? 'up' : ''}">${f(r.rest)}${pdv(r.rest, r)}</td><td><b>${f(r.ww)}</b>${pdv(r.ww, r)}</td><td>${f(r.wt)}${pdv(r.wt, r)}</td><td>${r.wt !== null && r.ww !== null ? f0(r.wt - r.ww) : '-'}</td></tr>`).join('') +
         `<tr style="background:#fafafa"><td>인허가 (하루)</td><td></td><td>5,300 + 기타</td><td></td><td></td><td>${P.c}</td><td>${P.r}</td><td>${P.w + 2}</td><td><b>110</b></td><td></td><td></td></tr></table></div>
         <div class="hint" style="margin-top:6px">· 자숙·레토르트 회차는 생산 웹사이트 기록 (기록을 시작한 달부터 — 그 전 달은 「-」) · 폐수·용수는 설비검침 일일 검침 합 · 「세척·청소·기타」가 마이너스면 계수가 실제보다 큰 것 (탱크 물을 다 버리지 않거나 냉각수 일부를 재사용 등) → 계수를 바꿔 맞춰 보기<br>
-          · 인허가 하루 기준: 증숙 16 (1.33㎥ × 세척 2회 × 6대) · 살균 냉각 27 (레토르트 4대 × 6.67) · 세척·청소 65 + 소스·보일러·콤프레샤 2 = 폐수 110㎥/일 · 생산일 하루 평균과 비교하면 공정별 여유가 보임</div>`;
+          · 인허가 하루 기준: 증숙 16 (1.33㎥ × 세척 2회 × 6대) · 살균 냉각 27 (레토르트 4대 × 하루 6배치 × 945L = 22.7 + 2차 냉각 4대 × 1톤 = 4 → 약 27) · 세척·청소 65 + 소스·보일러·콤프레샤 2 = 폐수 110㎥/일 · 생산일 하루 평균과 비교하면 공정별 여유가 보임</div>`;
       el.innerHTML = h;
     }
     function pkgOf(p) { // { kg, known(EA), all(EA) }
