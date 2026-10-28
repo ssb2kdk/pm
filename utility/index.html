@@ -3756,7 +3756,7 @@
       if (sxx < 1e-9 || syy < 1e-9) return null; return { r: sxy / Math.sqrt(sxx * syy), b: sxy / sxx, a: my - sxy / sxx * mx, n }; }
     const DC_U = [['elec', '전기', 'kWh', '#2a78d6', ds => (UT.dailyUsage(DAILY, ds) || {}).elec], ['gas', '보일러 가스', '㎥', '#eb6834', ds => UT.diffReading(DAILY, ds, ['gas_boiler'])],
       ['water', '용수', '㎥', '#1baf7a', ds => (UT.dailyUsage(DAILY, ds) || {}).water], ['ww', '폐수', '㎥', '#eda100', ds => (UT.dailyUsage(DAILY, ds) || {}).ww]];
-    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['pkg', '완제품 kg'], ['prepH', '전처리 h'], ['steamH', '자숙 h'], ['crushH', '파쇄 h'], ['packH', '포장 h'], ['boilH', '보일러 켠 시간'], ['runH', '보일러 실가동']];
+    const DC_P = [['rm', '원육 투입 kg'], ['ea', '포장 EA'], ['pkg', '완제품 kg'], ['steamH', '자숙 h'], ['cookN', '자숙 건수'], ['packH', '내포장 h'], ['retH', '레토르트 가열 h'], ['retN', '레토르트 건수'], ['boilH', '보일러 켠 시간'], ['runH', '보일러 실가동']];
     // ---------------- 완제품 중량 = 포장 EA × 제품 1개 중량 ----------------
     //  1개 중량: ① 특이사항 탭에서 직접 넣은 g (ut_monthly '9999-00' data.prodG) ② 제품명에 적힌 중량 (130g, 1kg, 70g×3 …)
     const prodGMap = () => ((YEARDATA[9999] || {}).prodG) || {};
