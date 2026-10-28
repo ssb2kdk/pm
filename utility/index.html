@@ -4917,7 +4917,7 @@
       document.getElementById('fc-box').innerHTML = ''; // 월말 예상 카드는 현황에서 뺌 (진행 중인 달 추정값이라 헷갈림)
       // 최근 7일 이상 사용
       const an7 = UT.anomalies(DAILY, UT.addDays(todayStr, -7), UT.addDays(todayStr, -1));
-      document.getElementById('anom-banner').innerHTML = an7.length && isAdmin() ? `<div class="anom-banner" onclick="switchTab('anom')">⚠ 최근 7일 평소보다 많이 쓴 날 <b>${an7.length}건</b> — ${an7.slice(-3).reverse().map(a => `${a.d.slice(5).replace('-', '/')} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}${a.kind === '과다' ? (a.pct === null ? ' (평소 0)' : ' +' + nf0.format(a.pct) + '%') : ' 지침오류'}`).join(', ')} <u>자세히 보기</u></div>` : '';
+      document.getElementById('anom-banner').innerHTML = false ? `<div class="anom-banner" onclick="switchTab('anom')">⚠ 최근 7일 평소보다 많이 쓴 날 <b>${an7.length}건</b> — ${an7.slice(-3).reverse().map(a => `${a.d.slice(5).replace('-', '/')} ${UT.DAILY_UTILS.find(u => u.k === a.u).name}${a.kind === '과다' ? (a.pct === null ? ' (평소 0)' : ' +' + nf0.format(a.pct) + '%') : ' 지침오류'}`).join(', ')} <u>자세히 보기</u></div>` : '';
       html = '';
       UT.UTILS.forEach(u => {
         const c = cur[u.k], p = prev[u.k];
