@@ -1518,8 +1518,10 @@
         document.querySelectorAll('.tab-btn.admin').forEach(b => b.hidden = !isAdmin());
         document.querySelectorAll('.tab-btn.setv').forEach(b => b.hidden = !(isAdmin() || isPartner()));
         ['ww', 'air'].forEach(k => { document.getElementById(k + '-from').value = todayStr; document.getElementById(k + '-to').value = todayStr; });
-        try { await loadAll(); if (window.innerWidth < 700) setMode('day'); else renderBook(); }
+        if (me && me.role === 'viewer') { document.querySelectorAll('.tab-btn').forEach(b => { b.hidden = !['chem', 'wq'].includes(b.dataset.tab); }); } // 보기 전용: 약품 월별 · 수질 측정만
+        try { await loadAll(); if (!(me && me.role === 'viewer')) { if (window.innerWidth < 700) setMode('day'); else renderBook(); } }
         catch (e) { document.getElementById('book-grid').innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 11번·12번 SQL을 실행했는지 확인해 주세요.</div>`; }
+        if (me && me.role === 'viewer') showTab('chem');
       }
     });
   </script>
