@@ -5101,15 +5101,21 @@
           return o; })()
       });
 
+      // 원육 투입량 입력 전(지난달·이번 달) → 생산 대시보드 일별 원육 합으로 잠정 · 이번 달은 어제까지
+      if (typeof PRODD !== 'undefined' && !PRODD && !renderCharts._ld) { renderCharts._ld = 1; loadProdDaily().then(() => renderCharts()).catch(() => {}); }
+      const prodOf = (s, ym) => s.production ?? (typeof prodEst === 'function' ? prodEst(ym) : null), EST = new Set(ms.map((ym, i) => cs[i].production == null && prodOf(cs[i], ym) ? i : -1).filter(i => i >= 0));
+      const RUN = new Set(ms.map((ym, i) => ym >= thisYm && cs[i].total ? i : -1).filter(i => i >= 0)); // 진행 중인 달
+      const MARK = new Set([...EST, ...RUN]), ystL = (() => { const t = UT.addDays(todayStr, -1); return `${Number(t.slice(5, 7))}/${Number(t.slice(8))}`; })();
+      const tag = i => RUN.has(i) ? ` (진행 중 · ${ystL}까지)` : EST.has(i) ? ' (원육 잠정)' : '';
       // 2) 원육 kg당 비용
-      const uc = arr => arr.map(s => ratio(s.total, s.production));
+      const uc = arr => arr.map((s, i) => ratio(s.total, arr === cs ? prodOf(s, ms[i]) : s.production));
       mkChart('chart-unitcost', {
         type: 'line',
         data: { labels: monthLabels, datasets: [
-          { label: `${y}년`, data: uc(cs), borderColor: '#333', backgroundColor: '#333', borderWidth: 2, pointRadius: 4, spanGaps: false },
+          { label: `${y}년`, data: uc(cs), borderColor: '#333', backgroundColor: '#333', pointBackgroundColor: ms.map((_, i) => MARK.has(i) ? '#fff' : '#333'), pointRadius: ms.map((_, i) => MARK.has(i) ? 6 : 4), pointBorderWidth: 2, segment: { borderDash: c => MARK.has(c.p1DataIndex) ? [4, 4] : undefined }, borderWidth: 2, spanGaps: false, _cur: 1 },
           { label: `${y - 1}년`, data: uc(ps), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
         ] },
-        options: (() => { const o = baseOpts('원/kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} 원/kg`; return clipAxis(o, uc(cs), uc(ps), 'unitcost-note'); })()
+        options: (() => { const o = baseOpts('원/kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} 원/kg${c.dataset._cur ? tag(c.dataIndex) : ''}`; return clipAxis(o, uc(cs), uc(ps), 'unitcost-note'); })()
       });
 
       // 3) 항목별 추이
@@ -5166,10 +5172,10 @@
       // 4) 생산량
       mkChart('chart-prod', { type: 'bar',
         data: { labels: monthLabels, datasets: [
-          { type: 'bar', label: `${y}년`, data: cs.map(s => s.production), backgroundColor: '#8a8f98', borderRadius: { topLeft: 4, topRight: 4 }, maxBarThickness: 34 },
+          { type: 'bar', label: `${y}년`, data: cs.map((s, i) => prodOf(s, ms[i])), backgroundColor: ms.map((_, i) => MARK.has(i) ? '#8a8f9855' : '#8a8f98'), borderColor: '#8a8f98', borderWidth: ms.map((_, i) => MARK.has(i) ? 1.5 : 0), borderRadius: { topLeft: 4, topRight: 4 }, maxBarThickness: 34, _cur: 1 },
           { type: 'line', label: `${y - 1}년`, data: ps.map(s => s.production), borderColor: '#a3a29d', backgroundColor: '#a3a29d', borderWidth: 2, borderDash: [5, 4], pointRadius: 3 }
         ] },
-        options: (() => { const o = baseOpts('kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} kg`; return o; })() });
+        options: (() => { const o = baseOpts('kg'); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${f0(c.raw)} kg${c.dataset._cur ? tag(c.dataIndex) : ''}`; return o; })() });
     }
 
     // 월별 상세표 (엑셀 Utility_SSB 요약과 같은 구성)
