@@ -74,6 +74,11 @@
     .step button { width: 56px; height: 56px; border-radius: 28px; border: 1px solid var(--border); background: #f4f4f4; font-size: 26px; cursor: pointer; }
     .step input { width: 110px; text-align: center; font-size: 28px; font-weight: 700; padding: 8px; border: 2px solid var(--border); border-radius: 12px; }
     .ok-big { width: 100%; padding: 16px; font-size: 17px; font-weight: 700; border: none; border-radius: 12px; color: #fff; cursor: pointer; }
+    .scan { position: fixed; inset: 0; background: #000; z-index: 75; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .scan video { width: 100%; max-width: 560px; max-height: 75vh; object-fit: cover; }
+    .scan .box { position: absolute; width: 60vmin; height: 60vmin; max-width: 300px; max-height: 300px; border: 3px solid #fff; border-radius: 16px; box-shadow: 0 0 0 2000px #0006; pointer-events: none; }
+    .scan .msg { position: absolute; bottom: 90px; color: #fff; font-size: 15px; text-align: center; padding: 0 20px; }
+    .scan .cl { position: absolute; bottom: 28px; background: #fff; color: #000; border: none; border-radius: 24px; padding: 12px 34px; font-size: 16px; font-weight: 700; }
     .toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 80; } .toast.show { opacity: 1; }
   </style>
 </head>
@@ -139,8 +144,8 @@ let fCat = '';
 function recentIds() { try { return JSON.parse(localStorage.getItem('spare_recent') || '[]'); } catch (e) { return []; } }
 function pushRecent(id) { try { const r = recentIds().filter(x => x !== id); r.unshift(id); localStorage.setItem('spare_recent', JSON.stringify(r.slice(0, 20))); } catch (e) { } }
 function renderQuick() {
-  document.getElementById('body').innerHTML = `<div class="card" style="position:sticky;top:58px;z-index:5"><input type="search" class="qsrch" id="qsrch" placeholder="🔍 품목명 · 규격 · 자재코드(BR-3) · 랙" value="${esc(qq)}" oninput="qq=this.value;renderQuickBody()">
-    <div class="hint" style="margin-top:6px">품목 옆 <b style="color:var(--amber)">출고</b>·<b style="color:var(--blue)">입고</b>를 누르고 수량만 확인하면 끝 · 랙에 붙인 QR을 폰 카메라로 찍으면 그 품목이 바로 열립니다</div></div><div id="qbody" style="display:flex;flex-direction:column;gap:8px"></div>`;
+  document.getElementById('body').innerHTML = `<div class="card" style="position:sticky;top:58px;z-index:5"><div style="display:flex;gap:8px"><button class="qb in" style="background:#1a1a1a;white-space:nowrap" onclick="scanOpen()">📷 QR 찍기</button><input type="search" class="qsrch" id="qsrch" placeholder="🔍 품목명 · 규격 · 자재코드(BR-3) · 랙" value="${esc(qq)}" oninput="qq=this.value;renderQuickBody()"></div>
+    <div class="hint" style="margin-top:6px">품목 옆 <b style="color:var(--amber)">출고</b>·<b style="color:var(--blue)">입고</b>를 누르고 수량만 확인하면 끝 · 「📷 QR 찍기」로 랙의 QR 라벨을 비추면 그 품목이 바로 열립니다</div></div><div id="qbody" style="display:flex;flex-direction:column;gap:8px"></div>`;
   renderQuickBody();
 }
 function renderQuickBody() {
@@ -153,6 +158,42 @@ function renderQuickBody() {
   el.innerHTML = (!k && R.length ? '<div class="hint">최근 쓴 품목이 위에 나옵니다</div>' : '') + (L.map(i => { const s = stockOf(i.id), n = needOf(i), low = s <= 0 || (n !== null && n > 0);
     return `<div class="qi"><div class="qn" onclick="${canWrite() ? `qOpen(${i.id},'출고')` : `go(${i.id})`}"><b>${esc(i.name)}</b><div class="hint">${esc(i.code2 || '')}${i.spec ? ' · ' + esc(i.spec) : ''}</div><div class="hint">${esc(i.place || '')}${i.rack ? ' · ' + esc(i.rack) : ''}</div></div>
       <div class="qst ${low ? 'low' : ''}">재고<b>${nf(s)}</b>${esc(i.unit || '')}</div>${canWrite() ? `<button class="qb out" onclick="qOpen(${i.id},'출고')">출고</button><button class="qb in" onclick="qOpen(${i.id},'입고')">입고</button>` : ''}</div>`; }).join('') || `<div class="empty">${ITEMS.length ? '찾는 품목이 없습니다' : '등록된 품목이 없습니다'}</div>`) + (more ? '<div class="hint" style="text-align:center">50개까지만 보입니다 — 검색어를 더 넣어 주세요</div>' : '');
+}
+// ---------------- QR 찍기 (사이트 안에서 카메라) ----------------
+let SC = null;
+async function scanOpen() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('이 브라우저는 카메라를 쓸 수 없습니다. 폰 기본 카메라로 QR을 찍어 주세요.'); return; }
+  const el = document.createElement('div'); el.className = 'scan'; el.id = 'scan';
+  el.innerHTML = '<video playsinline muted autoplay></video><div class="box"></div><div class="msg">네모 칸 안에 QR 라벨을 비춰 주세요</div><button class="cl" onclick="scanClose()">닫기</button>';
+  document.getElementById('app').appendChild(el);
+  const video = el.querySelector('video');
+  try { SC = { stream: await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }), on: true }; }
+  catch (e) { scanClose(); alert('카메라를 켜지 못했습니다.\n브라우저가 카메라 권한을 물으면 「허용」을 눌러 주세요.\n(이미 「차단」했다면 주소창 왼쪽 자물쇠 → 권한 → 카메라 허용)'); return; }
+  video.srcObject = SC.stream; await video.play().catch(() => { });
+  let det = null; try { if ('BarcodeDetector' in window && (await BarcodeDetector.getSupportedFormats()).includes('qr_code')) det = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { }
+  if (!det && !window.jsQR) { try { await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }); } catch (e) { scanClose(); alert('QR 읽기 도구를 불러오지 못했습니다. 폰 기본 카메라로 찍어 주세요.'); return; } }
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+  const tick = async () => {
+    if (!SC || !SC.on) return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      let txt = null;
+      try {
+        if (det) { const r = await det.detect(video); if (r && r[0]) txt = r[0].rawValue; }
+        else { const w = Math.min(800, video.videoWidth), h = Math.round(video.videoHeight * w / video.videoWidth); cv.width = w; cv.height = h; cx.drawImage(video, 0, 0, w, h); const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' }); if (r) txt = r.data; }
+      } catch (e) { }
+      if (txt) { scanHit(txt); return; }
+    }
+    setTimeout(tick, 150);
+  };
+  tick();
+}
+function scanClose() { if (SC && SC.stream) SC.stream.getTracks().forEach(t => t.stop()); SC = null; const e = document.getElementById('scan'); if (e) e.remove(); }
+function scanHit(txt) {
+  let code = String(txt).trim(); try { const u = new URL(code); code = u.searchParams.get('q') || code; } catch (e) { }
+  const it = ITEMS.find(i => String(i.code2 || '').toLowerCase() === code.toLowerCase() || '#' + i.id === code) || ITEMS.find(i => i.old_code && i.old_code.toLowerCase() === code.toLowerCase());
+  if (!it) { const m = document.querySelector('#scan .msg'); if (m) m.textContent = '이 QR의 품목을 찾지 못했습니다: ' + code + ' — 다른 라벨을 비춰 주세요'; setTimeout(() => { if (SC && SC.on) { SC.on = false; scanClose(); scanOpen(); } }, 1800); return; }
+  if (navigator.vibrate) try { navigator.vibrate(80); } catch (e) { }
+  scanClose(); pushRecent(it.id); qq = ''; render(); if (canWrite()) qOpen(it.id, '출고'); else go(it.id);
 }
 function qOpen(id, kind) { const it = ITEMS.find(i => i.id === id); if (!it) return; QS = { id, kind, qty: 1, memo: '' }; qRender(); setTimeout(() => { const x = document.getElementById('qs-q'); if (x) x.select(); }, 50); }
 function qClose() { QS = null; const e = document.getElementById('qsheet'); if (e) e.remove(); }
