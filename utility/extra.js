@@ -93,7 +93,7 @@
     const lastCompleteYm = () => { let ym = thisYm; for (let i = 0; i < 3 && !UT.monthComplete(DAILY, ym); i++) ym = UT.prevYm(ym); return UT.monthComplete(DAILY, ym) ? ym : UT.prevYm(thisYm); };
     // 한 달 데이터 (실적 + 날씨)
     // 원육 투입량을 아직 안 넣은 지난달·이번 달: 생산 대시보드 일별 원육 합으로 잠정 (가마감 보고용)
-    function prodEst(ym) { if (!PRODD || ym < UT.prevYm(thisYm)) return null; let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0) { t += p.rm; n++; } } return n ? t : null; }
+    function prodEst(ym) { if (!PRODD || ym < UT.prevYm(thisYm)) return null; let t = 0, n = 0; const yst = UT.addDays(todayStr, -1); for (let d = 1; d <= UT.daysIn(ym); d++) { if (UT.dateStr(ym, d) > yst) break; const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0) { t += p.rm; n++; } } return n ? t : null; }
     function monthRow(ym) {
       const s = S(ym), w = UT.monthWeather(ym, TEMPS || {});
       const r = { ym, days: w.days, op: UT.opDays(DAILY, ym, MONTHLY), prod: s.production ?? prodEst(ym), hdd: w.hdd, cdd: w.cdd, s };

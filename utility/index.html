@@ -1330,7 +1330,7 @@
     const lastCompleteYm = () => { let ym = thisYm; for (let i = 0; i < 3 && !UT.monthComplete(DAILY, ym); i++) ym = UT.prevYm(ym); return UT.monthComplete(DAILY, ym) ? ym : UT.prevYm(thisYm); };
     // 한 달 데이터 (실적 + 날씨)
     // 원육 투입량을 아직 안 넣은 지난달·이번 달: 생산 대시보드 일별 원육 합으로 잠정 (가마감 보고용)
-    function prodEst(ym) { if (!PRODD || ym < UT.prevYm(thisYm)) return null; let t = 0, n = 0; for (let d = 1; d <= UT.daysIn(ym); d++) { const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0) { t += p.rm; n++; } } return n ? t : null; }
+    function prodEst(ym) { if (!PRODD || ym < UT.prevYm(thisYm)) return null; let t = 0, n = 0; const yst = UT.addDays(todayStr, -1); for (let d = 1; d <= UT.daysIn(ym); d++) { if (UT.dateStr(ym, d) > yst) break; const p = PRODD[UT.dateStr(ym, d)]; if (p && p.rm > 0) { t += p.rm; n++; } } return n ? t : null; }
     function monthRow(ym) {
       const s = S(ym), w = UT.monthWeather(ym, TEMPS || {});
       const r = { ym, days: w.days, op: UT.opDays(DAILY, ym, MONTHLY), prod: s.production ?? prodEst(ym), hdd: w.hdd, cdd: w.cdd, s };
@@ -5135,10 +5135,10 @@
       // 진행 중인 달: 전기는 고지서 전이면 파워플래너 일일값을 어제까지만 더한 값이라 (한 달 일부) 그래프에서 뺌 · 용수 「10월」은 고지서 기간(9/12~10/11)이 이미 끝난 값이라 그대로
       const partial = (s, ym) => (ym >= thisYm && s[U.k].status !== '확정') || (U.k === 'water' && s.water.status !== '확정' && s.water.usage !== null); // 진행 중·가마감 달: 지금까지 값으로 보여 주되 빈 점(○)·점선으로 구분
       const PI = new Set(ms.map((ym, i) => partial(cs[i], ym) && cs[i][U.k].usage !== null ? i : -1).filter(i => i >= 0)), runTxt = i => ms[i] === thisYm && U.k !== 'water' ? ` (진행 중 · ${Number(yst.slice(5, 7))}/${Number(yst.slice(8))}까지)` : ' (가마감)';
-      const pick0 = (s, ym) => metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+      const pick0 = (s, ym) => metricSel === 'usage' ? s[U.k].usage : metricSel === 'daily' ? daily(s, ym) : metricSel === 'unit' ? ratio(s[U.k].usage, prodOf(s, ym)) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
       if (metricSet.length > 1) { // 여러 항목: 항목마다 자기 축 (올해 실선 · 전년 점선)
         const MC = { usage: U.color, daily: '#6a3d9a', unit: '#e0482b', cost: '#333' }, MU = { usage: U.unit, daily: `${U.unit}/일`, unit: `${U.unit}/kg`, cost: '천원' }, MN = Object.fromEntries(metrics);
-        const val = (k, s, ym) => k === 'usage' ? s[U.k].usage : k === 'daily' ? daily(s, ym) : k === 'unit' ? ratio(s[U.k].usage, s.production) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
+        const val = (k, s, ym) => k === 'usage' ? s[U.k].usage : k === 'daily' ? daily(s, ym) : k === 'unit' ? ratio(s[U.k].usage, prodOf(s, ym)) : (s[U.k].cost === null ? null : s[U.k].cost / 1000);
         const dsm = [], scales = { x: { grid: { display: false }, ticks: { color: '#666' } } };
         metricSet.forEach((k, i) => { const ax = 'y' + i;
           const bar = i === 0; // 먼저 고른 항목 = 막대, 나중에 고른 항목 = 꺾은선
@@ -5166,7 +5166,7 @@
       if (hasPlan) ds.push({ label: '계획', data: plan, borderColor: '#333', backgroundColor: '#333', borderWidth: 1.5, borderDash: [2, 3], pointRadius: 0, stepped: 'middle' });
       document.getElementById('util-legend').innerHTML =
         `<span><i class="ln" style="border-color:${U.color}"></i>${y}년</span><span><i class="ln dash" style="border-color:var(--c-prev)"></i>${y - 1}년</span>` +
-        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 어제까지 날수로 나눔' : ''}${PI.size ? ` · <b>빈 점(○)·점선 = 진행 중(어제까지)·가마감 값</b>${metricSel === 'usage' || metricSel === 'cost' ? ' — 사용량·비용은 아직 한 달치가 아니라 낮게 보임 (일평균으로 보면 비교 쉬움)' : ''}` : ''}${U.k === 'water' ? ` · 용수 ○월 = 고지서 검침 기간(전월 12일~당월 11일) · 고지서를 넣어 확정한 달만 표시${(() => { const w = ms.filter((ym, k) => cs[k].water.status === '가마감').map(ym => Number(ym.slice(5)) + '월'); return w.length ? ` (가마감이라 뺀 달: ${w.join(', ')})` : ''; })()}` : ''}</span>`;
+        (hasPlan ? '<span><i class="ln dash" style="border-color:#333"></i>계획</span>' : '') + `<span class="hint">단위: ${unitTxt}${metricSel === 'daily' ? (U.k === 'water' ? ' · 월 사용량 ÷ 고지서 검침 기간 날수(전월 12일~당월 11일)' : ' · 월 사용량 ÷ 그 달 날수') + ' · 진행 중인 달은 어제까지 날수로 나눔' : ''}${PI.size ? ` · <b>빈 점(○)·점선 = 진행 중(어제까지)·가마감 값</b>${metricSel === 'unit' ? ' (원육은 생산 대시보드 일별 합 잠정)' : ''}${metricSel === 'usage' || metricSel === 'cost' ? ' — 사용량·비용은 아직 한 달치가 아니라 낮게 보임 (일평균으로 보면 비교 쉬움)' : ''}` : ''}${U.k === 'water' ? ` · 용수 ○월 = 고지서 검침 기간(전월 12일~당월 11일) · 고지서를 넣어 확정한 달만 표시${(() => { const w = ms.filter((ym, k) => cs[k].water.status === '가마감').map(ym => Number(ym.slice(5)) + '월'); return w.length ? ` (가마감이라 뺀 달: ${w.join(', ')})` : ''; })()}` : ''}</span>`;
       mkChart('chart-util', { type: 'line', data: { labels: monthLabels, datasets: ds },
         options: (() => { const o = baseOpts(unitTxt); o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${metricSel === 'unit' ? fU(c.raw, U.k) : metricSel === 'daily' ? c.raw.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : f0(c.raw)} ${unitTxt}${c.dataset._cur && PI.has(c.dataIndex) ? runTxt(c.dataIndex) : ''}`; return clipAxis(o, csv, psv, 'util-note'); })() });
       }
