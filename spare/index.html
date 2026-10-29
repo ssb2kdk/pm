@@ -105,7 +105,7 @@ function toast(m) { const t = document.getElementById('toast'); t.textContent = 
 async function fetchAll(qf) { const out = []; for (let f = 0; ; f += 1000) { const { data, error } = await qf().range(f, f + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; } return out; }
 async function loadAll() {
   loadErr = '';
-  try { ITEMS = await fetchAll(() => sb.from('spare_items').select('*').order('code2').order('id')); MOVES = await fetchAll(() => sb.from('spare_moves').select('*').order('d').order('id')); }
+  try { ITEMS = await fetchAll(() => sb.from('spare_items').select('*').order('id')); ITEMS.sort(byCode); MOVES = await fetchAll(() => sb.from('spare_moves').select('*').order('d').order('id')); }
   catch (e) { ITEMS = []; MOVES = []; loadErr = errMsg(e); }
   await signUrls(ITEMS.map(i => (i.photos || [])[0]).filter(Boolean));
   try { const { data } = await sb.from('mat_req').select('id').in('status', ['요청', '확인']); const n = (data || []).length, b = document.getElementById('n-mat'); b.textContent = n; b.hidden = !n; } catch (e) { }
@@ -125,23 +125,30 @@ function setView(v) { if (draft && draft._dirty && !confirm('저장하지 않은
 function render() { ['quick', 'list'].forEach(v => { const b = document.getElementById('tb-' + v); if (b) b.classList.toggle('on', view === v); }); if (loadErr) return renderErr(); if (sel !== null) return renderItem(); view === 'quick' ? renderQuick() : renderList(); }
 
 // ---------------- 자재코드 자동 부여 ----------------
-// 규칙: 1차 = 등록일 (YYYY-MM-DD) · 2차 = S + 세 자리 일련번호 (지금까지 쓴 가장 큰 번호 + 1, 지운 번호는 다시 안 씀)
-function nextCode2(extra) { let mx = 0; ITEMS.concat(extra || []).forEach(i => { const m = /^S(\d+)$/i.exec(String(i.code2 || '').trim()); if (m) mx = Math.max(mx, +m[1]); }); return 'S' + String(mx + 1).padStart(3, '0'); }
+// 규칙: 자재코드 = 분류 두 글자 + '-' + 번호 (예: BR-1, BR-2 … BR-1000) · 번호는 그 분류에서 지금까지 쓴 가장 큰 번호 + 1 (지운 번호는 다시 안 씀)
+// 분류는 code1 칸에, 자재코드는 code2 칸에 저장 · 정렬은 분류 순서 → 번호 크기 순 (앞에 0을 안 붙여도 1,2,…,10 순서로 나옴)
+const CATS = [['BR', '베어링'], ['MT', '모터·감속기'], ['BT', '벨트·체인·스프로킷'], ['SL', '씰·패킹·오링'], ['PN', '공압'], ['VL', '밸브·배관'], ['EL', '전기·제어'], ['PU', '펌프 부품'], ['FT', '필터'], ['HT', '히터·온도'], ['PK', '포장기 전용 부품'], ['ET', '기타']];
+const catName = c => (CATS.find(x => x[0] === c) || [, ''])[1], catOf = v => { const t = String(v || '').trim(); if (!t) return 'ET'; const f = CATS.find(x => x[0] === t.toUpperCase() || x[1] === t || x[1].split('·').includes(t)); return f ? f[0] : 'ET'; };
+function nextCode2(cat) { cat = cat || 'ET'; let mx = 0; const re = new RegExp('^' + cat + '-(\\d+)$', 'i'); ITEMS.forEach(i => { const m = re.exec(String(i.code2 || '').trim()); if (m) mx = Math.max(mx, +m[1]); }); return cat + '-' + (mx + 1); }
+const codeKey = i => { const m = /^([A-Z]+)-(\d+)$/i.exec(String(i.code2 || '')); const ci = CATS.findIndex(x => x[0] === (m ? m[1].toUpperCase() : i.code1)); return [ci < 0 ? 99 : ci, m ? +m[2] : 1e9, String(i.code2 || '')]; };
+const byCode = (a, b) => { const x = codeKey(a), y = codeKey(b); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2], 'ko', { numeric: true }); };
+const hay = i => [i.name, i.spec, i.code2, i.old_code, catName(i.code1), i.equipment, i.place, i.rack, i.note].join(' ').toLowerCase();
+let fCat = '';
 
 // ---------------- 빠른 입출고 (현장용) ----------------
 function recentIds() { try { return JSON.parse(localStorage.getItem('spare_recent') || '[]'); } catch (e) { return []; } }
 function pushRecent(id) { try { const r = recentIds().filter(x => x !== id); r.unshift(id); localStorage.setItem('spare_recent', JSON.stringify(r.slice(0, 20))); } catch (e) { } }
 function renderQuick() {
-  document.getElementById('body').innerHTML = `<div class="card" style="position:sticky;top:58px;z-index:5"><input type="search" class="qsrch" id="qsrch" placeholder="🔍 품목명 · 규격 · 자재코드(S052) · 랙" value="${esc(qq)}" oninput="qq=this.value;renderQuickBody()">
+  document.getElementById('body').innerHTML = `<div class="card" style="position:sticky;top:58px;z-index:5"><input type="search" class="qsrch" id="qsrch" placeholder="🔍 품목명 · 규격 · 자재코드(BR-3) · 랙" value="${esc(qq)}" oninput="qq=this.value;renderQuickBody()">
     <div class="hint" style="margin-top:6px">품목 옆 <b style="color:var(--amber)">출고</b>·<b style="color:var(--blue)">입고</b>를 누르고 수량만 확인하면 끝 · 랙에 붙인 QR을 폰 카메라로 찍으면 그 품목이 바로 열립니다</div></div><div id="qbody" style="display:flex;flex-direction:column;gap:8px"></div>`;
   renderQuickBody();
 }
 function renderQuickBody() {
   const el = document.getElementById('qbody'); if (!el) return;
   const k = qq.trim().toLowerCase(), R = recentIds();
-  let L = ITEMS.filter(i => i.active !== false && (!k || [i.name, i.spec, i.code1, i.code2, i.equipment, i.place, i.rack].join(' ').toLowerCase().includes(k)));
+  let L = ITEMS.filter(i => i.active !== false && (!k || hay(i).includes(k)));
   const ri = id => { const x = R.indexOf(id); return x < 0 ? 999 : x; };
-  L.sort((a, b) => k ? 0 : ri(a.id) - ri(b.id) || String(a.code2).localeCompare(String(b.code2)));
+  L.sort((a, b) => k ? 0 : ri(a.id) - ri(b.id) || byCode(a, b));
   const more = L.length > 50; L = L.slice(0, 50);
   el.innerHTML = (!k && R.length ? '<div class="hint">최근 쓴 품목이 위에 나옵니다</div>' : '') + (L.map(i => { const s = stockOf(i.id), n = needOf(i), low = s <= 0 || (n !== null && n > 0);
     return `<div class="qi"><div class="qn" onclick="${canWrite() ? `qOpen(${i.id},'출고')` : `go(${i.id})`}"><b>${esc(i.name)}</b><div class="hint">${esc(i.code2 || '')}${i.spec ? ' · ' + esc(i.spec) : ''}</div><div class="hint">${esc(i.place || '')}${i.rack ? ' · ' + esc(i.rack) : ''}</div></div>
@@ -200,14 +207,15 @@ document.getElementById('g').innerHTML=IT.map(i=>'<div class="lb" style="width:'
 draw();<\/script></body></html>`);
   w.document.close();
 }
-function curList() { const k = q.trim().toLowerCase(); return ITEMS.filter(i => i.active !== false && (!k || [i.name, i.spec, i.code1, i.code2, i.equipment, i.place, i.rack, i.note].join(' ').toLowerCase().includes(k)) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0)); }
+function curList() { const k = q.trim().toLowerCase(); return ITEMS.filter(i => i.active !== false && (!k || hay(i).includes(k)) && (!fCat || i.code1 === fCat) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0)); }
 function renderErr() { document.getElementById('body').innerHTML = `<div class="card" style="border-color:var(--red)"><b>스페어 표를 불러오지 못했습니다.</b><div class="hint">${esc(loadErr)}<br>Supabase에 <b>39번 SQL (39_spare_parts.sql)</b>을 실행해 주세요.</div></div>`; }
 function renderList() {
   const places = [...new Set(ITEMS.map(i => i.place).filter(Boolean))].sort();
-  const k = q.trim().toLowerCase(), L = ITEMS.filter(i => i.active !== false && (!k || [i.name, i.spec, i.code1, i.code2, i.equipment, i.place, i.rack, i.note].join(' ').toLowerCase().includes(k)) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0));
+  const k = q.trim().toLowerCase(), L = ITEMS.filter(i => i.active !== false && (!k || hay(i).includes(k)) && (!fCat || i.code1 === fCat) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0));
   const tot = ITEMS.filter(i => i.active !== false).reduce((a, i) => a + Math.max(0, stockOf(i.id)) * (num(i.price) || 0), 0), low = ITEMS.filter(i => i.active !== false && (stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0)).length;
   let h = `<div class="sum"><div><span class="hint">품목</span><b>${ITEMS.filter(i => i.active !== false).length}</b></div><div><span class="hint">재고 금액 합</span><b>${nf(Math.round(tot))} 원</b></div><div class="${low ? 'warn' : ''}"><span class="hint">부족·재고 없음</span><b>${low}</b></div></div>
     <div class="card"><div class="bar"><input type="search" placeholder="품목명·규격·자재코드·설비·랙 검색" value="${esc(q)}" oninput="q=this.value;renderListBody()">
+      <select onchange="fCat=this.value;renderListBody()"><option value="">분류 전체</option>${CATS.map(c => `<option value="${c[0]}" ${c[0] === fCat ? 'selected' : ''}>${c[0]} ${c[1]}</option>`).join('')}</select>
       <select onchange="fPlace=this.value;renderListBody()"><option value="">보관 장소 전체</option>${places.map(p => `<option ${p === fPlace ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
       <button class="chip ${fLow ? 'on' : ''}" onclick="fLow=!fLow;render()">부족만</button>
       ${canWrite() ? `<button class="btn" onclick="newItem()">＋ 품목 등록</button>` : ''}<button class="btn sec" onclick="exportXlsx()">📥 엑셀</button><button class="btn sec" onclick="printQR(curList())" title="지금 목록(검색·필터 결과)의 QR 라벨을 뽑습니다 — 크기 선택 가능">🏷 QR 라벨</button>${isAdmin() ? `<button class="btn sec" onclick="showImp=!showImp;render()">📋 엑셀에서 붙여넣기</button>` : ''}</div>
@@ -217,17 +225,21 @@ function renderList() {
 }
 function renderListBody(L0) {
   const el = document.getElementById('list-body'); if (!el) return;
-  const k = q.trim().toLowerCase(), L = L0 || ITEMS.filter(i => i.active !== false && (!k || [i.name, i.spec, i.code1, i.code2, i.equipment, i.place, i.rack, i.note].join(' ').toLowerCase().includes(k)) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0));
+  const k = q.trim().toLowerCase(), L = L0 || ITEMS.filter(i => i.active !== false && (!k || hay(i).includes(k)) && (!fCat || i.code1 === fCat) && (!fPlace || i.place === fPlace) && (!fLow || stockOf(i.id) <= 0 || (needOf(i) ?? 0) > 0));
   el.innerHTML = !L.length ? `<div class="empty">${ITEMS.length ? '조건에 맞는 품목이 없습니다.' : '아직 등록한 품목이 없습니다 — 「＋ 품목 등록」 또는 「엑셀에서 붙여넣기」로 시작하세요.'}</div>` :
-    `<table class="t"><tr><th></th><th>자재코드</th><th class="l">품목명 · 규격</th><th class="l">사용 설비</th><th class="l">보관 장소 · 랙</th><th>재고</th><th>안전 재고</th><th>상태</th><th>단가</th><th>재고 금액</th></tr>` +
-    L.map(i => { const s = stockOf(i.id), ph = (i.photos || [])[0]; return `<tr class="it" onclick="go(${i.id})"><td>${ph ? `<img class="thumb" src="${esc(URLS[ph] || '')}">` : '<div class="thumb"></div>'}</td><td>${esc(i.code2 || '')}<div class="hint">${esc(i.code1 || '')}</div></td>
+    `<table class="t"><tr><th></th><th>자재코드</th><th class="l">품목명 · 규격</th><th class="l">사용 설비</th><th class="l">보관 장소 · 랙</th><th>재고</th><th>안전 재고</th><th>발주 필요</th><th>상태</th><th>단가</th><th>재고 금액</th></tr>` +
+    L.map(i => { const s = stockOf(i.id), ph = (i.photos || [])[0]; return `<tr class="it" onclick="go(${i.id})"><td>${ph ? `<img class="thumb" src="${esc(URLS[ph] || '')}">` : '<div class="thumb"></div>'}</td><td><b>${esc(i.code2 || '')}</b><div class="hint">${esc(catName(i.code1))}</div>${i.old_code ? `<div class="hint">(${esc(i.old_code)})</div>` : ''}</td>
       <td class="l"><b>${esc(i.name)}</b><div class="hint">${esc(i.spec || '')}</div></td><td class="l">${esc(i.equipment || '')}</td><td class="l">${esc(i.place || '')}${i.rack ? ` · ${esc(i.rack)}` : ''}</td>
-      <td class="r"><b>${nf(s)}</b> <span class="hint">${esc(i.unit || '')}</span></td><td class="r">${nf(num(i.safety))}</td><td>${stTag(i)}</td><td class="r">${nf(num(i.price))}</td><td class="r">${nf(Math.round(Math.max(0, s) * (num(i.price) || 0)))}</td></tr>`; }).join('') + '</table>';
+      <td class="r"><b>${nf(s)}</b> <span class="hint">${esc(i.unit || '')}</span></td><td class="r">${nf(num(i.safety))}</td><td class="r">${(() => { const n = needOf(i); return n !== null && n > 0 ? `<b style="color:var(--red)">${nf(n)}</b>` : '-'; })()}</td><td>${stTag(i)}</td><td class="r">${nf(num(i.price))}</td><td class="r">${nf(Math.round(Math.max(0, s) * (num(i.price) || 0)))}</td></tr>`; }).join('') + '</table>';
 }
 
 // ---------------- 품목 상세 ----------------
-const FIELDS = [['code1', '자재코드 1차'], ['name', '품목명'], ['code2', '자재코드 2차'], ['spec', '규격'], ['place', '보관 장소'], ['rack', '랙 번호'], ['equipment', '사용 설비'], ['unit', '단위'], ['price', '단가 (원)'], ['safety', '안전 재고']];
-function newItem() { sel = 'new'; draft = { name: '', code1: todayStr, code2: nextCode2(), spec: '', place: '', rack: '', equipment: '', unit: 'EA', price: '', safety: '', note: '', photos: [], files: [], _new: true }; render(); }
+const FIELDS = [['name', '품목명'], ['spec', '규격'], ['old_code', '기존 코드 (회사 프로그램)'], ['place', '보관 장소'], ['rack', '랙 번호'], ['equipment', '사용 설비'], ['unit', '단위'], ['price', '단가 (원)'], ['safety', '안전 재고']];
+function setCat(c) { const D = draft; const was = D.code1; D.code1 = c; D._dirty = true;
+  if (c && (D._new || !D.code2)) D.code2 = nextCode2(c);
+  else if (c && c !== was && D.code2 && !new RegExp('^' + c + '-', 'i').test(D.code2) && confirm(`자재코드도 ${nextCode2(c)}로 바꿀까요?\n(이미 QR 라벨을 붙였다면 라벨을 다시 뽑아야 합니다)`)) D.code2 = nextCode2(c);
+  const e = document.getElementById('f-code2'); if (e) e.value = D.code2 || ''; }
+function newItem() { sel = 'new'; draft = { name: '', code1: '', code2: '', old_code: '', spec: '', place: '', rack: '', equipment: '', unit: 'EA', price: '', safety: '', note: '', photos: [], files: [], _new: true }; render(); }
 function renderItem() {
   const it = sel === 'new' ? null : ITEMS.find(i => i.id === sel); if (sel !== 'new' && !it) { sel = null; return render(); }
   if (!draft) draft = Object.assign({ files: [] }, JSON.parse(JSON.stringify(it)), { price: it.price ?? '', safety: it.safety ?? '' });
@@ -236,7 +248,8 @@ function renderItem() {
   let h = `<div class="bar"><button class="btn sec sm" onclick="go(null)">◀ 목록</button><span style="flex:1"></span>${ro ? '' : `<button class="btn" onclick="saveItem()">저장</button>`}${it ? `<button class="btn sec sm" onclick="printQR([ITEMS.find(i=>i.id===sel)])">🏷 QR 라벨</button>` : ''}${it && isAdmin() ? `<button class="btn red sm" onclick="delItem()">품목 삭제</button>` : ''}</div>
     <div class="card"><div style="font-size:20px;font-weight:700">${esc(D.name || '새 품목')}</div><div class="hint">${D.code2 ? esc(D.code2) + ' · ' : ''}${esc(D.spec || '')}</div></div>
     <div class="card"><div class="sec-t">◆ 품목 기본 정보</div><datalist id="dl-place">${places.map(p => `<option value="${esc(p)}">`).join('')}</datalist><datalist id="dl-unit">${UNITS.map(u => `<option value="${u}">`).join('')}</datalist>
-      ${D._new ? `<div class="hint" style="margin:-4px 0 8px">자재코드는 자동으로 들어갑니다 — <b>1차 = 등록일</b>, <b>2차 = S + 일련번호</b> (지금 마지막 번호 다음). 회사 코드가 따로 있으면 고쳐 써도 됩니다.</div>` : ''}
+      <div class="grid"><div class="f"><label>분류</label><select ${ro ? 'disabled' : ''} onchange="setCat(this.value)"><option value="">— 분류를 고르세요 —</option>${CATS.map(c => `<option value="${c[0]}" ${c[0] === D.code1 ? 'selected' : ''}>${c[0]} · ${c[1]}</option>`).join('')}</select></div>
+        <div class="f"><label>자재코드 <span class="hint" style="font-weight:400">(분류를 고르면 자동)</span></label><input id="f-code2" ${ro ? 'disabled' : ''} value="${esc(D.code2 || '')}" placeholder="분류를 먼저 고르세요" oninput="draft.code2=this.value;draft._dirty=true"></div></div>
       <div class="grid">${FIELDS.map(([k, l]) => `<div class="f"><label>${l}</label><input ${ro ? 'disabled' : ''} ${k === 'place' ? 'list="dl-place"' : k === 'unit' ? 'list="dl-unit"' : ''} ${k === 'price' || k === 'safety' ? 'inputmode="decimal"' : ''} value="${esc(D[k] ?? '')}" oninput="draft.${k}=this.value;draft._dirty=true"></div>`).join('')}</div>
       <div class="f"><label>비고</label><textarea ${ro ? 'disabled' : ''} rows="2" oninput="draft.note=this.value;draft._dirty=true">${esc(D.note || '')}</textarea></div>
       <div class="f"><label>사진</label><div class="phs">${(D.photos || []).map((p, i) => `<div class="pw"><img src="${esc(URLS[p] || '')}" onclick="lbOpen(${i})">${ro ? '' : `<button class="x" onclick="rmPhoto('old',${i})">✕</button>`}</div>`).join('')}
@@ -246,7 +259,7 @@ function renderItem() {
     const mv = MOVES.filter(m => m.item_id === it.id), ins = mv.filter(m => m.kind === '입고'), outs = mv.filter(m => m.kind === '출고'), sumQ = L => L.reduce((a, m) => a + Number(m.qty), 0);
     const tbl = (L, t) => `<div><b>${t}</b><table class="t" style="margin-top:4px"><tr><th>${t} 일자</th><th>${t} 수량</th><th class="l">메모</th><th>적은 사람</th><th></th></tr>${L.slice().reverse().map(m => `<tr><td>${m.d}</td><td class="r">${nf(m.qty)}</td><td class="l">${esc(m.memo || '')}</td><td>${esc(m.by_name || '')}</td><td>${isAdmin() || (me && m.created_by === me.id) ? `<button class="btn red sm" onclick="delMove(${m.id})">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">기록 없음</td></tr>'}<tr><td></td><td class="r"><b>합계 : ${nf(sumQ(L))}</b></td><td colspan="3"></td></tr></table></div>`;
     h += `<div class="card"><div class="sec-t">◆ 재고</div><div class="stock"><div><span class="hint">재고 수량</span><b>${nf(s)} ${esc(it.unit || '')}</b></div><div><span class="hint">재고 금액</span><b>${nf(Math.round(Math.max(0, s) * (num(it.price) || 0)))} 원</b></div>
-        <div class="${need !== null && need > 0 ? 'need' : ''}"><span class="hint">발주 필요</span><b>${need === null ? '<span class="hint" style="font-size:13px">안전 재고 없음</span>' : need > 0 ? `${nf(need)} ${esc(it.unit || '')} 이상` : '없음'}</b>${need !== null ? `<span class="hint">안전 재고 ${nf(num(it.safety))}</span>` : ''}</div></div></div>
+        <div class="${need !== null && need > 0 ? 'need' : ''}"><span class="hint">발주 필요</span><b>${need === null ? '<span class="hint" style="font-size:13px">안전 재고 없음</span>' : need > 0 ? `${nf(need)} ${esc(it.unit || '')}` : '없음'}</b>${need !== null ? `<span class="hint">안전 재고 ${nf(num(it.safety))} − 재고 ${nf(s)}</span>` : ''}</div></div></div>
       <div class="card"><div class="sec-t">◆ 입출고 기록</div>
         ${canWrite() ? `<div class="mvf"><span class="seg"><button class="in ${mvKind === '입고' ? 'on' : ''}" onclick="mvKind='입고';render()">입고</button><button class="out ${mvKind === '출고' ? 'on' : ''}" onclick="mvKind='출고';render()">출고</button></span>
           <input type="date" id="mv-d" value="${todayStr}"><input id="mv-q" inputmode="decimal" placeholder="수량" style="width:90px"><input id="mv-m" placeholder="메모 (설비·교체 사유 등)" style="flex:1;min-width:160px"><button class="btn ${mvKind === '입고' ? 'blue' : ''}" style="${mvKind === '출고' ? 'background:var(--amber)' : ''}" onclick="addMove(${it.id})">${mvKind} 기록</button></div>` : ''}
@@ -264,16 +277,17 @@ function addPhotos(files) { [...files].filter(f => /^image\//.test(f.type) || /\
 function rmPhoto(k, i) { if (k === 'old') draft.photos.splice(i, 1); else draft.files.splice(i, 1); draft._dirty = true; render(); }
 async function saveItem() {
   const D = draft; if (!String(D.name || '').trim()) { alert('품목명을 넣어 주세요.'); return; }
-  const c2 = String(D.code2 || '').trim(); if (c2 && ITEMS.some(i => i.id !== D.id && String(i.code2 || '').trim().toLowerCase() === c2.toLowerCase())) { if (D._new && confirm(`자재코드 2차 ${c2}는 이미 쓰고 있습니다. 다음 번호 ${nextCode2()}로 바꿀까요?`)) { D.code2 = nextCode2(); } else { alert(`자재코드 2차 ${c2}는 이미 다른 품목이 쓰고 있습니다.`); return; } }
+  if (!D.code1) { alert('분류를 골라 주세요. (애매하면 「기타」)'); return; } if (!String(D.code2 || '').trim()) D.code2 = nextCode2(D.code1);
+  const c2 = String(D.code2 || '').trim(); if (ITEMS.some(i => i.id !== D.id && String(i.code2 || '').trim().toLowerCase() === c2.toLowerCase())) { if (D._new && confirm(`자재코드 ${c2}는 이미 쓰고 있습니다. 다음 번호 ${nextCode2(D.code1)}로 바꿀까요?`)) { D.code2 = nextCode2(D.code1); } else { alert(`자재코드 ${c2}는 이미 다른 품목이 쓰고 있습니다.`); return; } }
   const photos = (D.photos || []).slice();
   try {
     for (const x of D.files || []) { const d = new Date(), path = `spare/${d.getFullYear()}/${p2(d.getMonth() + 1)}/${crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).slice(2)}.jpg`;
       const up = await sb.storage.from(BUCKET).upload(path, await compressImage(x.f), { contentType: 'image/jpeg', upsert: false }); if (up.error) throw up.error; photos.push(path); }
   } catch (e) { alert('사진 올리기 실패: ' + errMsg(e)); return; }
-  const row = { name: D.name.trim(), code1: D.code1 || '', code2: String(D.code2 || '').trim(), spec: D.spec || '', place: D.place || '', rack: D.rack || '', equipment: D.equipment || '', unit: D.unit || 'EA', price: num(D.price), safety: num(D.safety), note: D.note || '', photos, updated_at: new Date().toISOString() };
+  const row = { name: D.name.trim(), code1: D.code1, code2: String(D.code2 || '').trim(), old_code: String(D.old_code || '').trim(), spec: D.spec || '', place: D.place || '', rack: D.rack || '', equipment: D.equipment || '', unit: D.unit || 'EA', price: num(D.price), safety: num(D.safety), note: D.note || '', photos, updated_at: new Date().toISOString() };
   const qq = D._new ? sb.from('spare_items').insert(row).select().single() : sb.from('spare_items').update(row).eq('id', D.id).select().single();
   const { data, error } = await qq; if (error) { alert('저장 실패: ' + errMsg(error)); return; }
-  const out = Array.isArray(data) ? data[0] : data; ITEMS = ITEMS.filter(i => i.id !== out.id).concat([out]); await signUrls(out.photos || []);
+  const out = Array.isArray(data) ? data[0] : data; ITEMS = ITEMS.filter(i => i.id !== out.id).concat([out]).sort(byCode); await signUrls(out.photos || []);
   sel = out.id; draft = null; toast('저장했습니다'); render();
 }
 async function delItem() {
@@ -297,10 +311,10 @@ function lbGo(d) { if (!LB) return; LB.i = (LB.i + d + LB.L.length) % LB.L.lengt
 function lbClose() { document.getElementById('lb').hidden = true; LB = null; }
 
 // ---------------- 엑셀 붙여넣기 · 내려받기 ----------------
-const IMP_COLS = ['자재코드 1차', '자재코드 2차', '품목명', '규격', '보관 장소', '랙 번호', '단위', '단가', '안전 재고', '현재 재고', '사용 설비', '비고'];
+const IMP_COLS = ['분류', '기존 코드', '품목명', '규격', '보관 장소', '랙 번호', '단위', '단가', '안전 재고', '현재 재고', '사용 설비', '비고'];
 function impHtml() {
-  return `<div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:10px"><b>회사 프로그램 목록 옮기기</b><div class="hint">엑셀에서 아래 순서로 칸을 맞춰 복사해 붙여넣으세요 (제목 줄은 자동으로 건너뜀 · 뒤쪽 칸은 비워도 됨)<br><b>${IMP_COLS.join(' · ')}</b><br>「현재 재고」를 넣으면 오늘 날짜로 「기초 재고 (옮겨옴)」 입고가 같이 들어갑니다 · 품목명이 같고 자재코드 2차가 같은 품목은 건너뜀 · 자재코드를 비워 두면 규칙대로 자동으로 붙음</div>
-    <textarea class="imp" id="imp-t" placeholder="2026-10-19\tS052\tbottom open pad\t9-rb0024-11-01\t외포장실\ta1\tEA\t3500\t10\t90"></textarea><div class="bar" style="margin-top:6px"><button class="btn" onclick="impRun()">등록</button><span class="hint" id="imp-st"></span></div></div>`;
+  return `<div style="margin-top:10px;border-top:1px dashed #ddd;padding-top:10px"><b>회사 프로그램 목록 옮기기</b><div class="hint">엑셀에서 아래 순서로 칸을 맞춰 복사해 붙여넣으세요 (제목 줄은 자동으로 건너뜀 · 뒤쪽 칸은 비워도 됨)<br><b>${IMP_COLS.join(' · ')}</b><br>「현재 재고」를 넣으면 오늘 날짜로 「기초 재고 (옮겨옴)」 입고가 같이 들어갑니다 · <b>분류</b>는 BR·EL 같은 두 글자나 「베어링」 같은 이름 (비우거나 모르는 분류면 「기타」) → 자재코드는 분류별 번호가 자동으로 붙음 · 같은 기존 코드(없으면 같은 품목명·규격)가 이미 있으면 건너뜀<br>분류: ${CATS.map(c => c[0] + ' ' + c[1]).join(' · ')}</div>
+    <textarea class="imp" id="imp-t" placeholder="PK\tS052\tbottom open pad\t9-rb0024-11-01\t외포장실\ta1\tEA\t3500\t10\t90"></textarea><div class="bar" style="margin-top:6px"><button class="btn" onclick="impRun()">등록</button><span class="hint" id="imp-st"></span></div></div>`;
 }
 async function impRun() {
   const lines = document.getElementById('imp-t').value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : /\s*[|,]\s*/).map(x => x.trim())).filter(c => c.some(Boolean));
@@ -308,20 +322,21 @@ async function impRun() {
   if (!rows.length) { alert('붙여넣은 내용에서 품목을 찾지 못했습니다. 3번째 칸이 품목명이어야 합니다.'); return; }
   const st = document.getElementById('imp-st'); let ok = 0, skip = 0, fail = [];
   for (const c of rows) {
-    if (ITEMS.some(i => i.name === c[2] && (i.code2 || '') === (c[1] || ''))) { skip++; continue; }
-    const row = { code1: c[0] || todayStr, code2: c[1] || nextCode2(), name: c[2], spec: c[3] || '', place: c[4] || '', rack: c[5] || '', unit: c[6] || 'EA', price: num(c[7]), safety: num(c[8]), equipment: c[10] || '', note: c[11] || '', photos: [] };
+    if (ITEMS.some(i => c[1] ? (i.old_code || '') === c[1] : i.name === c[2] && (i.spec || '') === (c[3] || ''))) { skip++; continue; }
+    const cat = catOf(c[0]);
+    const row = { code1: cat, code2: nextCode2(cat), old_code: c[1] || '', name: c[2], spec: c[3] || '', place: c[4] || '', rack: c[5] || '', unit: c[6] || 'EA', price: num(c[7]), safety: num(c[8]), equipment: c[10] || '', note: c[11] || '', photos: [] };
     const { data, error } = await sb.from('spare_items').insert(row).select().single(); if (error) { fail.push(`${c[2]}: ${errMsg(error)}`); continue; }
     const it = Array.isArray(data) ? data[0] : data; ITEMS.push(it); ok++; st.textContent = `등록 중... ${ok}/${rows.length}`;
     const s0 = num(c[9]); if (s0 && s0 > 0) { const r = await sb.from('spare_moves').insert({ item_id: it.id, d: todayStr, kind: '입고', qty: s0, memo: '기초 재고 (옮겨옴)', by_name: myName() }).select().single(); if (!r.error) MOVES.push(Array.isArray(r.data) ? r.data[0] : r.data); }
   }
   toast(`${ok}개 등록${skip ? ` · 이미 있는 ${skip}개 건너뜀` : ''}`); if (fail.length) alert('등록 못 한 품목:\n' + fail.join('\n'));
-  showImp = false; render();
+  showImp = false; ITEMS.sort(byCode); render();
 }
 async function exportXlsx() {
   if (!window.XLSX) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
-  const a1 = [['자재코드 1차', '자재코드 2차', '품목명', '규격', '사용 설비', '보관 장소', '랙 번호', '단위', '단가', '안전 재고', '재고 수량', '재고 금액', '발주 필요', '비고']];
-  ITEMS.filter(i => i.active !== false).forEach(i => { const s = stockOf(i.id), n = needOf(i); a1.push([i.code1, i.code2, i.name, i.spec, i.equipment, i.place, i.rack, i.unit, num(i.price), num(i.safety), s, Math.round(Math.max(0, s) * (num(i.price) || 0)), n !== null && n > 0 ? n : '', i.note]); });
-  const a2 = [['품목명', '자재코드 2차', '일자', '구분', '수량', '메모', '적은 사람']]; MOVES.forEach(m => { const i = ITEMS.find(x => x.id === m.item_id); if (i) a2.push([i.name, i.code2, m.d, m.kind, Number(m.qty), m.memo, m.by_name]); });
+  const a1 = [['분류', '자재코드', '번호', '기존 코드', '품목명', '규격', '사용 설비', '보관 장소', '랙 번호', '단위', '단가', '안전 재고', '재고 수량', '재고 금액', '발주 필요', '비고']];
+  ITEMS.filter(i => i.active !== false).sort(byCode).forEach(i => { const s = stockOf(i.id), n = needOf(i); a1.push([catName(i.code1), i.code2, (/-(\d+)$/.exec(i.code2 || '') || [])[1] ? +(/-(\d+)$/.exec(i.code2))[1] : '', i.old_code || '', i.name, i.spec, i.equipment, i.place, i.rack, i.unit, num(i.price), num(i.safety), s, Math.round(Math.max(0, s) * (num(i.price) || 0)), n !== null && n > 0 ? n : '', i.note]); });
+  const a2 = [['품목명', '자재코드', '일자', '구분', '수량', '메모', '적은 사람']]; MOVES.forEach(m => { const i = ITEMS.find(x => x.id === m.item_id); if (i) a2.push([i.name, i.code2, m.d, m.kind, Number(m.qty), m.memo, m.by_name]); });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a1), '스페어 재고'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a2), '입출고 기록'); XLSX.writeFile(wb, `스페어재고_${todayStr}.xlsx`);
 }
 
@@ -330,7 +345,7 @@ Portal.start({
   title: '자재·스페어 관리',
   onReady: async P => { sb = P.sb; me = P.me; await loadAll();
     const qp = new URLSearchParams(location.search).get('q');
-    if (qp) { const it = ITEMS.find(i => String(i.code2 || '').toLowerCase() === qp.toLowerCase() || '#' + i.id === qp); view = 'quick'; if (it) { qq = it.code2 || it.name; pushRecent(it.id); } history.replaceState(null, '', location.pathname); render(); if (it && canWrite()) qOpen(it.id, '출고'); else if (!it) toast('QR의 품목을 찾지 못했습니다: ' + qp); return; }
+    if (qp) { const it = ITEMS.find(i => String(i.code2 || '').toLowerCase() === qp.toLowerCase() || '#' + i.id === qp) || ITEMS.find(i => i.old_code && i.old_code.toLowerCase() === qp.toLowerCase()); view = 'quick'; if (it) { qq = it.code2 || it.name; pushRecent(it.id); } history.replaceState(null, '', location.pathname); render(); if (it && canWrite()) qOpen(it.id, '출고'); else if (!it) toast('QR의 품목을 찾지 못했습니다: ' + qp); return; }
     render(); }
 });
 </script>

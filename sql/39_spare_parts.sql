@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 39번 파일: 주요 생산설비 스페어(예비품) 재고 관리
 -- Supabase SQL Editor → New query → 전체 붙여넣기 → Run (여러 번 실행해도 데이터는 안 지워짐)
---  - spare_items: 품목 (자재코드·품목명·규격·보관 장소·랙·단위·단가·안전재고·사진·비고)
+--  - spare_items: 품목 (분류·자재코드(BR-1)·기존 코드·품목명·규격·보관 장소·랙·단위·단가·안전재고·사진·비고)
 --  - spare_moves: 입고·출고 기록 → 재고 = 입고 합 − 출고 합
 --  - 시설팀 계정(관리자·일반): 보기·등록·입출고 · 품목 삭제: 관리자 · 입출고 기록 삭제: 관리자 또는 적은 본인
 --  - 보기 전용·협력업체: 못 봄 · 사진은 pm-photos 저장소의 spare/ 폴더
@@ -9,8 +9,9 @@
 -- =====================================================================
 create table if not exists public.spare_items (
   id         bigserial primary key,
-  code1      text not null default '',            -- 자재코드 1차
-  code2      text not null default '',            -- 자재코드 2차
+  code1      text not null default '',            -- 분류 (BR 베어링, EL 전기·제어 …)
+  code2      text not null default '',            -- 자재코드 (분류-번호, 예: BR-1)
+  old_code   text not null default '',            -- 기존 코드 (회사 프로그램)
   name       text not null,                       -- 품목명
   spec       text not null default '',            -- 규격
   equipment  text not null default '',            -- 사용 설비
@@ -36,6 +37,9 @@ create table if not exists public.spare_moves (
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
 );
+-- 예전에 이 파일을 먼저 실행했어도 칸이 생기게
+alter table public.spare_items add column if not exists old_code text not null default '';
+
 create index if not exists spare_moves_item on public.spare_moves (item_id, d);
 
 alter table public.spare_items enable row level security;
