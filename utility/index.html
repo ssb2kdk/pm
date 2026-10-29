@@ -5020,7 +5020,10 @@
     function renderDash() {
       if (!dashYm) dashYm = latestYm();
       document.getElementById('dash-month').textContent = ymLabel(dashYm);
-      const cur = S(dashYm), prev = S(UT.prevYm(dashYm));
+      let cur = S(dashYm); const prev = S(UT.prevYm(dashYm));
+      if (cur.production == null && dashYm >= UT.prevYm(thisYm)) { // 원육 투입량 입력 전 → 생산 대시보드 일별 원육 합(어제까지)으로 잠정
+        if (!PRODD) { if (!renderDash._ld) { renderDash._ld = 1; loadProdDaily().then(() => renderDash()).catch(() => {}); } }
+        else { const pe = prodEst(dashYm); if (pe) cur = Object.assign({}, cur, { production: pe, _prodEst: true }); } }
       const ly = S(UT.ym(Number(dashYm.slice(0, 4)) - 1, Number(dashYm.slice(5))));
       document.getElementById('dash-status').innerHTML = cur.status ? `<span class="st st-${cur.status}">${cur.status}</span>` : '';
       document.getElementById('dash-note').textContent = cur.status === '가마감' ? '고지서가 아직 반영되지 않은 항목은 자체 검침값으로 계산한 예상 금액입니다.' : '';
@@ -5028,7 +5031,7 @@
       const unitCost = s => ratio(s.total, s.production);
       let html = kpiTile('total', '유틸리티 총비용 (VAT 포함)', `${man(cur.total)}`,
         `전월 ${pctTxt(cur.total, prev.total)} · 전년동월 ${pctTxt(cur.total, ly.total)}`, null, 'sumTotal');
-      html += kpiTile('prod', '원육 투입량', `${f0(cur.production)}<small> kg</small>`,
+      html += kpiTile('prod', '원육 투입량', `${f0(cur.production)}<small> kg${cur._prodEst ? ` · 잠정 (생산 대시보드${dashYm === thisYm ? ' 어제까지' : ''})` : ''}</small>`,
         `전월 ${pctTxt(cur.production, prev.production)} · 전년동월 ${pctTxt(cur.production, ly.production)}`, null, 'sumProd');
       html += kpiTile('total', '원육 kg당 비용', `${f0(unitCost(cur))}<small> 원/kg</small>`,
         `전월 ${pctTxt(unitCost(cur), unitCost(prev))} · 전년동월 ${pctTxt(unitCost(cur), unitCost(ly))}`, null, 'sumUnit');
