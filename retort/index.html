@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>레토르트 모니터링</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+  <script src="../config.js"></script>
+  <script src="../common.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --primary: #1a1a1a; --bg: #f5f5f5; --card: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #888;
+      --teal: #1D9E75; --teal-bg: #E1F5EE; --amber: #BA7517; --amber-bg: #FAEEDA; --red: #A32D2D; --red-bg: #FCEBEB; --blue: #185FA5; --blue-bg: #E6F1FB; --radius: 12px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 0 12px; }
+    .head { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 0; position: sticky; top: 0; z-index: 10; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .title { font-size: 17px; font-weight: 700; }
+    .vtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .vtab { font-size: 13px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--muted); cursor: pointer; }
+    .vtab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 12px 0 4px; }
+    .chip { font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); cursor: pointer; color: #444; }
+    .chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .bar input[type=date] { font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+    .hint { font-size: 12px; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 12px; margin: 10px 0 40px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .card h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .card h3 .st { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--teal-bg); color: var(--teal); }
+    .card h3 .st.off { background: #eee; color: var(--muted); }
+    .card h3 .st.run { background: var(--amber-bg); color: var(--amber); }
+    .card .when { font-size: 11px; color: var(--muted); margin-left: auto; font-weight: 400; }
+    .main { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .subs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+    .ch { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+    .ch .nm { font-size: 12px; color: #555; white-space: nowrap; }
+    .ch .a { font-size: 30px; font-weight: 700; margin-top: 2px; } .ch .a small { font-size: 12px; font-weight: 400; color: var(--muted); }
+    .subs .ch .a { font-size: 18px; }
+    .ch.t .a { color: var(--red); } .ch.p .a { color: var(--blue); }
+    .mini { height: 180px; margin-top: 10px; position: relative; }
+    .big { height: 340px; position: relative; margin-top: 8px; }
+    table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.t th, table.t td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: right; white-space: nowrap; }
+    table.t th { background: #fafafa; font-weight: 600; color: #555; }
+    table.t .l { text-align: left; }
+    .loading, .empty { padding: 30px; text-align: center; color: var(--muted); font-size: 14px; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .ch .a { font-size: 24px; } .subs { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div class="head"><div class="wrap head-row">
+      <div class="title">♨️ 레토르트 모니터링</div>
+      <div class="vtabs">
+        <button class="vtab on" data-v="now">실시간</button>
+        <button class="vtab" data-v="trend">기간 그래프</button>
+      </div>
+    </div></div>
+    <div class="wrap" id="body"><div class="loading">불러오는 중...</div></div>
+  </div>
+<script>
+let sb = null, UNITS = [], LATEST = {}, view = 'now', nowHours = 3, timer = null, charts = {}, trFrom = null, trTo = null, trUnit = null;
+const REFRESH_SEC = 10;
+// 기록계 채널 (40번 SQL 의 열 이름)
+const TEMPS = [['tc', '챔버 온도'], ['t1', 'TEMP_1'], ['t2', 'TEMP_2'], ['t3', 'TEMP_3'], ['t4', 'TEMP_4']];
+const FOS = [['fo1', 'Fo_1'], ['fo2', 'Fo_2'], ['fo3', 'Fo_3'], ['fo4', 'Fo_4']];
+const COLORS = { tc: '#e5534b', t1: '#BA7517', t2: '#1D9E75', t3: '#8a5cd6', t4: '#2a78d6', pc: '#185FA5' };
+const RUN_TEMP = 40, RUN_PRESS = 0.05; // 수집 프로그램과 같은 기준: 이 이상이면 운전 중
+const p2 = n => String(n).padStart(2, '0');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => new Date().toLocaleDateString('sv-SE');
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
+const kst = s => new Date(s + 'T00:00:00+09:00');
+const hm = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
+const fx = (v, n) => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toFixed(n);
+const isRun = r => r && ((r.tc ?? 0) >= RUN_TEMP || (r.pc ?? 0) >= RUN_PRESS);
+
+async function loadUnits() { const { data, error } = await sb.from('retort_units').select('*').order('ord'); if (error) throw error; UNITS = data || []; }
+async function loadLatest() { const { data, error } = await sb.rpc('retort_latest'); if (error) throw error; LATEST = {}; (data || []).forEach(r => { LATEST[r.unit_id] = r; }); }
+async function series(unit, from, to, sec) { // 1,000건씩 이어서 가져옴
+  let out = [], f = from;
+  for (let g = 0; g < 100; g++) {
+    const { data, error } = await sb.rpc('retort_series', { p_from: f.toISOString(), p_to: to.toISOString(), p_unit: unit, p_sec: sec }).range(0, 999);
+    if (error) throw error;
+    out = out.concat(data || []);
+    if (!data || data.length < 1000) break; f = new Date(new Date(data[data.length - 1].ts).getTime() + 1);
+  }
+  return out;
+}
+function mk(id, cfg) { if (charts[id]) charts[id].destroy(); const el = document.getElementById(id); if (!el) return; charts[id] = new Chart(el, cfg); }
+// 온도(왼쪽 축, °C) + 챔버 압력(오른쪽 축, kgf/cm²)
+function lineCfg(rows, legend) {
+  const ds = TEMPS.map(([k, n]) => ({ label: n, data: rows.map(r => r[k]), borderColor: COLORS[k], backgroundColor: COLORS[k], borderWidth: k === 'tc' ? 2 : 1.2, pointRadius: 0, tension: 0.2, yAxisID: 'y' }))
+    .concat([{ label: '챔버 압력', data: rows.map(r => r.pc), borderColor: COLORS.pc, backgroundColor: COLORS.pc, borderWidth: 1.5, borderDash: [5, 3], pointRadius: 0, tension: 0.2, yAxisID: 'y2' }]);
+  return { type: 'line', data: { labels: rows.map(r => r.ts), datasets: ds },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: legend, labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { title: it => { const r = rows[it[0].dataIndex]; if (!r) return ''; const d = new Date(r.ts); return `${d.getMonth() + 1}/${d.getDate()} ${hm(d)}:${p2(d.getSeconds())}`; },
+          label: c => ` ${c.dataset.label}: ${c.dataset.yAxisID === 'y2' ? fx(c.raw, 2) + ' kgf/cm²' : fx(c.raw, 1) + ' °C'}` } } },
+      scales: { x: { type: 'category', ticks: { maxTicksLimit: 8, font: { size: 10 }, callback: v => { const r = rows[v]; if (!r) return ''; const x = new Date(r.ts); return (rows.length && new Date(rows[rows.length - 1].ts) - new Date(rows[0].ts) > 864e5 ? `${x.getMonth() + 1}/${x.getDate()} ` : '') + hm(x); } } },
+        y: { beginAtZero: true, suggestedMax: 130, title: { display: true, text: '°C', font: { size: 11 } } },
+        y2: { position: 'right', beginAtZero: true, suggestedMax: 2, grid: { drawOnChartArea: false }, title: { display: true, text: 'kgf/cm²', font: { size: 11 } } } } } };
+}
+const box = (cls, nm, v, unit) => `<div class="ch ${cls}"><div class="nm">${esc(nm)}</div><div class="a">${v} <small>${unit}</small></div></div>`;
+
+// ---------------- 실시간 ----------------
+async function renderNow() {
+  const el = document.getElementById('body');
+  try { await loadLatest(); } catch (e) { el.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}</div>`; return; }
+  const now = Date.now();
+  let h = `<div class="bar"><span class="hint">그래프</span>${[[1, '1시간'], [3, '3시간'], [6, '6시간'], [24, '24시간']].map(([n, t]) => `<button class="chip ${nowHours === n ? 'on' : ''}" onclick="nowHours=${n};renderNow()">${t}</button>`).join('')}
+    <span class="hint" style="margin-left:auto">${REFRESH_SEC}초마다 자동 새로고침 · ${hm(new Date())}</span></div><div class="grid">`;
+  UNITS.forEach(u => {
+    const r = LATEST[u.id], age = r ? (now - new Date(r.ts)) / 1000 : null, live = age !== null && age <= 180, run = live && isRun(r);
+    h += `<div class="card"><h3>${esc(u.name)} <span class="st ${!live ? 'off' : run ? 'run' : ''}">${!r ? '기록 없음' : !live ? '끊김' : run ? '운전 중' : '대기'}</span><span class="when">${r ? (age < 3600 ? (age < 60 ? `${Math.round(age)}초 전` : `${Math.round(age / 60)}분 전`) : new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</span></h3>
+      <div class="main">${box('t', '챔버 온도', r ? fx(r.tc, 1) : '-', '°C')}${box('p', '챔버 압력', r ? fx(r.pc, 2) : '-', 'kgf/cm²')}</div>
+      <div class="subs">${TEMPS.slice(1).map(([k, n]) => box('', n, r ? fx(r[k], 1) : '-', '°C')).join('')}</div>
+      <div class="subs">${FOS.map(([k, n]) => box('', n, r ? fx(r[k], 2) : '-', '')).join('')}</div>
+      <div class="mini"><canvas id="m-${u.id}"></canvas></div></div>`;
+  });
+  el.innerHTML = UNITS.length ? h + '</div>' : '<div class="empty">레토르트가 등록돼 있지 않습니다. (40번 SQL의 retort_units)</div>';
+  const to = new Date(), from = new Date(to.getTime() - nowHours * 36e5), sec = nowHours <= 3 ? 10 : nowHours <= 6 ? 30 : 60;
+  for (const u of UNITS) { try { mk('m-' + u.id, lineCfg(await series(u.id, from, to, sec), false)); } catch (e) { } }
+  clearTimeout(timer); timer = setTimeout(() => { if (view === 'now') renderNow(); }, REFRESH_SEC * 1000);
+}
+
+// ---------------- 기간 그래프 ----------------
+function setRange(a, b) { if (a) trFrom = a; if (b) trTo = b; if (trTo < trFrom) trTo = trFrom; renderTrend(); }
+async function renderTrend() {
+  const el = document.getElementById('body'), d = today(); if (!trUnit) trUnit = UNITS[0] && UNITS[0].id;
+  const pre = [['오늘', d, d], ['어제', addDays(d, -1), addDays(d, -1)], ['최근 7일', addDays(d, -6), d]];
+  el.innerHTML = `<div class="bar">${pre.map(([n, a, b]) => `<button class="chip ${trFrom === a && trTo === b ? 'on' : ''}" onclick="setRange('${a}','${b}')">${n}</button>`).join('')}
+    <input type="date" value="${trFrom}" onchange="setRange(this.value,null)"> ~ <input type="date" value="${trTo}" onchange="setRange(null,this.value)"></div>
+    <div class="bar">${UNITS.map(u => `<button class="chip ${trUnit === u.id ? 'on' : ''}" onclick="trUnit='${u.id}';renderTrend()">${esc(u.name)}</button>`).join('')}</div><div class="loading">불러오는 중...</div>`;
+  const from = kst(trFrom), to = new Date(kst(trTo).getTime() + 864e5), days = (to - from) / 864e5, sec = days <= 1 ? 30 : days <= 7 ? 120 : 600;
+  let rows; try { rows = await series(trUnit, from, to, sec); } catch (e) { el.querySelector('.loading').textContent = '불러오기 실패: ' + (e.message || e); return; }
+  const u = UNITS.find(x => x.id === trUnit) || {};
+  const mx = k => { let best = null; rows.forEach(r => { if (r[k] !== null && r[k] !== undefined && (!best || r[k] > best[k])) best = r; }); return best; };
+  const at = r => r ? new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+  const line = (n, k, digits, unit) => { const r = mx(k); return `<tr><td class="l">${esc(n)}</td><td>${r ? fx(r[k], digits) + ' ' + unit : '-'}</td><td>${at(r)}</td></tr>`; };
+  el.querySelector('.loading').outerHTML = `<div class="card"><h3>${esc(u.name || '')} <span class="when">${trFrom} ~ ${trTo} · ${sec}초 평균</span></h3>
+    ${rows.length ? `<div class="big"><canvas id="c-trend"></canvas></div>
+    <table class="t" style="margin-top:10px"><tr><th class="l">항목</th><th>최고값</th><th>그 시각</th></tr>` +
+      line('챔버 온도', 'tc', 1, '°C') + line('챔버 압력', 'pc', 2, 'kgf/cm²') + TEMPS.slice(1).map(([k, n]) => line(n, k, 1, '°C')).join('') + FOS.map(([k, n]) => line(n, k, 2, '')).join('') +
+      `</table><div class="hint" style="margin-top:6px">· 공식 살균 기록은 기록계(CF카드)에 있습니다. 이 화면은 모니터링용입니다.<br>· 운전 중에는 10초마다, 쉬는 중에는 1분마다 저장됩니다.</div>` : '<div class="empty">이 기간 기록이 없습니다.</div>'}</div>`;
+  if (rows.length) mk('c-trend', lineCfg(rows, true));
+}
+
+function show(v) {
+  view = v; clearTimeout(timer);
+  document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'now') renderNow(); else renderTrend();
+}
+document.querySelectorAll('.vtab').forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
+
+Portal.start({
+  appId: 'retort',
+  title: '레토르트 모니터링',
+  onReady: async P => {
+    sb = P.sb; document.getElementById('app').hidden = false;
+    trFrom = trTo = today();
+    try { await loadUnits(); show('now'); }
+    catch (e) { document.getElementById('body').innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}<br>Supabase에 40번 SQL(40_retort_monitor.sql)을 실행했는지 확인해 주세요.</div>`; }
+  }
+});
+</script>
+</body>
+</html>
