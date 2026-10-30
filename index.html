@@ -146,7 +146,7 @@
 
     // ---------------- 저장공간 사용량 (관리자) ----------------
     const LIM = { db: 500 * 1024 * 1024, st: 1024 * 1024 * 1024 };
-    const TB_NAME = { load_readings: '설비 부하 기록 (1분마다)', meter_daily: '설비검침', hook_readings: '후크메타 측정', hook_photos: '후크메타 사진 기록', pm_logs: '예방정비 이력', pm_items: '예방정비 항목', audit_log: '변경 기록', ut_daily: '유틸리티 일별', ut_monthly: '유틸리티 월별', ww_daily: '폐수 일지', air_daily: '대기 일지', insp_daily: '설비점검일지', insp_items: '설비점검 항목', ai_log: 'AI 기록', env_settings: '환경일지 설정', profiles: '사용자' };
+    const TB_NAME = { load_readings: '설비 부하 기록 (1분마다)', retort_readings: '레토르트 기록 (운전 중 10초)', meter_daily: '설비검침', hook_readings: '후크메타 측정', hook_photos: '후크메타 사진 기록', pm_logs: '예방정비 이력', pm_items: '예방정비 항목', audit_log: '변경 기록', ut_daily: '유틸리티 일별', ut_monthly: '유틸리티 월별', ww_daily: '폐수 일지', air_daily: '대기 일지', insp_daily: '설비점검일지', insp_items: '설비점검 항목', ai_log: 'AI 기록', env_settings: '환경일지 설정', profiles: '사용자' };
     const mb = b => (b / 1048576).toLocaleString('ko-KR', { maximumFractionDigits: b < 10485760 ? 2 : 1 }) + ' MB';
     const ubar = (label, used, lim, sub) => { const pct = used / lim * 100, c = pct >= 90 ? 'd' : pct >= 70 ? 'w' : '';
       return `<div class="ub"><div class="row"><span>${label}</span><span><b>${mb(used)}</b> / ${mb(lim)} · ${pct.toFixed(1)}%</span></div><div class="bar"><i class="${c}" style="width:${Math.max(0.5, Math.min(100, pct))}%"></i></div>${sub ? `<div class="hint" style="margin-top:4px">${sub}</div>` : ''}</div>`; };

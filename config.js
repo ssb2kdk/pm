@@ -20,6 +20,7 @@ window.APP_CONFIG = {
     { id: 'mat',     icon: '📦', name: '자재·스페어 관리',          desc: '주요 설비 스페어 재고(입출고·안전 재고·QR) + 소모품 발주 요청', path: 'spare/',     ready: true, noViewer: true },
     { id: 'log',     icon: '📌', name: '현장 요청사항',             desc: '현장에서 생긴 요청을 올리고 담당자 지정 · 완료 예정일 · 시설팀 모두가 같이 봄', path: 'log/',     ready: true, noViewer: true },
     { id: 'load',    icon: '⚡', name: '설비별 부하 모니터링',      desc: 'Shelly 전류·전력 실시간 모니터링 (P-레토르트, P-냉동1·2, P-내포장)', path: 'load/',    ready: true },
+    { id: 'retort',  icon: '♨️', name: '레토르트 모니터링',         desc: '온도기록계 실시간 값 (챔버 온도·압력, TEMP_1~4, Fo) · 기간 그래프', path: 'retort/',  ready: true },
     { id: 'utility', icon: '📊', name: '유틸리티 분석',             desc: '전기·가스·용수·폐수 현황 · 지표 분석 · 원인 찾기 · 목표·예산 · 월간보고서',   path: 'utility/', ready: true },
     { id: 'bill',    icon: '🧾', name: '유틸리티 마감',             desc: '고지서 입력·확정 · 회계보고 · 지출결의 자료 (시설팀 누구나)',  path: 'utility/?bill', ready: true },
     { id: 'elec',    icon: '⚡', name: '전기 직무고시',             desc: '연간 점검 계획표 · 월차 점검 · 저압 절연저항·접지저항 · 고압 설비 · 변압기 · 후크메타 부하 측정', path: 'elec/',    ready: true, noViewer: true },
