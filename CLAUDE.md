@@ -55,7 +55,7 @@
 - 절연저항은 분전반별로 같은 값 채우기 가능, 계획표 실시 칸은 수동 체크 가능.
 ### 레토르트 모니터링 (`retort/`)
 - 지금 연결된 기록계(192.168.254.1)는 **레토르트1** (`retort_1`). 처음에 레토르트2로 잘못 넣었다가 42번 SQL로 바꿈.
-- 수집 프로그램 `retort/collector.py` 는 사무실 PC(C:\ssb2mes\retort)에서 실행. `autostart_install.bat` = 로그인 때 창 없이 자동 실행(시작프로그램 폴더), 기록은 `collector.log`. 중복 실행 막음(127.0.0.1:47501).
+- 수집 프로그램 `retort/collector.py` 는 사무실 PC(C:\ssb2mes\retort)에서 실행. `autostart_install.bat` = 로그인 때 창 없이 자동 실행(시작프로그램 폴더), 기록은 `collector.log`. 중복 실행 막음(127.0.0.1:47501). 회사 PC는 브라우저 다운로드 파일이 DRM이라 반출이 오래 걸림 → 비밀문자는 환경변수 `SSB2MES_SECRET`(setx), 파일은 `curl -o` 로 raw.githubusercontent.com 에서 직접 받게 함 (.bat 다운로드는 막힘 → 시작프로그램에 바로 가기 `pyw C:\ssb2mes\retort\collector.py` 손으로 만듦).
 - 사무실 PC가 꺼지면 수집도 멈춤 → 장기적으로 24시간 켜 두는 수집 전용 PC 권장.
 ### 예방정비 (`pm/`)
 - 월간 출력: 이번 달이 점검 달이 아닌 월간 주기 항목은 비고에 「다음 예정 YYYY년 M월」 (일까지 X).
