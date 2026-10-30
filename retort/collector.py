@@ -8,6 +8,11 @@
 #
 # 실행:  python3 collector.py          (윈도우: py collector.py)
 # 시험:  python3 collector.py --test   (기록계 값만 한 번 읽어서 보여주고 끝냄, Supabase 로는 안 보냄)
+# 기록:  같은 폴더의 collector.log 에 시작·끊김·다시 연결을 적음 (1MB 넘으면 새로 시작)
+#
+# 윈도우 PC 에서 로그인할 때마다 자동 실행 (창 없이):
+#   같은 폴더의 autostart_install.bat 을 한 번 더블클릭 (끄려면 autostart_remove.bat)
+#   이미 돌고 있으면 두 번째 실행은 바로 끝남 (같은 값이 두 번 들어가지 않게)
 #
 # 리눅스 서버에서 켜질 때마다 자동 실행 (systemd):
 #   1) 이 파일을 /opt/retort/collector.py 에 두고 아래 SECRET 을 채움
@@ -25,6 +30,7 @@
 #   4) 상태 보기: journalctl -u retort-collector -f
 # =====================================================================
 import json
+import os
 import socket
 import sys
 import time
@@ -38,7 +44,7 @@ SECRET = "여기에_비밀번호"   # 25번 SQL(쉘리)에 넣은 것과 같은 
 
 # 레토르트 목록: id 는 40번 SQL 의 retort_units 와 같아야 함
 UNITS = [
-    {"id": "retort_2", "ip": "192.168.254.1"},
+    {"id": "retort_1", "ip": "192.168.254.1"},   # 레토르트1
 ]
 
 POLL_SEC = 10        # 기록계에 물어보는 간격 (초)
@@ -55,8 +61,20 @@ CHANNELS = 10
 # ---------------------------------------------------------
 
 
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "collector.log")
+LOCK_PORT = 47501    # 한 번만 실행되게 PC 안에서만 잡아두는 번호 (다른 프로그램과 겹치면 바꿈)
+
+
 def log(msg):
-    print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
+    line = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " " + str(msg)
+    if sys.stdout:
+        print(line, flush=True)
+    try:
+        mode = "w" if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 1_000_000 else "a"
+        with open(LOG_FILE, mode, encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
 
 
 def recv_exact(sock, n):
@@ -123,6 +141,13 @@ def main():
         log("SECRET 을 25번 SQL 에 넣은 비밀문자로 바꿔 주세요.")
         sys.exit(1)
 
+    lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        lock.bind(("127.0.0.1", LOCK_PORT))
+    except OSError:
+        log("이미 실행 중이라 끝냄")
+        return
+
     buf = {u["id"]: [] for u in UNITS}
     last_kept = {u["id"]: 0.0 for u in UNITS}
     down = {u["id"]: False for u in UNITS}
@@ -173,3 +198,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        log(f"멈춤: {e!r}")
+        raise
