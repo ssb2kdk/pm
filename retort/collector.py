@@ -46,10 +46,15 @@ SECRET = "여기에_비밀번호"   # 25번 SQL(쉘리)에 넣은 것과 같은 
 # 파일을 고치지 않으려면: 명령 프롬프트에서 한 번  setx SSB2MES_SECRET "비밀문자"  → 아래에서 그 값을 씀
 SECRET = os.environ.get("SSB2MES_SECRET", "").strip() or SECRET
 
-# 레토르트 목록: id 는 40번 SQL 의 retort_units 와 같아야 함
+# 레토르트 목록은 Supabase(43번 SQL 의 retort_units 의 ip 칸)에서 10분마다 받아 옴
+#  → 레토르트를 추가·변경할 때 이 파일은 안 고쳐도 됨
+# 아래 목록은 Supabase 에 연결이 안 될 때만 쓰는 예비용
 UNITS = [
     {"id": "retort_1", "ip": "192.168.254.1"},   # 레토르트1
+    {"id": "retort_2", "ip": "192.168.254.2"},   # 레토르트2
+    {"id": "retort_3", "ip": "192.168.254.3"},   # 레토르트3
 ]
+UNITS_REFRESH_SEC = 600   # 레토르트 목록 다시 받는 간격 (초)
 
 POLL_SEC = 10        # 기록계에 물어보는 간격 (초)
 IDLE_SEC = 60        # 쉬는 중에는 이 간격으로만 저장 (DB 용량 아끼기)
@@ -122,21 +127,42 @@ def read_unit(ip):
     return out
 
 
-def post_rows(unit_id, rows):
-    body = json.dumps({"p_secret": SECRET, "p_unit": unit_id, "p_rows": rows}).encode()
+def call_rpc(name, args):
+    body = json.dumps(args).encode()
     req = urllib.request.Request(
-        SUPABASE_URL + "/rest/v1/rpc/retort_ingest", data=body, method="POST",
+        SUPABASE_URL + "/rest/v1/rpc/" + name, data=body, method="POST",
         headers={"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
     with urllib.request.urlopen(req, timeout=20) as r:
         return r.read()
 
 
+def post_rows(unit_id, rows):
+    return call_rpc("retort_ingest", {"p_secret": SECRET, "p_unit": unit_id, "p_rows": rows})
+
+
+def fetch_units():
+    """Supabase 의 레토르트 목록 [{id, ip}]. 실패하면 예외."""
+    data = json.loads(call_rpc("retort_units_for_collector", {"p_secret": SECRET}))
+    return [{"id": u["id"], "ip": u["ip"].strip()} for u in data if u.get("ip")]
+
+
 def main():
     if "--test" in sys.argv:
         names = ["챔버 온도", "챔버 압력", "TEMP_1", "TEMP_2", "TEMP_3", "TEMP_4", "Fo_1", "Fo_2", "Fo_3", "Fo_4"]
-        for u in UNITS:
-            v = read_unit(u["ip"])
+        units = UNITS
+        if SECRET != "여기에_비밀번호":
+            try:
+                units = fetch_units()
+                print("Supabase 레토르트 목록:", ", ".join(u["id"] + "=" + u["ip"] for u in units))
+            except Exception as e:
+                print("Supabase 목록 받기 실패 → 파일 안 예비 목록으로 시험:", e)
+        for u in units:
             print(u["id"], u["ip"])
+            try:
+                v = read_unit(u["ip"])
+            except Exception as e:
+                print("  읽기 실패:", e)
+                continue
             for n, x in zip(names, v):
                 print(f"  {n:8} {x}")
         return
@@ -152,16 +178,28 @@ def main():
         log("이미 실행 중이라 끝냄")
         return
 
-    buf = {u["id"]: [] for u in UNITS}
-    last_kept = {u["id"]: 0.0 for u in UNITS}
-    down = {u["id"]: False for u in UNITS}
-    send_fail = False
-    log(f"시작: 레토르트 {len(UNITS)}대, {POLL_SEC}초마다 읽기")
+    units = UNITS
+    units_at = 0.0
+    buf, last_kept, down, send_fail = {}, {}, {}, {}
+    log(f"시작: {POLL_SEC}초마다 읽기")
 
     while True:
         t0 = time.time()
-        for u in UNITS:
+        if t0 - units_at >= UNITS_REFRESH_SEC:
+            units_at = t0
+            try:
+                new_units = fetch_units()
+                if [(u["id"], u["ip"]) for u in new_units] != [(u["id"], u["ip"]) for u in units] or not buf:
+                    log("레토르트 목록: " + (", ".join(u["id"] + "=" + u["ip"] for u in new_units) or "없음"))
+                units = new_units
+            except Exception as e:
+                log(f"레토르트 목록 받기 실패 (지금 목록 그대로 씀): {e}")
+        for u in units:
             uid = u["id"]
+            buf.setdefault(uid, [])
+            last_kept.setdefault(uid, 0.0)
+            down.setdefault(uid, False)
+            send_fail.setdefault(uid, False)
             try:
                 v = read_unit(u["ip"])
                 if down[uid]:
@@ -185,14 +223,14 @@ def main():
                 try:
                     post_rows(uid, chunk)
                 except Exception as e:
-                    if not send_fail:
-                        log(f"Supabase 보내기 실패 (모아뒀다가 다시 보냄): {e}")
-                        send_fail = True
+                    if not send_fail[uid]:
+                        log(f"{uid} Supabase 보내기 실패 (모아뒀다가 다시 보냄): {e}")
+                        send_fail[uid] = True
                     break
                 del rows[:len(chunk)]
-                if send_fail:
-                    log("Supabase 보내기 다시 됨")
-                    send_fail = False
+                if send_fail[uid]:
+                    log(f"{uid} Supabase 보내기 다시 됨")
+                    send_fail[uid] = False
 
         time.sleep(max(1.0, POLL_SEC - (time.time() - t0)))
 
