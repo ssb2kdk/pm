@@ -10,7 +10,7 @@
 create table if not exists public.retort_units (
   id text primary key, name text not null, ord int default 0
 );
-insert into public.retort_units(id, name, ord) values ('retort_2', '레토르트2', 2) on conflict do nothing;
+insert into public.retort_units(id, name, ord) values ('retort_1', '레토르트1', 1) on conflict do nothing;
 
 -- 기록값: 챔버 온도·압력, 온도 1~4 (TEMP_1~4), Fo 1~4
 create table if not exists public.retort_readings (
