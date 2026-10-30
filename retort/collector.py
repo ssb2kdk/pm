@@ -8,6 +8,8 @@
 #
 # 실행:  python3 collector.py          (윈도우: py collector.py)
 # 시험:  python3 collector.py --test   (기록계 값만 한 번 읽어서 보여주고 끝냄, Supabase 로는 안 보냄)
+# 새 버전 받기 (윈도우 명령 프롬프트, 브라우저·반출 없이):
+#   curl -o C:\ssb2mes\retort\collector.py https://raw.githubusercontent.com/ssb2kdk/pm/main/retort/collector.py
 # 기록:  같은 폴더의 collector.log 에 시작·끊김·다시 연결을 적음 (1MB 넘으면 새로 시작)
 #
 # 윈도우 PC 에서 로그인할 때마다 자동 실행 (창 없이):
@@ -41,6 +43,8 @@ from datetime import datetime, timezone
 SUPABASE_URL = "https://ncboxlsbbfhrupapipov.supabase.co"
 APIKEY = "sb_publishable_mYUd7LbTsbvg5lvAohRiTw_KL0T0eKD"
 SECRET = "여기에_비밀번호"   # 25번 SQL(쉘리)에 넣은 것과 같은 문자
+# 파일을 고치지 않으려면: 명령 프롬프트에서 한 번  setx SSB2MES_SECRET "비밀문자"  → 아래에서 그 값을 씀
+SECRET = os.environ.get("SSB2MES_SECRET", "").strip() or SECRET
 
 # 레토르트 목록: id 는 40번 SQL 의 retort_units 와 같아야 함
 UNITS = [
