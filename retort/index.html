@@ -112,7 +112,7 @@ async function renderNow() {
   try { await loadLatest(); } catch (e) { el.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message || e)}</div>`; return; }
   const now = Date.now();
   let h = `<div class="bar"><span class="hint">그래프</span>${[[1, '1시간'], [3, '3시간'], [6, '6시간'], [24, '24시간']].map(([n, t]) => `<button class="chip ${nowHours === n ? 'on' : ''}" onclick="nowHours=${n};renderNow()">${t}</button>`).join('')}
-    <span class="hint" style="margin-left:auto">${REFRESH_SEC}초마다 자동 새로고침 · ${hm(new Date())}</span></div><div class="grid">`;
+    <span class="hint">${Portal.tip('fo', 'ⓘ Fo 뜻')}</span><span class="hint" style="margin-left:auto">${REFRESH_SEC}초마다 자동 새로고침 · ${hm(new Date())}</span></div><div class="grid">`;
   UNITS.forEach(u => {
     const r = LATEST[u.id], age = r ? (now - new Date(r.ts)) / 1000 : null, live = age !== null && age <= 180, run = live && isRun(r);
     h += `<div class="card"><h3>${esc(u.name)} <span class="st ${!live ? 'off' : run ? 'run' : ''}">${!r ? '기록 없음' : !live ? '끊김' : run ? '운전 중' : '대기'}</span><span class="when">${r ? (age < 3600 ? (age < 60 ? `${Math.round(age)}초 전` : `${Math.round(age / 60)}분 전`) : new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</span></h3>
