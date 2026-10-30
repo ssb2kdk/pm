@@ -307,7 +307,7 @@
       const q = new Proxy(function () {}, { get(_, k) { if (k === 'then' || k === 'catch' || k === 'finally') return p[k].bind(p); return () => q; }, apply() { return q; } }); return q; };
     const wrap = (obj, bad) => new Proxy(obj, { get(o, k) { if (bad.includes(k)) return deny; const v = o[k]; return typeof v === 'function' ? v.bind(o) : v; } });
     const from = sb.from.bind(sb); sb.from = t => wrap(from(t), ['insert', 'update', 'upsert', 'delete']);
-    const rpc = sb.rpc.bind(sb), READ_RPC = /^(load_latest|load_series|load_day_get|load_run_get|load_runtime|load_energy|load_csv|usage_info)$/; // 읽기 전용 함수는 허용
+    const rpc = sb.rpc.bind(sb), READ_RPC = /^(load_latest|load_series|load_day_get|load_run_get|load_runtime|load_energy|load_csv|usage_info|retort_latest|retort_series)$/; // 읽기 전용 함수는 허용
     sb.rpc = (n, a) => READ_RPC.test(n) ? rpc(n, a) : deny();
     if (sb.storage && sb.storage.from) { const sf = sb.storage.from.bind(sb.storage); sb.storage.from = b => wrap(sf(b), ['upload', 'remove', 'update', 'move', 'copy']); }
   }
