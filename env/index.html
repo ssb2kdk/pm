@@ -217,6 +217,10 @@
     table.wct tr.p2 td.l { color: #b85a12; font-weight: bold; } table.wct tr.p1 td.l { color: #1b56a0; font-weight: bold; }
     table.wct td.neg { color: #d93025; } table.wct tr.tot td.neg { color: #ffb4ab; }
     table.wct .s { font-size: 10.5px; color: #888; font-weight: normal; }
+    /* 굵게: 2번 표는 2공장 줄만, 3·4번 표는 소계·합계 줄만 (사용자 요청) */
+    #wcs-2 table.wct td, #wcs-3 table.wct td, #wcs-4 table.wct td { font-weight: normal; }
+    #wcs-2 table.wct tr.p2 td { font-weight: bold; }
+    #wcs-3 table.wct tr.sub td, #wcs-3 table.wct tr.tot td, #wcs-4 table.wct tr.sub td, #wcs-4 table.wct tr.tot td { font-weight: bold; }
     .wcs-note { font-size: 11px; color: #777; margin-top: 6px; line-height: 1.6; }
     /* 「이미지 복사」 그림 전용: 지출결의 편집기에 붙이면 줄어드니 글씨를 키우고 진하게 */
     .wc-cap { box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; padding: 10px 12px !important; }
@@ -224,7 +228,6 @@
     .wc-cap .wcs-h { font-size: 18px; color: #000; } .wc-cap .wcs-h .u { font-size: 13px; color: #333; }
     .wc-cap table.wct { font-size: 15px; } .wc-cap table.wct th, .wc-cap table.wct td { border-color: #8a9893; padding: 6px 8px; color: #000; }
     .wc-cap table.wct thead th { color: #fff; font-weight: bold; } .wc-cap table.wct .s { font-size: 12px; color: #333; }
-    .wc-cap table.wct td.l, .wc-cap table.wct td.g { font-weight: bold; } .wc-cap table.wct td.n { font-weight: 600; }
     .wc-cap table.wct td.neg { color: #d00000; } .wc-cap table.wct tr.tot td { color: #fff; } .wc-cap table.wct tr.tot td.neg { color: #ffc2b8; }
     .wc-cap table.wct tr.p2 td.l { color: #a34a00; } .wc-cap table.wct tr.p1 td.l { color: #0d4a99; }
     .wc-cap .wcs-note { font-size: 13px; color: #222; } .wc-cap .wcs-kv { font-size: 16px; } .wc-cap .wcs-card .f, .wc-cap .wcs-card .x { color: #222; font-size: 13px; }
