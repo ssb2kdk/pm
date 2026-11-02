@@ -176,6 +176,7 @@
     /* 위탁비용 배분 */
     .wc-wrap { display: grid; grid-template-columns: 330px 1fr; gap: 14px; align-items: start; }
     @media (max-width: 1000px) { .wc-wrap { grid-template-columns: 1fr; } }
+    .wc-wrap.wide { grid-template-columns: 1fr; } .wc-wrap.wide .wc-in { max-width: 760px; }
     .wc-wrap > * { min-width: 0; } .wcs-sec { overflow-x: auto; } .wc-in th { white-space: nowrap; }
     @media (max-width: 600px) { .wcs-kv { grid-template-columns: 1fr; } .wcs-cards { grid-template-columns: 1fr; } .wcs-h { flex-wrap: wrap; } }
     .wc-in h3 { font-size: 14px; margin: 0 0 10px; color: #1D7A5C; }
@@ -1639,6 +1640,15 @@
     //  44번 SQL ww_contract. 2공장 % = 반올림(2공장 ÷ 합계 × 100), 1공장 % = 100 − 2공장 % (엑셀 장표와 같음)
     //  공장별 항목 = 계약 항목 금액 × 공장 % (+ 그 공장 추가 비용)
     let WC = {}, WCV = {}, wcYm = null, wcDirty = false;
+    // 보기 선택 (이 PC에만 기억): 비교 칸 = 전월대비(prev) / 전년동월대비(yoy), 표 = 3개월(3) / 1년 전체(12)
+    const wcPref = (k, d) => { try { return localStorage.getItem('wc_' + k) || d; } catch (e) { return d; } };
+    let wcCmp = wcPref('cmp', 'prev'), wcView = wcPref('view', '3');
+    function wcSet(k, v) { if (k === 'cmp') wcCmp = v; else wcView = v; try { localStorage.setItem('wc_' + k, v); } catch (e) { } wcInput(true); wcSegs(); }
+    function wcSegs() {
+      const seg = (k, cur, opts) => `<span class="seg">${opts.map(([v, n]) => `<button class="${v === cur ? 'on' : ''}" onclick="wcSet('${k}','${v}')">${n}</button>`).join('')}</span>`;
+      const el = document.getElementById('wc-segs'); if (el) el.innerHTML = seg('view', wcView, [['3', '3개월'], ['12', '1년 전체']]) + ' ' + seg('cmp', wcCmp, [['prev', '전월대비'], ['yoy', '전년동월대비']]);
+      const w = document.querySelector('.wc-wrap'); if (w) w.classList.toggle('wide', wcView === '12');
+    }
     const WC_ITEMS = [ // [키, 묶음, 계약 칸 이름, 추가 칸 키, 추가 칸 이름, 기본 금액]
       ['labor', '인건비', '인건비', 'holiday', '휴일 수당', 4780000],
       ['chem', '약품비', '계약_약품비', 'chem_add', '추가_약품비', 3670000],
@@ -1655,8 +1665,11 @@
     function wcAmt(src, ym, k) { for (const x of Object.keys(src).filter(x => x <= ym).sort().reverse()) { const v = num(src[x][k]); if (v !== null) return v; } return WC_ITEMS.find(i => i[0] === k)[5]; }
     function wcCalc(ym, src = WCV) {
       const r = src[ym]; if (!r) return null;
-      const t1 = num(r.t1), t2 = num(r.t2); if (t1 === null || t2 === null || t1 + t2 <= 0) return null;
-      const p2 = Math.round(t2 / (t1 + t2) * 100), p1 = 100 - p2;
+      const t1 = num(r.t1), t2 = num(r.t2);
+      // 2공장 배출량 0 = 2공장 위탁 전 (2025년 4~11월) → 1공장 100%, 1공장 배출량은 없어도 됨
+      const solo = t2 === 0 && (t1 === null || t1 >= 0);
+      if (!solo && (t1 === null || t2 === null || t1 + t2 <= 0)) return null;
+      const p2 = solo ? 0 : Math.round(t2 / (t1 + t2) * 100), p1 = 100 - p2;
       const amt = Object.fromEntries(WC_ITEMS.map(([k]) => [k, wcAmt(src, ym, k)]));
       const total = WC_ITEMS.reduce((s, [k]) => s + amt[k], 0);
       const plant = (p, pre) => {
@@ -1664,7 +1677,7 @@
         const base = Object.values(it).reduce((s, x) => s + x.base, 0), sum = Object.values(it).reduce((s, x) => s + x.sub, 0);
         return { p, it, base, add: sum - base, sum };
       };
-      return { ym, t1, t2, tt: t1 + t2, p1, p2, amt, total, P1: plant(p1, 'p1'), P2: plant(p2, 'p2') };
+      return { ym, solo, t1, t2, tt: t1 === null ? null : t1 + t2, p1, p2, amt, total, P1: plant(p1, 'p1'), P2: plant(p2, 'p2') };
     }
     // 설비검침 폐수방류량 그 달 사용량 (1일 지침 ~ 다음달 1일 지침, 참고용)
     function wcMeterFlow(ym) { const a = firstOnAfter(`${ym}-01`, g('폐수방류량'), false), b = firstOnAfter(`${ymShift(ym, 1)}-01`, g('폐수방류량'), false); return a && b && b.v >= a.v ? round(b.v - a.v, 1) : null; }
@@ -1681,6 +1694,7 @@
           <button class="btn small" onclick="wcCopyText(this)">📋 지출결의 문구 복사</button>
           <button class="btn small" onclick="wcShot('wcs-all', this)">📷 전체 이미지 복사</button>
           <button class="btn small secondary" onclick="wcPrint()">🖨 인쇄·PDF</button>
+          <span id="wc-segs"></span>
           <span class="hint">각 표 오른쪽 위 「📷 이미지 복사」 → 지출결의에 Ctrl+V 로 붙여넣기</span></div>
         <div class="wc-wrap">
           <div class="card wc-in">
@@ -1701,7 +1715,7 @@
           <div id="wcs-all" class="wcs"></div>
         </div>`;
       el.querySelectorAll('.wc-in input').forEach(x => x.addEventListener('input', wcInput));
-      wcInput(true);
+      wcInput(true); wcSegs();
     }
     function wcForm() {
       const v = id => { const x = document.getElementById(id); return x ? num(x.value) : null; }, o = { ym: wcYm, t1: v('wc-t1'), t2: v('wc-t2'), note: (document.getElementById('wc-note').value || '').trim() };
@@ -1716,7 +1730,7 @@
     }
     function wcGo(n) { if (wcDirty && !confirm('저장하지 않은 내용이 있습니다. 저장하지 않고 이동할까요?')) return; wcYm = ymShift(wcYm, n); renderWc(); }
     async function wcSave() {
-      const o = wcForm(); if (o.t1 === null || o.t2 === null) return alert('1공장·2공장 배출량을 넣어 주세요.');
+      const o = wcForm(); if (o.t2 === null || (o.t1 === null && o.t2 !== 0)) return alert('1공장·2공장 배출량을 넣어 주세요. (2공장 위탁 전 달은 2공장에 0)');
       const { error } = await sb.from('ww_contract').upsert({ ...o, updated_at: new Date().toISOString() }, { onConflict: 'ym' });
       if (error) return alert('저장 실패: ' + errMsg(error));
       await renderWc();
@@ -1726,12 +1740,14 @@
     function wcSheet(ym) {
       const c = wcCalc(ym);
       if (!c) return `<div class="wcs-sec"><div class="hint">${ymKo(ym)} 1공장·2공장 배출량을 넣으면 배분 장표가 만들어집니다.</div></div>`;
-      const ms = [ymShift(ym, -2), ymShift(ym, -1), ym], C = Object.fromEntries(ms.map(m => [m, wcCalc(m)])), pv = C[ms[1]];
-      const yr = ym.slice(0, 4), yms = Object.keys(WCV).filter(m => m.slice(0, 4) === yr && m <= ym).sort(), Y = yms.map(m => wcCalc(m)).filter(Boolean);
+      const yr = ym.slice(0, 4), ms = wcView === '12' ? Array.from({ length: 12 }, (_, i) => `${yr}-${pad2(i + 1)}`) : [ymShift(ym, -2), ymShift(ym, -1), ym];
+      const C = Object.fromEntries(ms.map(m => [m, m <= ym ? wcCalc(m) : null]));
+      const cmpYm = ymShift(ym, wcCmp === 'yoy' ? -12 : -1), cmpN = wcCmp === 'yoy' ? '전년동월대비' : '전월대비', pv = wcCalc(cmpYm);
+      const yms = Object.keys(WCV).filter(m => m.slice(0, 4) === yr && m <= ym).sort(), Y = yms.map(m => wcCalc(m)).filter(Boolean);
       const accSum = f => Y.reduce((s, x) => s + (f(x) || 0), 0), accAvg = f => Y.length ? accSum(f) / Y.length : null;
       const dcell = (a, b, fmt) => { if (a === null || b === null || a === undefined || b === undefined) return '<td class="n"></td>'; const d = a - b; return `<td class="n ${d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${fmt(d)}</td>`; };
-      const py = wcCalc(ymShift(ym, -12)), dd = (a, f, fmt) => dcell(a, pv ? f(pv) : null, fmt) + dcell(a, py ? f(py) : null, fmt);
-      const head = (t) => `<thead><tr><th colspan="2">${t}</th>${ms.map(m => `<th class="${m === ym ? 'cur' : ''}">${ymHead(m)}</th>`).join('')}<th>${yr}년 누계</th><th>전월대비</th><th>전년동월대비</th></tr></thead>`;
+      const dd = (a, f, fmt) => dcell(a, pv ? f(pv) : null, fmt), short = wcView === '12';
+      const head = (t) => `<thead><tr><th colspan="2">${t}</th>${ms.map(m => `<th class="${m === ym ? 'cur' : ''}">${short ? Number(m.slice(5)) + '월' : ymHead(m)}</th>`).join('')}<th>${yr}년 누계</th><th>${cmpN}<br><span class="s" style="color:#d9f2e8">${pv ? `(${ymHead(cmpYm)} 대비)` : '(기록 없음)'}</span></th></tr></thead>`;
       const cells = (f, fmt, cls) => ms.map(m => `<td class="n ${m === ym ? 'cur' : ''} ${cls || ''}">${C[m] ? fmt(f(C[m])) : '-'}</td>`).join('');
       const pct = v => v === null || v === undefined ? '-' : (Math.round(v * 10) / 10).toFixed(1) + '%';
       const shot = id => `<button class="wc-shot" onclick="wcShot('${id}', this)">📷 이미지 복사</button>`;
@@ -1740,9 +1756,9 @@
       let h = `<div class="wcs-sec" id="wcs-1"><div class="wcs-h">1. 폐수처리 위탁비용 배분 — ${ymKo(ym)} ${shot('wcs-1')}<span class="u">단위: 원, VAT 별도</span></div>
         <div class="wcs-kv">
           <div class="k">위탁 계약비용 (1공장+2공장)</div><div class="v"><b>${wcWon(c.total)}</b> 원/월</div>
-          <div class="k">배분 기준</div><div class="v">폐수 월 배출량 <b>${wcTon(c.tt)}</b> 톤 (1공장+2공장)</div>
+          <div class="k">배분 기준</div><div class="v">${c.solo ? '2공장 위탁 전 — 1공장 100%' : `폐수 월 배출량 <b>${wcTon(c.tt)}</b> 톤 (1공장+2공장)`}</div>
         </div>
-        <div class="wcs-bar"><div class="p1" style="width:${c.p1}%">1공장 ${wcTon(c.t1)}톤 · ${c.p1}%</div><div class="p2" style="width:${c.p2}%">2공장 ${wcTon(c.t2)}톤 · ${c.p2}%</div></div>
+        <div class="wcs-bar"><div class="p1" style="width:${c.p1}%">1공장 ${c.t1 === null ? '' : wcTon(c.t1) + '톤 · '}${c.p1}%</div>${c.p2 ? `<div class="p2" style="width:${c.p2}%">2공장 ${wcTon(c.t2)}톤 · ${c.p2}%</div>` : ''}</div>
         <div class="wcs-cards">
           <div class="wcs-card p2"><div class="n">2공장 위탁비용</div><div class="f">${wcWon(c.total)}원 × ${c.p2}%</div><div class="a">${wcWon(c.P2.sum)} <small>원</small></div>${c.P2.add ? `<div class="x">배분액 ${wcWon(c.P2.base)} + 추가 비용 ${wcWon(c.P2.add)}</div>` : ''}</div>
           <div class="wcs-card p1"><div class="n">1공장 위탁비용</div><div class="f">${wcWon(c.total)}원 × ${c.p1}%</div><div class="a">${wcWon(c.P1.sum)} <small>원</small></div>${c.P1.add ? `<div class="x">배분액 ${wcWon(c.P1.base)} + 추가 비용 ${wcWon(c.P1.add)}</div>` : ''}</div>
@@ -1753,7 +1769,7 @@
         <tr class="sub"><td class="g" rowspan="3">배출량<br><span class="s">(톤/월)</span></td><td class="l">합계</td>${cells(x => x.tt, wcTon)}<td class="n acc">${wcTon(accSum(x => x.tt))}</td>${dd(c.tt, x => x.tt, wcTon)}</tr>
         <tr class="p1"><td class="l">1공장 <span class="s">${WC_CAP[1]}</span></td>${cells(x => x.t1, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t1))}</td>${dd(c.t1, x => x.t1, wcTon)}</tr>
         <tr class="p2"><td class="l">2공장 <span class="s">${WC_CAP[2]}</span></td>${cells(x => x.t2, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t2))}</td>${dd(c.t2, x => x.t2, wcTon)}</tr>
-        <tr class="sub"><td class="g" rowspan="3">비율<br><span class="s">(%)</span></td><td class="l">합계</td>${cells(() => 100, pct)}<td class="n acc">100.0% <span class="s">평균</span></td><td class="n">0.0%</td><td class="n">${py ? '0.0%' : ''}</td></tr>
+        <tr class="sub"><td class="g" rowspan="3">비율<br><span class="s">(%)</span></td><td class="l">합계</td>${cells(() => 100, pct)}<td class="n acc">100.0% <span class="s">평균</span></td><td class="n">${pv ? '0.0%' : ''}</td></tr>
         <tr class="p1"><td class="l">1공장</td>${cells(x => x.p1, pct)}<td class="n acc">${pct(accAvg(x => x.p1))} <span class="s">평균</span></td>${dd(c.p1, x => x.p1, v => pct(v))}</tr>
         <tr class="p2"><td class="l">2공장</td>${cells(x => x.p2, pct)}<td class="n acc">${pct(accAvg(x => x.p2))} <span class="s">평균</span></td>${dd(c.p2, x => x.p2, v => pct(v))}</tr>
         <tr class="sub"><td class="g" rowspan="3">배분 금액<br><span class="s">(원)</span></td><td class="l">합계</td>${cells(x => x.total, wcWon)}<td class="n acc">${wcWon(accAvg(x => x.total))} <span class="s">평균</span></td>${dd(c.total, x => x.total, wcWon)}</tr>
@@ -1766,7 +1782,7 @@
         let t = `<div class="wcs-sec" id="${id}"><div class="wcs-h">${no === 2 ? 3 : 4}. 폐수배출처리시설 위탁운영비용 — ${no}공장 ${shot(id)}<span class="u">단위: 원, VAT 별도</span></div><table class="wct">${head('구 분')}<tbody>`;
         const get = (x, k, f) => x ? x[P].it[k][f] : null;
         WC_ITEMS.forEach(([k, grp, n1, , n2]) => {
-          const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !(pv && get(pv, k, f)) && !(py && get(py, k, f)) ? '<td class="n"></td><td class="n"></td>' : dd(get(c, k, f) || 0, x => get(x, k, f) || 0, wcWon)}`;
+          const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !(pv && get(pv, k, f)) ? '<td class="n"></td>' : dd(get(c, k, f) || 0, x => get(x, k, f) || 0, wcWon)}`;
           t += `<tr><td class="g" rowspan="3">${grp}</td>${tds(n1, 'base')}</tr><tr>${tds(n2, 'add')}</tr><tr class="sub">${tds('[소 계]', 'sub')}</tr>`;
         });
         t += `<tr class="tot"><td colspan="2" style="text-align:center">[합 계]</td>${cells(x => x[P].sum, wcWon)}<td class="n">${wcWon(accSum(x => x[P].sum))}</td>${dd(c[P].sum, x => x[P].sum, wcWon)}</tr></tbody></table>
@@ -1778,6 +1794,7 @@
     }
     function wcText() {
       const c = wcCalc(wcYm); if (!c) return null;
+      if (c.solo) return `1. 폐수처리 위탁 계약비용 = ${wcWon(c.total)}원/월\n2. 2공장 위탁 전 : 1공장 100% = ${wcWon(c.P1.sum)}원`;
       const add = (P, n) => P.add ? ` + 추가 비용 ${wcWon(P.add)}원 = ${wcWon(P.sum)}원` : '';
       return [`1. 폐수처리 위탁 계약비용 1공장+2공장 = ${wcWon(c.total)}원/월`,
         `2. 금액 배분 기준 : 폐수 월 배출량 = ${wcTon(c.tt)}톤(1공장+2공장)`,
