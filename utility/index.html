@@ -818,11 +818,17 @@
       const diff = key => {
         const a = UT.readingInterp(daily, n1, key), b = UT.readingInterp(daily, d1, key);
         if (!a || !b || a.v < b.v) return null;
-        [[d1, b], [n1, a]].forEach(([d, r]) => { if (!r.exact) notes.push(r.to ? `${md(d)} 지침은 ${md(r.from)}·${md(r.to)} 검침값 사이를 날짜 비율로 나눠 추정${r.gap > 7 ? ` (검침 간격 ${r.gap}일 — 정확도 낮음)` : ''}` : `${md(d)} 이후 검침값이 없어 ${md(r.from)} 값 사용`); });
+        // 어떤 지침으로 계산했는지 항상 보여 줌 (추정 지침은 값과 근거까지 — 다음 달 계산도 같은 값에서 시작)
+        const rv = (key, d) => { const r = daily[d]; return r && has(r[key]) ? Number(r[key]) : null; };
+        const f2 = v => v.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+        const tag = r => r.exact ? '' : r.to ? '(추정)' : '(대신 씀)';
+        notes.push(`계산: ${md(n1)} 지침 ${f2(a.v)}${tag(a)} − ${md(d1)} 지침 ${f2(b.v)}${tag(b)} = ${f2(a.v - b.v)}`);
+        [[d1, b], [n1, a]].forEach(([d, r]) => { if (!r.exact) notes.push(r.to ? `${md(d)} 검침이 없어 ${md(r.from)} 지침 ${f2(rv(key, r.from))} · ${md(r.to)} 지침 ${f2(rv(key, r.to))} 사이를 날짜 비율(${r.gap}일 중 ${Math.round((new Date(d) - new Date(r.from)) / 864e5)}일)로 나눠 추정 → ${f2(r.v)}${r.gap > 7 ? ' — 검침 간격이 길어 정확도 낮음' : ''}` : `${md(d)} 이후 검침값이 없어 ${md(r.from)} 지침 ${f2(r.v)} 을(를) 대신 씀`); });
         return a.v - b.v;
       };
       m._note = m._note || {};
       const w = diff('ww_power');
+      if (w !== null && notes.length) notes[0] += ` × 배율 ${num(m.elec_ww_ct) || 40} = ${(Math.round(w * (num(m.elec_ww_ct) || 40) * 10) / 10).toLocaleString('ko-KR')} kWh`;
       auto('elec_ww_kwh', w === null ? null : Math.round(w * (num(m.elec_ww_ct) || 40) * 10) / 10);
       if (!has(raw.elec_ww_kwh) && notes.length) m._note.elec_ww_kwh = notes.splice(0).join(' / ');
       notes.length = 0;
