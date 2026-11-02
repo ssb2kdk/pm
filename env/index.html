@@ -42,6 +42,7 @@
     table.grid input.saving { background: #fff8d6; } table.grid input.saved { background: #e3f6ec; } table.grid input.err { background: #fde2e2; }
     table.grid td.calc { color: #555; background: #f7f8f9; padding: 0 6px; text-align: right; }
     table.grid td.auto { color: #1D7A5C; background: #f2faf6; padding: 0 6px; text-align: right; }
+    table.grid td.auto.rd { color: #6b7280; }
     table.grid td.neg { color: #c62828; font-weight: bold; }
     table.grid tr.sum td { background: #eef3f1; font-weight: bold; padding: 6px; position: sticky; bottom: 0; }
 
@@ -360,6 +361,15 @@
     const gWater = v => (num(v['상수도40A']) !== null && num(v['상수도50A']) !== null) ? num(v['상수도40A']) + num(v['상수도50A']) : null;
     const g = k => v => num(v[k]);
     function pair(ds, getter) { const a = firstOnAfter(ds, getter, false), b = firstOnAfter(ds, getter, true); return { prev: a && a.v, cur: b && b.v, use: (a && b) ? round(b.v - a.v, 3) : null }; }
+    // 설비검침 (자동) 칸: 그날 검침값(지침, 보기만) + 사용량. [제목, 값, 소수 자리, 지침이면 true]
+    function autoCells(ds) {
+      const rd = k => { const m = METER[ds]; return m ? num((m.v || {})[k]) : null; };
+      const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use;
+      const pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
+      return [['상수도 40A 지침', rd('상수도40A'), 3, true], ['상수도 50A 지침', rd('상수도50A'), 3, true], ['상수도 ㎥', w, 2],
+        ['방류량 지침', rd('폐수방류량'), 3, true], ['방류량 ㎥', f, 2], ['폐수전력 지침', rd('폐수전력'), 3, true], ['폐수전력 kWh', pw, 1]];
+    }
+    const AUTO_N = 7;
 
     // ---------------- 장부: 월 표 ----------------
     function shiftMonth(n) { const [y, m] = bookYm.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); bookYm = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; renderBook(); }
@@ -381,9 +391,9 @@
       const groups = [];
       cols.forEach(c => { const gl = groups[groups.length - 1]; if (gl && gl.g === c.g && !c.solo) gl.n++; else groups.push({ g: c.g, n: 1, solo: c.solo }); });
       let h = '<table class="grid"><thead><tr><th class="sticky" rowspan="2">날짜</th><th rowspan="2">조업</th>';
-      if (showAuto) h += '<th class="grp" colspan="3">설비검침 (자동)</th>';
+      if (showAuto) h += `<th class="grp" colspan="${AUTO_N}">설비검침 (자동)</th>`;
       h += groups.map(x => x.solo ? `<th rowspan="2">${esc(x.g)}</th>` : `<th class="grp" colspan="${x.n}">${esc(x.g)}</th>`).join('') + '</tr><tr>';
-      if (showAuto) h += '<th>상수도 ㎥</th><th>방류량 ㎥</th><th>폐수전력 kWh</th>';
+      if (showAuto) h += autoCells(first).map(([t]) => `<th>${t}</th>`).join('');
       h += cols.filter(c => !c.solo).map(c => `<th>${esc(c.label)}</th>`).join('') + '</tr></thead><tbody>';
       const sums = {};
       for (let d = 1; d <= n; d++) {
@@ -391,9 +401,7 @@
         h += `<tr class="${wd === 0 || wd === 6 ? 'weekend' : ''} ${ds === todayStr ? 'today' : ''}"><td class="sticky">${d}일 (${WEEK[wd]})</td>`;
         h += `<td><input type="checkbox" data-d="${ds}" data-k="op" ${r.op === false ? '' : 'checked'}></td>`;
         if (showAuto) {
-          const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use;
-          const pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
-          h += `<td class="auto">${nf(w)}</td><td class="auto">${nf(f)}</td><td class="auto">${nf(pw, 1)}</td>`;
+          h += autoCells(ds).map(([, v, n, rd]) => `<td class="auto${rd ? ' rd' : ''}">${nf(v, n)}</td>`).join('');
         }
         cols.forEach(c => {
           if (c.calc) { const v = ds <= todayStr || WW[ds] ? c.calc(ds) : null; h += `<td class="calc ${v < 0 ? 'neg' : ''}">${nf(v)}</td>`; return; }
@@ -404,7 +412,7 @@
         });
         h += '</tr>';
       }
-      h += `<tr class="sum"><td class="sticky">월 합계</td><td></td>${showAuto ? '<td></td><td></td><td></td>' : ''}` +
+      h += `<tr class="sum"><td class="sticky">월 합계</td><td></td>${showAuto ? '<td></td>'.repeat(AUTO_N) : ''}` +
         cols.map(c => `<td>${/_in$|_use$|sludge_gen|sludge_out|supply_amt/.test(c.k || '') ? nf(sums[c.k], c.k === 'supply_amt' ? 0 : 2) : ''}</td>`).join('') + '</tr></tbody></table>';
       const wrap = document.getElementById('book-grid');
       wrap.innerHTML = (HAS_SUPPLY ? '' : '<div class="hint" style="padding:6px 8px;color:#d93025">소모품(구매물품·금액) 칸을 쓰려면 Supabase에 23번 SQL(23_ww_supply.sql)을 실행해 주세요.</div>') + h;
@@ -1532,9 +1540,9 @@
       catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
       const [y, m] = bookYm.split('-').map(Number), n = new Date(y, m, 0).getDate(), cols = bookCols();
       try { await loadMeter(`${bookYm}-01`, `${bookYm}-${pad2(n)}`); } catch (e) { }
-      const h1 = ['날짜', '조업', '설비검침 (자동)', '', ''], h2 = ['', '', '상수도 ㎥', '방류량 ㎥', '폐수전력 kWh'];
-      const mg = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, { s: { r: 0, c: 2 }, e: { r: 0, c: 4 } }];
-      let ci = 5; cols.forEach((c, i) => { const prev = cols[i - 1];
+      const h1 = ['날짜', '조업', '설비검침 (자동)', ...Array(AUTO_N - 1).fill('')], h2 = ['', '', ...autoCells(`${bookYm}-01`).map(([t]) => t)];
+      const mg = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, { s: { r: 0, c: 2 }, e: { r: 0, c: 1 + AUTO_N } }];
+      let ci = 2 + AUTO_N; cols.forEach((c, i) => { const prev = cols[i - 1];
         if (c.solo) { h1.push(c.g); h2.push(''); mg.push({ s: { r: 0, c: ci }, e: { r: 1, c: ci } }); }
         else if (prev && !prev.solo && prev.g === c.g) { h1.push(''); h2.push(c.label); mg[mg.length - 1].e.c = ci; }
         else { h1.push(c.g); h2.push(c.label); mg.push({ s: { r: 0, c: ci }, e: { r: 0, c: ci } }); }
@@ -1542,16 +1550,15 @@
       const rows = [h1, h2], sums = {};
       for (let d = 1; d <= n; d++) {
         const ds = `${bookYm}-${pad2(d)}`, wd = new Date(ds + 'T00:00:00').getDay(), r = WW[ds] || {};
-        const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use, pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
-        rows.push([`${ds} (${WEEK[wd]})`, r.op === false ? '휴무' : '조업', w, f, pw, ...cols.map(c => {
+        rows.push([`${ds} (${WEEK[wd]})`, r.op === false ? '휴무' : '조업', ...autoCells(ds).map(([, v]) => v), ...cols.map(c => {
           if (c.calc) return ds <= todayStr || WW[ds] ? (c.calc(ds) ?? null) : null;
           const v = r[c.k]; if (c.text) return v ? String(v) : null; if (v === null || v === undefined || v === '') return null;
           sums[c.k] = (sums[c.k] || 0) + Number(v); return Number(v); })]);
       }
-      rows.push(['월 합계', '', null, null, null, ...cols.map(c => /_in$|_use$|sludge_gen|sludge_out|supply_amt/.test(c.k || '') ? round(sums[c.k] || 0, 3) : null)]);
+      rows.push(['월 합계', '', ...Array(AUTO_N).fill(null), ...cols.map(c => /_in$|_use$|sludge_gen|sludge_out|supply_amt/.test(c.k || '') ? round(sums[c.k] || 0, 3) : null)]);
       const ws = XLSX.utils.aoa_to_sheet(rows); ws['!merges'] = mg.filter(x => x.e.c > x.s.c || x.e.r > x.s.r);
       Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n') ws[k].z = '#,##0.###'; });
-      ws['!cols'] = h1.map((_, j) => ({ wch: j === 0 ? 14 : (cols[j - 5] && cols[j - 5].text) ? 22 : 9 }));
+      ws['!cols'] = h1.map((_, j) => ({ wch: j === 0 ? 14 : (cols[j - 2 - AUTO_N] && cols[j - 2 - AUTO_N].text) ? 22 : 9 }));
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `${y}년 ${m}월`);
       const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `다온산업장부_${bookYm}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
