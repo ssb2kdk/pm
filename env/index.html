@@ -365,12 +365,13 @@
     // 설비검침 (자동) 칸: 그날 검침값(지침, 보기만) + 사용량. [제목, 값, 소수 자리, 지침이면 true]
     function autoCells(ds) {
       const rd = k => { const m = METER[ds]; return m ? num((m.v || {})[k]) : null; };
-      const w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use;
+      const w40 = pair(ds, g('상수도40A')).use, w50 = pair(ds, g('상수도50A')).use, w = pair(ds, gWater).use, f = pair(ds, g('폐수방류량')).use, p = pair(ds, g('폐수전력')).use;
       const pw = p === null ? null : round(p * (num(SET.ww && SET.ww.ct) || 40), 1);
-      return [['상수도 40A 지침', rd('상수도40A'), 3, true], ['상수도 50A 지침', rd('상수도50A'), 3, true], ['상수도 ㎥', w, 2],
+      return [['상수도 40A 지침', rd('상수도40A'), 3, true], ['상수도 50A 지침', rd('상수도50A'), 3, true],
+        ['40A ㎥', w40, 2], ['50A ㎥', w50, 2], ['상수도 합계 ㎥', w, 2],
         ['방류량 지침', rd('폐수방류량'), 3, true], ['방류량 ㎥', f, 2], ['폐수전력 지침', rd('폐수전력'), 3, true], ['폐수전력 kWh', pw, 1]];
     }
-    const AUTO_N = 7;
+    const AUTO_N = 9;
     const SUM_RE = /_in$|_use$|sludge_gen|sludge_out|supply_amt/; // 월 합계를 내는 장부 칸 (일 평균은 숫자 칸 모두)
     // 월 합계·일 평균 모으기: 값이 있는 날만 셈 (설비검침 사용량은 0인 날 = 쉬는 날도 평균에서 뺌)
     function addAgg(a, k, v) { if (v === null || v === undefined || v === '' || isNaN(v)) return; a[k] = a[k] || { s: 0, n: 0 }; a[k].s += Number(v); a[k].n++; }
