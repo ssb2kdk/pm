@@ -1795,9 +1795,7 @@
           const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !CMP.some(x => x.c && get(x.c, k, f)) ? CMP.map(() => '<td class="n"></td>').join('') : dd(get(c, k, f) || 0, x => get(x, k, f) || 0, wcWon)}`;
           t += `<tr><td class="g" rowspan="3">${grp}</td>${tds(n1, 'base')}</tr><tr>${tds(n2, 'add')}</tr><tr class="sub">${tds('[소 계]', 'sub')}</tr>`;
         });
-        t += `<tr class="tot"><td colspan="2" style="text-align:center">[합 계]</td>${cells(x => x[P].sum, wcWon)}<td class="n">${wcWon(accSum(x => x[P].sum))}</td>${dd(c[P].sum, x => x[P].sum, wcWon)}</tr></tbody></table>
-          <div class="wcs-note">${no}공장 항목 금액 = 계약 항목 금액 × ${no}공장 비율 (${ymKo(ym)} ${c['p' + no]}%) · 계약 금액: 인건비 ${wcWon(c.amt.labor)} · 약품비 ${wcWon(c.amt.chem)} · 분석비 ${wcWon(c.amt.anal)} · 운영수수료 ${wcWon(c.amt.fee)}</div></div>`;
-        return t;
+        t += `<tr class="tot"><td colspan="2" style="text-align:center">[합 계]</td>${cells(x => x[P].sum, wcWon)}<td class="n">${wcWon(accSum(x => x[P].sum))}</td>${dd(c[P].sum, x => x[P].sum, wcWon)}</tr></tbody></table></div>`;        return t;
       };
       h += plant(2, 'P2', 'wcs-3') + plant(1, 'P1', 'wcs-4');
       return `<div class="wcs-title">폐수배출처리시설 위탁비용 배분 내역 (${ymKo(ym)})</div>` + h;
