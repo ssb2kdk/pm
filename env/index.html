@@ -218,6 +218,16 @@
     table.wct td.neg { color: #d93025; } table.wct tr.tot td.neg { color: #ffb4ab; }
     table.wct .s { font-size: 10.5px; color: #888; font-weight: normal; }
     .wcs-note { font-size: 11px; color: #777; margin-top: 6px; line-height: 1.6; }
+    /* 「이미지 복사」 그림 전용: 지출결의 편집기에 붙이면 줄어드니 글씨를 키우고 진하게 */
+    .wc-cap { box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; padding: 10px 12px !important; }
+    .wc-cap .wcs-sec { overflow: visible !important; box-shadow: none; }
+    .wc-cap .wcs-h { font-size: 18px; color: #000; } .wc-cap .wcs-h .u { font-size: 13px; color: #333; }
+    .wc-cap table.wct { font-size: 15px; } .wc-cap table.wct th, .wc-cap table.wct td { border-color: #8a9893; padding: 6px 8px; color: #000; }
+    .wc-cap table.wct thead th { color: #fff; font-weight: bold; } .wc-cap table.wct .s { font-size: 12px; color: #333; }
+    .wc-cap table.wct td.l, .wc-cap table.wct td.g { font-weight: bold; } .wc-cap table.wct td.n { font-weight: 600; }
+    .wc-cap table.wct td.neg { color: #d00000; } .wc-cap table.wct tr.tot td { color: #fff; } .wc-cap table.wct tr.tot td.neg { color: #ffc2b8; }
+    .wc-cap table.wct tr.p2 td.l { color: #a34a00; } .wc-cap table.wct tr.p1 td.l { color: #0d4a99; }
+    .wc-cap .wcs-note { font-size: 13px; color: #222; } .wc-cap .wcs-kv { font-size: 16px; } .wc-cap .wcs-card .f, .wc-cap .wcs-card .x { color: #222; font-size: 13px; }
     @media print {
       #print-area .wcs-sec { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; padding: 10px 12px; margin-bottom: 8px; }
       #print-area .wcs, #print-area .wcs * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1814,7 +1824,10 @@
       const el = document.getElementById(id); if (!el) return;
       try { if (!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
       catch (e) { alert('그림 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
-      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', ignoreElements: x => x.classList && x.classList.contains('wc-shot') });
+      // 그림은 폭을 좁게(3개월: 900px) 고정 → 지출결의에 붙였을 때 거의 줄지 않아 글씨가 잘 보임
+      const capW = wcView === '12' ? null : 900;
+      const canvas = await html2canvas(el, { scale: 2, logging: false, backgroundColor: '#ffffff', ignoreElements: x => x.classList && x.classList.contains('wc-shot'),
+        onclone: d => { const c = d.getElementById(id); if (!c) return; c.classList.add('wc-cap'); c.querySelectorAll('.wcs-sec').forEach(x => x.classList.add('wc-cap')); c.style.width = capW ? capW + 'px' : 'max-content'; } });
       const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
       try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); wcFlash(btn, '✓ 복사됨 — Ctrl+V'); }
       catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `위탁비용배분_${wcYm}_${id}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); wcFlash(btn, '✓ 그림 파일로 받음'); }
