@@ -372,7 +372,7 @@
     }
     const AUTO_N = 7;
     const SUM_RE = /_in$|_use$|sludge_gen|sludge_out|supply_amt/; // 월 합계를 내는 장부 칸 (일 평균은 숫자 칸 모두)
-    // 월 합계·일 평균 모으기: 값이 있는 날만 셈
+    // 월 합계·일 평균 모으기: 값이 있는 날만 셈 (설비검침 사용량은 0인 날 = 쉬는 날도 평균에서 뺌)
     function addAgg(a, k, v) { if (v === null || v === undefined || v === '' || isNaN(v)) return; a[k] = a[k] || { s: 0, n: 0 }; a[k].s += Number(v); a[k].n++; }
     const aggSum = (a, k) => a[k] ? round(a[k].s, 3) : null, aggAvg = (a, k) => a[k] ? round(a[k].s / a[k].n, 3) : null;
 
@@ -406,7 +406,7 @@
         h += `<tr class="${wd === 0 || wd === 6 ? 'weekend' : ''} ${ds === todayStr ? 'today' : ''}"><td class="sticky">${d}일 (${WEEK[wd]})</td>`;
         h += `<td><input type="checkbox" data-d="${ds}" data-k="op" ${r.op === false ? '' : 'checked'}></td>`;
         if (showAuto) {
-          h += autoCells(ds).map(([, v, n, rd], i) => { if (!rd) addAgg(agg, 'auto' + i, v); return `<td class="auto${rd ? ' rd' : ''}">${nf(v, n)}</td>`; }).join('');
+          h += autoCells(ds).map(([, v, n, rd], i) => { if (!rd && v) addAgg(agg, 'auto' + i, v); return `<td class="auto${rd ? ' rd' : ''}">${nf(v, n)}</td>`; }).join('');
         }
         cols.forEach(c => {
           if (c.calc) { const v = ds <= todayStr || WW[ds] ? c.calc(ds) : null; h += `<td class="calc ${v < 0 ? 'neg' : ''}">${nf(v)}</td>`; return; }
@@ -1558,7 +1558,7 @@
       const rows = [h1, h2], agg = {};
       for (let d = 1; d <= n; d++) {
         const ds = `${bookYm}-${pad2(d)}`, wd = new Date(ds + 'T00:00:00').getDay(), r = WW[ds] || {};
-        rows.push([`${ds} (${WEEK[wd]})`, r.op === false ? '휴무' : '조업', ...autoCells(ds).map(([, v, , rd], i) => { if (!rd) addAgg(agg, 'auto' + i, v); return v; }), ...cols.map(c => {
+        rows.push([`${ds} (${WEEK[wd]})`, r.op === false ? '휴무' : '조업', ...autoCells(ds).map(([, v, , rd], i) => { if (!rd && v) addAgg(agg, 'auto' + i, v); return v; }), ...cols.map(c => {
           if (c.calc) return ds <= todayStr || WW[ds] ? (c.calc(ds) ?? null) : null;
           const v = r[c.k]; if (c.text) return v ? String(v) : null; if (v === null || v === undefined || v === '') return null;
           addAgg(agg, c.k, v); return Number(v); })]);
