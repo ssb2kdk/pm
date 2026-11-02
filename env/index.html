@@ -1640,13 +1640,13 @@
     //  44번 SQL ww_contract. 2공장 % = 반올림(2공장 ÷ 합계 × 100), 1공장 % = 100 − 2공장 % (엑셀 장표와 같음)
     //  공장별 항목 = 계약 항목 금액 × 공장 % (+ 그 공장 추가 비용)
     let WC = {}, WCV = {}, wcYm = null, wcDirty = false;
-    // 보기 선택 (이 PC에만 기억): 비교 칸 = 전월대비(prev) / 전년동월대비(yoy), 표 = 3개월(3) / 1년 전체(12)
+    // 보기 선택 (이 PC에만 기억): 비교 칸 = 전월대비(prev) / 전년동월대비(yoy) / 둘 다(both), 표 = 3개월(3) / 1년 전체(12)
     const wcPref = (k, d) => { try { return localStorage.getItem('wc_' + k) || d; } catch (e) { return d; } };
     let wcCmp = wcPref('cmp', 'prev'), wcView = wcPref('view', '3');
     function wcSet(k, v) { if (k === 'cmp') wcCmp = v; else wcView = v; try { localStorage.setItem('wc_' + k, v); } catch (e) { } wcInput(true); wcSegs(); }
     function wcSegs() {
       const seg = (k, cur, opts) => `<span class="seg">${opts.map(([v, n]) => `<button class="${v === cur ? 'on' : ''}" onclick="wcSet('${k}','${v}')">${n}</button>`).join('')}</span>`;
-      const el = document.getElementById('wc-segs'); if (el) el.innerHTML = seg('view', wcView, [['3', '3개월'], ['12', '1년 전체']]) + ' ' + seg('cmp', wcCmp, [['prev', '전월대비'], ['yoy', '전년동월대비']]);
+      const el = document.getElementById('wc-segs'); if (el) el.innerHTML = seg('view', wcView, [['3', '3개월'], ['12', '1년 전체']]) + ' ' + seg('cmp', wcCmp, [['prev', '전월대비'], ['yoy', '전년동월대비'], ['both', '둘 다']]);
       const w = document.querySelector('.wc-wrap'); if (w) w.classList.toggle('wide', wcView === '12');
     }
     const WC_ITEMS = [ // [키, 묶음, 계약 칸 이름, 추가 칸 키, 추가 칸 이름, 기본 금액]
@@ -1742,12 +1742,12 @@
       if (!c) return `<div class="wcs-sec"><div class="hint">${ymKo(ym)} 1공장·2공장 배출량을 넣으면 배분 장표가 만들어집니다.</div></div>`;
       const yr = ym.slice(0, 4), ms = wcView === '12' ? Array.from({ length: 12 }, (_, i) => `${yr}-${pad2(i + 1)}`) : [ymShift(ym, -2), ymShift(ym, -1), ym];
       const C = Object.fromEntries(ms.map(m => [m, m <= ym ? wcCalc(m) : null]));
-      const cmpYm = ymShift(ym, wcCmp === 'yoy' ? -12 : -1), cmpN = wcCmp === 'yoy' ? '전년동월대비' : '전월대비', pv = wcCalc(cmpYm);
+      const CMP = (wcCmp === 'both' ? ['prev', 'yoy'] : [wcCmp === 'yoy' ? 'yoy' : 'prev']).map(k => { const m = ymShift(ym, k === 'yoy' ? -12 : -1); return { m, n: k === 'yoy' ? '전년동월대비' : '전월대비', c: wcCalc(m) }; });
       const yms = Object.keys(WCV).filter(m => m.slice(0, 4) === yr && m <= ym).sort(), Y = yms.map(m => wcCalc(m)).filter(Boolean);
       const accSum = f => Y.reduce((s, x) => s + (f(x) || 0), 0), accAvg = f => Y.length ? accSum(f) / Y.length : null;
       const dcell = (a, b, fmt) => { if (a === null || b === null || a === undefined || b === undefined) return '<td class="n"></td>'; const d = a - b; return `<td class="n ${d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${fmt(d)}</td>`; };
-      const dd = (a, f, fmt) => dcell(a, pv ? f(pv) : null, fmt), short = wcView === '12';
-      const head = (t) => `<thead><tr><th colspan="2">${t}</th>${ms.map(m => `<th class="${m === ym ? 'cur' : ''}">${short ? Number(m.slice(5)) + '월' : ymHead(m)}</th>`).join('')}<th>${yr}년 누계</th><th>${cmpN}<br><span class="s" style="color:#d9f2e8">${pv ? `(${ymHead(cmpYm)} 대비)` : '(기록 없음)'}</span></th></tr></thead>`;
+      const dd = (a, f, fmt) => CMP.map(x => dcell(a, x.c ? f(x.c) : null, fmt)).join(''), short = wcView === '12';
+      const head = (t) => `<thead><tr><th colspan="2">${t}</th>${ms.map(m => `<th class="${m === ym ? 'cur' : ''}">${short ? Number(m.slice(5)) + '월' : ymHead(m)}</th>`).join('')}<th>${yr}년 누계</th>${CMP.map(x => `<th>${x.n}<br><span class="s" style="color:#d9f2e8">${x.c ? `(${ymHead(x.m)} 대비)` : '(기록 없음)'}</span></th>`).join('')}</tr></thead>`;
       const cells = (f, fmt, cls) => ms.map(m => `<td class="n ${m === ym ? 'cur' : ''} ${cls || ''}">${C[m] ? fmt(f(C[m])) : '-'}</td>`).join('');
       const pct = v => v === null || v === undefined ? '-' : (Math.round(v * 10) / 10).toFixed(1) + '%';
       const shot = id => `<button class="wc-shot" onclick="wcShot('${id}', this)">📷 이미지 복사</button>`;
@@ -1769,7 +1769,7 @@
         <tr class="sub"><td class="g" rowspan="3">배출량<br><span class="s">(톤/월)</span></td><td class="l">합계</td>${cells(x => x.tt, wcTon)}<td class="n acc">${wcTon(accSum(x => x.tt))}</td>${dd(c.tt, x => x.tt, wcTon)}</tr>
         <tr class="p1"><td class="l">1공장 <span class="s">${WC_CAP[1]}</span></td>${cells(x => x.t1, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t1))}</td>${dd(c.t1, x => x.t1, wcTon)}</tr>
         <tr class="p2"><td class="l">2공장 <span class="s">${WC_CAP[2]}</span></td>${cells(x => x.t2, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t2))}</td>${dd(c.t2, x => x.t2, wcTon)}</tr>
-        <tr class="sub"><td class="g" rowspan="3">비율<br><span class="s">(%)</span></td><td class="l">합계</td>${cells(() => 100, pct)}<td class="n acc">100.0% <span class="s">평균</span></td><td class="n">${pv ? '0.0%' : ''}</td></tr>
+        <tr class="sub"><td class="g" rowspan="3">비율<br><span class="s">(%)</span></td><td class="l">합계</td>${cells(() => 100, pct)}<td class="n acc">100.0% <span class="s">평균</span></td>${CMP.map(x => `<td class="n">${x.c ? '0.0%' : ''}</td>`).join('')}</tr>
         <tr class="p1"><td class="l">1공장</td>${cells(x => x.p1, pct)}<td class="n acc">${pct(accAvg(x => x.p1))} <span class="s">평균</span></td>${dd(c.p1, x => x.p1, v => pct(v))}</tr>
         <tr class="p2"><td class="l">2공장</td>${cells(x => x.p2, pct)}<td class="n acc">${pct(accAvg(x => x.p2))} <span class="s">평균</span></td>${dd(c.p2, x => x.p2, v => pct(v))}</tr>
         <tr class="sub"><td class="g" rowspan="3">배분 금액<br><span class="s">(원)</span></td><td class="l">합계</td>${cells(x => x.total, wcWon)}<td class="n acc">${wcWon(accAvg(x => x.total))} <span class="s">평균</span></td>${dd(c.total, x => x.total, wcWon)}</tr>
@@ -1782,7 +1782,7 @@
         let t = `<div class="wcs-sec" id="${id}"><div class="wcs-h">${no === 2 ? 3 : 4}. 폐수배출처리시설 위탁운영비용 — ${no}공장 ${shot(id)}<span class="u">단위: 원, VAT 별도</span></div><table class="wct">${head('구 분')}<tbody>`;
         const get = (x, k, f) => x ? x[P].it[k][f] : null;
         WC_ITEMS.forEach(([k, grp, n1, , n2]) => {
-          const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !(pv && get(pv, k, f)) ? '<td class="n"></td>' : dd(get(c, k, f) || 0, x => get(x, k, f) || 0, wcWon)}`;
+          const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !CMP.some(x => x.c && get(x.c, k, f)) ? CMP.map(() => '<td class="n"></td>').join('') : dd(get(c, k, f) || 0, x => get(x, k, f) || 0, wcWon)}`;
           t += `<tr><td class="g" rowspan="3">${grp}</td>${tds(n1, 'base')}</tr><tr>${tds(n2, 'add')}</tr><tr class="sub">${tds('[소 계]', 'sub')}</tr>`;
         });
         t += `<tr class="tot"><td colspan="2" style="text-align:center">[합 계]</td>${cells(x => x[P].sum, wcWon)}<td class="n">${wcWon(accSum(x => x[P].sum))}</td>${dd(c[P].sum, x => x[P].sum, wcWon)}</tr></tbody></table>
