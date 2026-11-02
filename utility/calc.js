@@ -246,20 +246,26 @@
       auto('elec_kwh_mid', Math.round(ds.elec_kwh * md / t * 100) / 100);
       auto('elec_kwh_peak', Math.round(ds.elec_kwh * p / t * 100) / 100);
     }
-    // 폐수동·공조냉동 전력: 설비점검일지 지침 (다음달 1일 − 이달 1일, 1일 값이 없으면 그 전 가장 가까운 날)
+    // 폐수동·공조냉동 전력: 설비점검일지 지침 (다음달 1일 − 이달 1일)
+    //  1일이 휴무라 검침이 없으면 휴무 뒤 첫 검침일(7일 안) 지침을 1일 지침으로 씀 (예전부터 해 온 방식: 8/3 검침까지 7월)
+    //  → 휴무일 사용량은 앞 달로 감. 앞뒤 달이 같은 날 지침을 경계로 쓰므로 겹치거나 비지 않음
+    //  휴무 뒤 검침도 아직 없으면(진행 중인 달) 그 전 가장 가까운 검침값
     {
       const d1 = UT.dateStr(ym, 1), n1 = UT.dateStr(UT.nextYm(ym), 1);
       const md = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
       const notes = [];
       const diff = key => {
-        const a = UT.readingInterp(daily, n1, key), b = UT.readingInterp(daily, d1, key);
+        const at = ds => { const r = daily[ds]; if (r && has(r[key]) && Number(r[key]) > 0) return { v: Number(r[key]), exact: true };
+          for (let i = 1; i <= 7; i++) { const d = addDays(ds, i), x = daily[d]; if (x && has(x[key]) && Number(x[key]) > 0) return { v: Number(x[key]), exact: false, next: d }; }
+          return UT.readingInterp(daily, ds, key); };
+        const a = at(n1), b = at(d1);
         if (!a || !b || a.v < b.v) return null;
         // 어떤 지침으로 계산했는지 항상 보여 줌 (추정 지침은 값과 근거까지 — 다음 달 계산도 같은 값에서 시작)
         const rv = (key, d) => { const r = daily[d]; return r && has(r[key]) ? Number(r[key]) : null; };
         const f2 = v => v.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
-        const tag = r => r.exact ? '' : r.to ? '(추정)' : '(대신 씀)';
+        const tag = r => r.exact ? '' : r.next ? `(${md(r.next)} 검침)` : r.to ? '(추정)' : '(대신 씀)';
         notes.push(`계산: ${md(n1)} 지침 ${f2(a.v)}${tag(a)} − ${md(d1)} 지침 ${f2(b.v)}${tag(b)} = ${f2(a.v - b.v)}`);
-        [[d1, b], [n1, a]].forEach(([d, r]) => { if (!r.exact) notes.push(r.to ? `${md(d)} 검침이 없어 ${md(r.from)} 지침 ${f2(rv(key, r.from))} · ${md(r.to)} 지침 ${f2(rv(key, r.to))} 사이를 날짜 비율(${r.gap}일 중 ${Math.round((new Date(d) - new Date(r.from)) / 864e5)}일)로 나눠 추정 → ${f2(r.v)}${r.gap > 7 ? ' — 검침 간격이 길어 정확도 낮음' : ''}` : `${md(d)} 이후 검침값이 없어 ${md(r.from)} 지침 ${f2(r.v)} 을(를) 대신 씀`); });
+        [[d1, b], [n1, a]].forEach(([d, r]) => { if (!r.exact) notes.push(r.next ? `${md(d)} 검침이 없어(휴무) 그다음 검침일 ${md(r.next)} 지침을 ${md(d)} 지침으로 씀 — 휴무일 사용량은 앞 달에 들어감` : r.to ? `${md(d)} 검침이 없어 ${md(r.from)} 지침 ${f2(rv(key, r.from))} · ${md(r.to)} 지침 ${f2(rv(key, r.to))} 사이를 날짜 비율(${r.gap}일 중 ${Math.round((new Date(d) - new Date(r.from)) / 864e5)}일)로 나눠 추정 → ${f2(r.v)}${r.gap > 7 ? ' — 검침 간격이 길어 정확도 낮음' : ''}` : `${md(d)} 이후 검침값이 없어 ${md(r.from)} 지침 ${f2(r.v)} 을(를) 대신 씀`); });
         return a.v - b.v;
       };
       m._note = m._note || {};
