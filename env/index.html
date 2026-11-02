@@ -173,6 +173,55 @@
     .wfc-box { border: 1.5px solid #333; padding: 8px; background: #fff; } .wfc-box.c { text-align: center; } .wfc-box table { width: 100%; margin-top: 4px; font-size: 12px; } .wfc-box td { padding: 1px 2px; } .wfc-box td:nth-child(2) { text-align: right; }
     .wfc-box tr.nw td { color: #c62828; font-weight: 700; }
     @media (max-width: 860px) { .wfc { grid-template-columns: 1fr; } }
+    /* 위탁비용 배분 */
+    .wc-wrap { display: grid; grid-template-columns: 330px 1fr; gap: 14px; align-items: start; }
+    @media (max-width: 1000px) { .wc-wrap { grid-template-columns: 1fr; } }
+    .wc-wrap > * { min-width: 0; } .wcs-sec { overflow-x: auto; } .wc-in th { white-space: nowrap; }
+    @media (max-width: 600px) { .wcs-kv { grid-template-columns: 1fr; } .wcs-cards { grid-template-columns: 1fr; } .wcs-h { flex-wrap: wrap; } }
+    .wc-in h3 { font-size: 14px; margin: 0 0 10px; color: #1D7A5C; }
+    .wc-in .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+    .wc-in .field { margin-bottom: 8px; } .wc-in .field input { text-align: right; }
+    .wc-in .sub { font-size: 12px; font-weight: bold; color: #555; margin: 12px 0 6px; border-top: 1px solid #eee; padding-top: 10px; }
+    .wc-in table { width: 100%; border-collapse: collapse; font-size: 12px; } .wc-in td, .wc-in th { padding: 2px; } .wc-in th { color: #666; font-weight: normal; text-align: left; }
+    .wc-in table input { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 5px; text-align: right; font-size: 12px; }
+    .wc-in .dirty { color: #d97706; font-size: 12px; font-weight: bold; }
+    .wcs { background: #fff; color: #222; font-family: 'Malgun Gothic', sans-serif; }
+    .wcs-sec { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 16px 18px; margin-bottom: 14px; }
+    .wcs-h { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: bold; color: #134e3a; border-left: 5px solid #1D9E75; padding-left: 8px; margin-bottom: 12px; }
+    .wcs-h .u { margin-left: auto; font-size: 11px; color: #888; font-weight: normal; }
+    .wc-shot { border: 1px solid #b7d9cb; background: #f2faf6; color: #1D7A5C; border-radius: 5px; padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: normal; }
+    .wcs-title { font-size: 18px; font-weight: bold; text-align: center; margin: 2px 0 14px; color: #111; }
+    .wcs-kv { display: grid; grid-template-columns: 210px 1fr; border-top: 2px solid #1D9E75; font-size: 14px; }
+    .wcs-kv > div { padding: 9px 10px; border-bottom: 1px solid #e3e6ea; } .wcs-kv .k { background: #f2faf6; font-weight: 600; color: #134e3a; } .wcs-kv .v b { font-size: 17px; }
+    .wcs-bar { display: flex; height: 30px; border-radius: 6px; overflow: hidden; margin: 12px 0 4px; font-size: 13px; font-weight: bold; color: #fff; }
+    .wcs-bar > div { display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; }
+    .wcs-bar .p1 { background: #2a78d6; } .wcs-bar .p2 { background: #e8833a; }
+    .wcs-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .wcs-card { border-radius: 8px; padding: 12px 14px; border: 2px solid; }
+    .wcs-card.p2 { border-color: #e8833a; background: #fff6ee; } .wcs-card.p1 { border-color: #2a78d6; background: #f0f6fe; }
+    .wcs-card .n { font-size: 13px; font-weight: bold; } .wcs-card.p2 .n { color: #b85a12; } .wcs-card.p1 .n { color: #1b56a0; }
+    .wcs-card .f { font-size: 12px; color: #555; margin-top: 4px; }
+    .wcs-card .a { font-size: 24px; font-weight: 800; margin-top: 2px; color: #111; } .wcs-card .a small { font-size: 13px; font-weight: normal; }
+    .wcs-card .x { font-size: 11px; color: #555; margin-top: 3px; }
+    table.wct { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.wct th, table.wct td { border: 1px solid #cfd8d4; padding: 6px 8px; }
+    table.wct thead th { background: #1D9E75; color: #fff; font-weight: 600; text-align: center; }
+    table.wct thead th.cur { background: #134e3a; }
+    table.wct td.l { text-align: left; white-space: nowrap; } table.wct td.g { background: #f2faf6; font-weight: bold; color: #134e3a; text-align: center; white-space: nowrap; }
+    table.wct td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    table.wct td.cur { background: #fffbe6; font-weight: bold; }
+    table.wct td.acc { background: #f7f8f9; }
+    table.wct tr.sub td { background: #eef3f1; font-weight: bold; } table.wct tr.sub td.cur { background: #fff3c4; }
+    table.wct tr.tot td { background: #134e3a; color: #fff; font-weight: bold; } table.wct tr.tot td.cur { background: #0d3b2b; }
+    table.wct tr.p2 td.l { color: #b85a12; font-weight: bold; } table.wct tr.p1 td.l { color: #1b56a0; font-weight: bold; }
+    table.wct td.neg { color: #d93025; } table.wct tr.tot td.neg { color: #ffb4ab; }
+    table.wct .s { font-size: 10.5px; color: #888; font-weight: normal; }
+    .wcs-note { font-size: 11px; color: #777; margin-top: 6px; line-height: 1.6; }
+    @media print {
+      #print-area .wcs-sec { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; padding: 10px 12px; margin-bottom: 8px; }
+      #print-area .wcs, #print-area .wcs * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      #print-area .wc-shot { display: none; }
+    }
 </style>
 </head>
 <body>
@@ -186,6 +235,7 @@
         <button class="tab-btn" data-tab="chem" onclick="showTab('chem')">약품 월별</button>
         <button class="tab-btn" data-tab="wq" onclick="showTab('wq')">수질 측정</button>
         <button class="tab-btn" data-tab="wwn" onclick="showTab('wwn')">폐수장 특이사항</button>
+        <button class="tab-btn admin" data-tab="wc" onclick="showTab('wc')" hidden>위탁비용 배분</button>
         <button class="tab-btn setv" data-tab="set" onclick="showTab('set')">설정</button>
       </div>
     </div>
@@ -234,6 +284,7 @@
       <div id="tab-chem" class="tab"><div id="chem-body"><div class="loading">불러오는 중...</div></div></div>
       <div id="tab-wq" class="tab"><div id="wq-body"><div class="loading">불러오는 중...</div></div></div>
       <div id="tab-wwn" class="tab"><div id="wwn-body"><div class="loading">불러오는 중...</div></div></div>
+      <div id="tab-wc" class="tab"><div id="wc-body"><div class="loading">불러오는 중...</div></div></div>
 
       <!-- ============ 설정 ============ -->
       <div id="tab-set" class="tab">
@@ -328,6 +379,7 @@
       if (t === 'book') renderBook();
       if (t === 'wq') renderWq();
       if (t === 'wwn') renderWwn();
+      if (t === 'wc') renderWc();
       if (t === 'chem') renderChem();
     }
 
@@ -1582,6 +1634,174 @@
       const r = await sb.from('env_settings').upsert({ key: 'env', value: v }, { onConflict: 'key' }); if (r.error) return alert('저장 실패: ' + errMsg(r.error));
       SET = v; calcBalances(); renderChem();
     }
+
+    // ---------------- 위탁비용 배분 (폐수처리 위탁비용 1공장·2공장, 관리자만) ----------------
+    //  44번 SQL ww_contract. 2공장 % = 반올림(2공장 ÷ 합계 × 100), 1공장 % = 100 − 2공장 % (엑셀 장표와 같음)
+    //  공장별 항목 = 계약 항목 금액 × 공장 % (+ 그 공장 추가 비용)
+    let WC = {}, WCV = {}, wcYm = null, wcDirty = false;
+    const WC_ITEMS = [ // [키, 묶음, 계약 칸 이름, 추가 칸 키, 추가 칸 이름, 기본 금액]
+      ['labor', '인건비', '인건비', 'holiday', '휴일 수당', 4780000],
+      ['chem', '약품비', '계약_약품비', 'chem_add', '추가_약품비', 3670000],
+      ['anal', '분석비', '계약_측정비', 'anal_add', '추가_측정비', 670000],
+      ['fee', '운영수수료', '계약_제경비', 'maint', '유지보수비', 880000]];
+    const WC_CAP = { 1: '180톤/일', 2: '150톤/일' };
+    const wcWon = v => v === null || v === undefined || isNaN(v) ? '-' : Math.round(v).toLocaleString('ko-KR');
+    const wcTon = v => v === null || v === undefined || isNaN(v) ? '-' : Number(v).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+    const ymShift = (ym, n) => { const [y, m] = ym.split('-').map(Number), d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; };
+    const ymKo = ym => `${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월`;
+    const ymHead = ym => `${ym.slice(0, 4)}년${ym.slice(5)}월`;
+    async function loadWc() { const { data, error } = await sb.from('ww_contract').select('*').order('ym'); if (error) throw error; WC = {}; (data || []).forEach(r => { WC[r.ym] = r; }); WCV = { ...WC }; }
+    // 계약 항목 금액: 그 달 값 → 없으면 그 전 가장 가까운 달 값 → 기본값
+    function wcAmt(src, ym, k) { for (const x of Object.keys(src).filter(x => x <= ym).sort().reverse()) { const v = num(src[x][k]); if (v !== null) return v; } return WC_ITEMS.find(i => i[0] === k)[5]; }
+    function wcCalc(ym, src = WCV) {
+      const r = src[ym]; if (!r) return null;
+      const t1 = num(r.t1), t2 = num(r.t2); if (t1 === null || t2 === null || t1 + t2 <= 0) return null;
+      const p2 = Math.round(t2 / (t1 + t2) * 100), p1 = 100 - p2;
+      const amt = Object.fromEntries(WC_ITEMS.map(([k]) => [k, wcAmt(src, ym, k)]));
+      const total = WC_ITEMS.reduce((s, [k]) => s + amt[k], 0);
+      const plant = (p, pre) => {
+        const it = Object.fromEntries(WC_ITEMS.map(([k, , , ek]) => { const base = Math.round(amt[k] * p / 100), add = num(r[`${pre}_${ek}`]); return [k, { base, add, sub: base + (add || 0) }]; }));
+        const base = Object.values(it).reduce((s, x) => s + x.base, 0), sum = Object.values(it).reduce((s, x) => s + x.sub, 0);
+        return { p, it, base, add: sum - base, sum };
+      };
+      return { ym, t1, t2, tt: t1 + t2, p1, p2, amt, total, P1: plant(p1, 'p1'), P2: plant(p2, 'p2') };
+    }
+    // 설비검침 폐수방류량 그 달 사용량 (1일 지침 ~ 다음달 1일 지침, 참고용)
+    function wcMeterFlow(ym) { const a = firstOnAfter(`${ym}-01`, g('폐수방류량'), false), b = firstOnAfter(`${ymShift(ym, 1)}-01`, g('폐수방류량'), false); return a && b && b.v >= a.v ? round(b.v - a.v, 1) : null; }
+
+    async function renderWc() {
+      const el = document.getElementById('wc-body');
+      try { await loadWc(); } catch (e) { el.innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 44번 SQL(44_ww_contract.sql)을 실행해 주세요.</div>`; return; }
+      if (!wcYm) { const last = Object.keys(WC).sort().pop(), pm = ymShift(todayStr.slice(0, 7), -1); wcYm = last && last > pm ? last : pm; }
+      try { await loadMeter(`${wcYm}-01`, `${ymShift(wcYm, 1)}-01`); } catch (e) { }
+      wcDirty = false;
+      const r = WC[wcYm] || {}, mf = wcMeterFlow(wcYm), inp = (id, v, ph) => `<input type="number" step="any" id="${id}" value="${v ?? ''}" placeholder="${ph ?? ''}">`;
+      el.innerHTML = `<div class="toolbar">
+          <div class="month-nav"><button onclick="wcGo(-1)">◀</button><span>${ymKo(wcYm)}</span><button onclick="wcGo(1)">▶</button></div>
+          <button class="btn small" onclick="wcCopyText(this)">📋 지출결의 문구 복사</button>
+          <button class="btn small" onclick="wcShot('wcs-all', this)">📷 전체 이미지 복사</button>
+          <button class="btn small secondary" onclick="wcPrint()">🖨 인쇄·PDF</button>
+          <span class="hint">각 표 오른쪽 위 「📷 이미지 복사」 → 지출결의에 Ctrl+V 로 붙여넣기</span></div>
+        <div class="wc-wrap">
+          <div class="card wc-in">
+            <h3>${ymKo(wcYm)} 입력 <span class="dirty" id="wc-dirty" hidden>· 저장 안 됨</span></h3>
+            <div class="sub" style="border:0;padding:0;margin-top:0">폐수 월 배출량 (톤) — 대행업체 청구 기준</div>
+            <div class="g2"><div class="field"><label>1공장</label>${inp('wc-t1', r.t1)}</div><div class="field"><label>2공장</label>${inp('wc-t2', r.t2)}</div></div>
+            <div class="hint">참고: 설비검침 폐수방류량 ${ymKo(wcYm)} = <b>${mf === null ? '검침 없음' : wcTon(mf) + ' 톤'}</b>${mf !== null ? ` <button class="wc-shot" onclick="document.getElementById('wc-t2').value=${mf};wcInput()">2공장에 넣기</button>` : ''}</div>
+            <div class="sub">계약 금액 (1공장+2공장, 원/월) <span class="hint" style="font-weight:normal">— 바뀐 달만 고치면 다음 달부터 이어짐</span></div>
+            <div class="g2">${WC_ITEMS.map(([k, n]) => `<div class="field"><label>${n}</label>${inp('wc-' + k, num(r[k]) ?? wcAmt(WC, wcYm, k))}</div>`).join('')}</div>
+            <div class="hint" id="wc-amt-sum"></div>
+            <div class="sub">추가 비용 (청구서에 있을 때만, 원)</div>
+            <table><tr><th></th>${WC_ITEMS.map(i => `<th>${i[4]}</th>`).join('')}</tr>
+              ${[1, 2].map(p => `<tr><th>${p}공장</th>${WC_ITEMS.map(i => `<td>${inp(`wc-p${p}_${i[3]}`, r[`p${p}_${i[3]}`])}</td>`).join('')}</tr>`).join('')}</table>
+            <div class="field" style="margin-top:10px"><label>비고</label><input type="text" id="wc-note" value="${esc(r.note || '')}" style="text-align:left"></div>
+            <button class="btn" style="width:100%" onclick="wcSave()">✓ 저장</button>
+            <div class="hint" style="margin-top:6px">배분 비율: 2공장 % = 반올림(2공장 ÷ 합계 × 100), 1공장 % = 100 − 2공장 %<br>공장별 항목 금액 = 계약 항목 금액 × 공장 % (+ 추가 비용)</div>
+          </div>
+          <div id="wcs-all" class="wcs"></div>
+        </div>`;
+      el.querySelectorAll('.wc-in input').forEach(x => x.addEventListener('input', wcInput));
+      wcInput(true);
+    }
+    function wcForm() {
+      const v = id => { const x = document.getElementById(id); return x ? num(x.value) : null; }, o = { ym: wcYm, t1: v('wc-t1'), t2: v('wc-t2'), note: (document.getElementById('wc-note').value || '').trim() };
+      WC_ITEMS.forEach(([k, , , ek]) => { o[k] = v('wc-' + k); o['p1_' + ek] = v('wc-p1_' + ek); o['p2_' + ek] = v('wc-p2_' + ek); });
+      return o;
+    }
+    function wcInput(first) {
+      const o = wcForm(); WCV = { ...WC, [wcYm]: o };
+      if (first !== true) { wcDirty = true; document.getElementById('wc-dirty').hidden = false; }
+      document.getElementById('wc-amt-sum').innerHTML = `계약 합계 <b>${wcWon(WC_ITEMS.reduce((s, [k]) => s + (o[k] || 0), 0))} 원</b>`;
+      document.getElementById('wcs-all').innerHTML = wcSheet(wcYm);
+    }
+    function wcGo(n) { if (wcDirty && !confirm('저장하지 않은 내용이 있습니다. 저장하지 않고 이동할까요?')) return; wcYm = ymShift(wcYm, n); renderWc(); }
+    async function wcSave() {
+      const o = wcForm(); if (o.t1 === null || o.t2 === null) return alert('1공장·2공장 배출량을 넣어 주세요.');
+      const { error } = await sb.from('ww_contract').upsert({ ...o, updated_at: new Date().toISOString() }, { onConflict: 'ym' });
+      if (error) return alert('저장 실패: ' + errMsg(error));
+      await renderWc();
+    }
+
+    // 장표 (화면·인쇄·이미지 공통)
+    function wcSheet(ym) {
+      const c = wcCalc(ym);
+      if (!c) return `<div class="wcs-sec"><div class="hint">${ymKo(ym)} 1공장·2공장 배출량을 넣으면 배분 장표가 만들어집니다.</div></div>`;
+      const ms = [ymShift(ym, -2), ymShift(ym, -1), ym], C = Object.fromEntries(ms.map(m => [m, wcCalc(m)])), pv = C[ms[1]];
+      const yr = ym.slice(0, 4), yms = Object.keys(WCV).filter(m => m.slice(0, 4) === yr && m <= ym).sort(), Y = yms.map(m => wcCalc(m)).filter(Boolean);
+      const accSum = f => Y.reduce((s, x) => s + (f(x) || 0), 0), accAvg = f => Y.length ? accSum(f) / Y.length : null;
+      const dcell = (a, b, fmt) => { if (a === null || b === null || a === undefined || b === undefined) return '<td class="n"></td>'; const d = a - b; return `<td class="n ${d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${fmt(d)}</td>`; };
+      const head = (t) => `<thead><tr><th colspan="2">${t}</th>${ms.map(m => `<th class="${m === ym ? 'cur' : ''}">${ymHead(m)}</th>`).join('')}<th>${yr}년 누계</th><th>전월대비</th></tr></thead>`;
+      const cells = (f, fmt, cls) => ms.map(m => `<td class="n ${m === ym ? 'cur' : ''} ${cls || ''}">${C[m] ? fmt(f(C[m])) : '-'}</td>`).join('');
+      const pct = v => v === null || v === undefined ? '-' : (Math.round(v * 10) / 10).toFixed(1) + '%';
+      const shot = id => `<button class="wc-shot" onclick="wcShot('${id}', this)">📷 이미지 복사</button>`;
+
+      // 1. 요약
+      let h = `<div class="wcs-sec" id="wcs-1"><div class="wcs-h">1. 폐수처리 위탁비용 배분 — ${ymKo(ym)} ${shot('wcs-1')}<span class="u">단위: 원, VAT 별도</span></div>
+        <div class="wcs-kv">
+          <div class="k">위탁 계약비용 (1공장+2공장)</div><div class="v"><b>${wcWon(c.total)}</b> 원/월</div>
+          <div class="k">배분 기준</div><div class="v">폐수 월 배출량 <b>${wcTon(c.tt)}</b> 톤 (1공장+2공장)</div>
+        </div>
+        <div class="wcs-bar"><div class="p1" style="width:${c.p1}%">1공장 ${wcTon(c.t1)}톤 · ${c.p1}%</div><div class="p2" style="width:${c.p2}%">2공장 ${wcTon(c.t2)}톤 · ${c.p2}%</div></div>
+        <div class="wcs-cards">
+          <div class="wcs-card p2"><div class="n">2공장 위탁비용</div><div class="f">${wcWon(c.total)}원 × ${c.p2}%</div><div class="a">${wcWon(c.P2.sum)} <small>원</small></div>${c.P2.add ? `<div class="x">배분액 ${wcWon(c.P2.base)} + 추가 비용 ${wcWon(c.P2.add)}</div>` : ''}</div>
+          <div class="wcs-card p1"><div class="n">1공장 위탁비용</div><div class="f">${wcWon(c.total)}원 × ${c.p1}%</div><div class="a">${wcWon(c.P1.sum)} <small>원</small></div>${c.P1.add ? `<div class="x">배분액 ${wcWon(c.P1.base)} + 추가 비용 ${wcWon(c.P1.add)}</div>` : ''}</div>
+        </div>${WCV[ym] && WCV[ym].note ? `<div class="wcs-note">비고: ${esc(WCV[ym].note)}</div>` : ''}</div>`;
+
+      // 2. 공장별 배출량 비율
+      h += `<div class="wcs-sec" id="wcs-2"><div class="wcs-h">2. 폐수배출처리시설 공장별 배출량 비율 ${shot('wcs-2')}<span class="u">※ 1공장·2공장 월 배출량 합계 비율로 위탁비용 배분</span></div><table class="wct">${head('구 분')}<tbody>
+        <tr class="sub"><td class="g" rowspan="3">배출량<br><span class="s">(톤/월)</span></td><td class="l">합계</td>${cells(x => x.tt, wcTon)}<td class="n acc">${wcTon(accSum(x => x.tt))}</td>${dcell(c.tt, pv && pv.tt, wcTon)}</tr>
+        <tr class="p1"><td class="l">1공장 <span class="s">${WC_CAP[1]}</span></td>${cells(x => x.t1, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t1))}</td>${dcell(c.t1, pv && pv.t1, wcTon)}</tr>
+        <tr class="p2"><td class="l">2공장 <span class="s">${WC_CAP[2]}</span></td>${cells(x => x.t2, wcTon)}<td class="n acc">${wcTon(accSum(x => x.t2))}</td>${dcell(c.t2, pv && pv.t2, wcTon)}</tr>
+        <tr class="sub"><td class="g" rowspan="3">비율<br><span class="s">(%)</span></td><td class="l">합계</td>${cells(() => 100, pct)}<td class="n acc">100.0% <span class="s">평균</span></td><td class="n">0.0%</td></tr>
+        <tr class="p1"><td class="l">1공장</td>${cells(x => x.p1, pct)}<td class="n acc">${pct(accAvg(x => x.p1))} <span class="s">평균</span></td>${dcell(c.p1, pv && pv.p1, v => pct(v))}</tr>
+        <tr class="p2"><td class="l">2공장</td>${cells(x => x.p2, pct)}<td class="n acc">${pct(accAvg(x => x.p2))} <span class="s">평균</span></td>${dcell(c.p2, pv && pv.p2, v => pct(v))}</tr>
+        <tr class="sub"><td class="g" rowspan="3">배분 금액<br><span class="s">(원)</span></td><td class="l">합계</td>${cells(x => x.total, wcWon)}<td class="n acc">${wcWon(accAvg(x => x.total))} <span class="s">평균</span></td>${dcell(c.total, pv && pv.total, wcWon)}</tr>
+        <tr class="p1"><td class="l">1공장</td>${cells(x => x.P1.base, wcWon)}<td class="n acc">${wcWon(accAvg(x => x.P1.base))} <span class="s">평균</span></td>${dcell(c.P1.base, pv && pv.P1.base, wcWon)}</tr>
+        <tr class="p2"><td class="l">2공장</td>${cells(x => x.P2.base, wcWon)}<td class="n acc">${wcWon(accAvg(x => x.P2.base))} <span class="s">평균</span></td>${dcell(c.P2.base, pv && pv.P2.base, wcWon)}</tr>
+        </tbody></table></div>`;
+
+      // 3·4. 공장별 위탁운영비용 세부
+      const plant = (no, P, id) => {
+        let t = `<div class="wcs-sec" id="${id}"><div class="wcs-h">${no === 2 ? 3 : 4}. 폐수배출처리시설 위탁운영비용 — ${no}공장 ${shot(id)}<span class="u">단위: 원, VAT 별도</span></div><table class="wct">${head('구 분')}<tbody>`;
+        const get = (x, k, f) => x ? x[P].it[k][f] : null;
+        WC_ITEMS.forEach(([k, grp, n1, , n2]) => {
+          const tds = (n, f) => `<td class="l">${n}</td>${cells(x => get(x, k, f), v => v === null || v === undefined ? '' : wcWon(v))}<td class="n acc">${f === 'add' && !Y.some(x => get(x, k, f)) ? '' : wcWon(accSum(x => get(x, k, f)))}</td>${f === 'add' && !get(c, k, f) && !(pv && get(pv, k, f)) ? '<td class="n"></td>' : dcell(get(c, k, f) || 0, pv ? get(pv, k, f) || 0 : null, wcWon)}`;
+          t += `<tr><td class="g" rowspan="3">${grp}</td>${tds(n1, 'base')}</tr><tr>${tds(n2, 'add')}</tr><tr class="sub">${tds('[소 계]', 'sub')}</tr>`;
+        });
+        t += `<tr class="tot"><td colspan="2" style="text-align:center">[합 계]</td>${cells(x => x[P].sum, wcWon)}<td class="n">${wcWon(accSum(x => x[P].sum))}</td>${dcell(c[P].sum, pv && pv[P].sum, wcWon)}</tr></tbody></table>
+          <div class="wcs-note">${no}공장 항목 금액 = 계약 항목 금액 × ${no}공장 비율 (${ymKo(ym)} ${c['p' + no]}%) · 계약 금액: 인건비 ${wcWon(c.amt.labor)} · 약품비 ${wcWon(c.amt.chem)} · 분석비 ${wcWon(c.amt.anal)} · 운영수수료 ${wcWon(c.amt.fee)}</div></div>`;
+        return t;
+      };
+      h += plant(2, 'P2', 'wcs-3') + plant(1, 'P1', 'wcs-4');
+      return `<div class="wcs-title">폐수배출처리시설 위탁비용 배분 내역 (${ymKo(ym)})</div>` + h;
+    }
+    function wcText() {
+      const c = wcCalc(wcYm); if (!c) return null;
+      const add = (P, n) => P.add ? ` + 추가 비용 ${wcWon(P.add)}원 = ${wcWon(P.sum)}원` : '';
+      return [`1. 폐수처리 위탁 계약비용 1공장+2공장 = ${wcWon(c.total)}원/월`,
+        `2. 금액 배분 기준 : 폐수 월 배출량 = ${wcTon(c.tt)}톤(1공장+2공장)`,
+        `  가. 1공장 = ${wcTon(c.t1)}톤(${c.p1}%)`,
+        `  나. 2공장 = ${wcTon(c.t2)}톤(${c.p2}%)`,
+        `3. 2공장 위탁 비용 : ${wcWon(c.total)}원 × ${c.p2}% = ${wcWon(c.P2.base)}원${add(c.P2)}`,
+        `4. 1공장 위탁 비용 : ${wcWon(c.total)}원 × ${c.p1}% = ${wcWon(c.P1.base)}원${add(c.P1)}`].join('\n');
+    }
+    async function wcCopyText(btn) {
+      const t = wcText(); if (!t) return alert('배출량을 먼저 넣어 주세요.');
+      try { await navigator.clipboard.writeText(t); wcFlash(btn, '✓ 복사됨 — 지출결의에 Ctrl+V'); }
+      catch (e) { prompt('아래 문구를 복사(Ctrl+C)하세요.', t.replace(/\n/g, ' / ')); }
+    }
+    function wcFlash(btn, msg) { if (!btn) return; const o = btn.textContent; btn.textContent = msg; btn.disabled = true; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 2500); }
+    // 표를 그림으로 → 클립보드 (안 되면 PNG 파일로 받기)
+    async function wcShot(id, btn) {
+      const el = document.getElementById(id); if (!el) return;
+      try { if (!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
+      catch (e) { alert('그림 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', ignoreElements: x => x.classList && x.classList.contains('wc-shot') });
+      const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); wcFlash(btn, '✓ 복사됨 — Ctrl+V'); }
+      catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `위탁비용배분_${wcYm}_${id}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); wcFlash(btn, '✓ 그림 파일로 받음'); }
+    }
+    function wcPrint() { document.getElementById('print-area').innerHTML = `<div class="wcs">${wcSheet(wcYm)}</div>`; window.print(); setTimeout(() => { document.getElementById('print-area').innerHTML = ''; }, 500); }
 
     // ---------------- 시작 ----------------
     Portal.start({
