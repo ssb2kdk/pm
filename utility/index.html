@@ -320,8 +320,8 @@
         <span class="nav-step an-only">3단계</span>
         <button class="tab-btn" data-tab="target">목표·예산</button>
         <button class="tab-btn" data-tab="monthly">월간입력</button>
-        <button class="tab-btn" data-tab="report">회계보고</button>
-        <button class="tab-btn" data-tab="close">회계 가마감</button>
+        <button class="tab-btn" data-tab="report">회계 가마감</button>
+        <button class="tab-btn" data-tab="close">회계 마감</button>
         <button class="tab-btn" data-tab="brief">월간보고서</button>
         <span class="nav-step an-only">참고</span>
         <button class="tab-btn" data-tab="period">지표 분석</button>
@@ -524,25 +524,25 @@
         <div id="ex-body"></div>
       </div>
 
-      <!-- ================= 회계보고 ================= -->
+      <!-- ================= 회계 가마감 (예전 회계보고) ================= -->
       <div id="tab-report" class="tab">
         <div class="toolbar no-print">
           <div class="month-nav"><button onclick="shiftReportMonth(-1)">◀</button><span id="report-month"></span><button onclick="shiftReportMonth(1)">▶</button></div>
           <button class="btn" onclick="downloadReport()">📥 엑셀 다운로드</button>
           <button class="btn" onclick="downloadBasis()">📑 가마감 근거 엑셀</button>
+          <button class="btn" onclick="downloadGm()" title="그동안 회계에 넣은 가마감 금액·사용량 전체 (전기·가스·용수·폐수 시트)">📥 가마감 내역 엑셀</button>
           <button class="btn secondary" onclick="window.print()">🖨 인쇄</button>
           <button class="btn secondary" onclick="reportShot(this)">📷 이미지 복사</button>
         </div>
         <div class="card" id="report-body"><div class="loading">불러오는 중...</div></div>
       </div>
 
-      <!-- ================= 회계 가마감 (전표: 전월 실제 + 전월 추정 빼기 + 당월 추정) ================= -->
+      <!-- ================= 회계 마감 (전표: 전월 실제 + 전월 추정 빼기 + 당월 추정) ================= -->
       <div id="tab-close" class="tab">
         <div class="toolbar no-print">
           <div class="month-nav"><button onclick="shiftCloseMonth(-1)">◀</button><span id="close-month"></span><button onclick="shiftCloseMonth(1)">▶</button></div>
           <button class="btn" onclick="saveClose()" id="close-save">✓ 마감 저장</button>
           <button class="btn secondary" onclick="downloadClose()">📥 엑셀 다운로드</button>
-          <button class="btn secondary" onclick="downloadGm()" title="그동안 회계에 넣은 가마감 금액·사용량 전체 (전기·가스·용수·폐수 시트)">📥 가마감 내역 엑셀</button>
           <button class="btn secondary" onclick="closeShot(this)">📷 이미지 복사</button>
           <button class="btn secondary" onclick="window.print()">🖨 인쇄</button>
         </div>
@@ -3104,7 +3104,7 @@
       const ww = s.ww; if (ww && ww.usage !== null) o.ww = { total: ww.cost, fac: ww.facility, imp: ww.improve, usage: ww.usage, flow: ww.flow, sewage: ww.sewage, price: ww.cost && ww.usage ? ww.cost / ww.usage : null };
       return o;
     }
-    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
+    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; if (all[ym] && !/^시스템/.test(all[ym].src || '')) return; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
     async function downloadGm() {
       try { await ensureXLSX(); } catch (e) { alert(errMsg(e)); return; }
       const all = { ...gmAll() }, live = [];
@@ -3132,11 +3132,30 @@
       });
       XLSX.writeFile(wb, `유틸리티_가마감내역_${todayStr.replace(/-/g, '')}.xlsx`);
     }
+    // 회계 가마감 (예전 「회계보고」): 고지서 금액 없이 가마감 금액만 — 그 달 가마감 기록(gm, 엑셀·마감 저장) 우선, 없으면 지금 계산값
+    const gmOf = ym => { const x = gmAll()[ym]; return x ? { x, live: false } : { x: gmSnap(ym), live: true }; };
+    // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
+    function gmRowsFor(ym) {
+      const { x, live } = gmOf(ym), e = x.e, g = x.g, w4 = x.w40, w5 = x.w50, ww = x.ww, st = live && FC(ym) ? '예측' : '가마감', N = v => typeof v === 'number' && isFinite(v) ? v : null;
+      const R = [], sm = (...a) => a.some(v => N(v) !== null) ? a.reduce((s, v) => s + (N(v) || 0), 0) : null;
+      if (e) { R.push(['전기', '', N(e.kwh), 'kWh', N(e.exvat), N(e.total), st], ['', '전기요금계 (부가세 제외)', null, '', N(e.sub), sm(e.sub, e.vat), ''], ['', '전력기금', null, '', N(e.fund), N(e.fund), '']); if (e.late) R.push(['', '연체료', null, '', e.late, e.late, '']); }
+      else R.push(['전기', '', null, 'kWh', null, null, '']);
+      if (g) { R.push(['가스', '', sm(g.b_m3, g.r_m3), '㎥', N(g.exvat), N(g.total), st]);
+        if (g.b_total !== null && g.b_total !== undefined) R.push(['', '보일러', N(g.b_m3), '㎥', sm(g.b_cost, g.b_fee), N(g.b_total), '']);
+        if (g.r_total !== null && g.r_total !== undefined) R.push(['', '식당', N(g.r_m3), '㎥', sm(g.r_cost, g.r_fee), N(g.r_total), '']); }
+      else R.push(['가스', '', null, '㎥', null, null, '']);
+      const wt = sm(w4 && w4.total, w5 && w5.total);
+      R.push(['용수', '', sm(w4 && w4.usage, w5 && w5.usage), '㎥', wt, wt, wt === null ? '' : st], ['', '40A', w4 ? N(w4.usage) : null, '㎥', w4 ? N(w4.total) : null, w4 ? N(w4.total) : null, ''], ['', '50A', w5 ? N(w5.usage) : null, '㎥', w5 ? N(w5.total) : null, w5 ? N(w5.total) : null, '']);
+      R.push(['폐수', '', ww ? N(ww.usage) : null, '㎥', ww ? N(ww.total) : null, ww ? N(ww.total) : null, ww ? st : '']);
+      if (ww && N(ww.fac) !== null) R.push(['', '공공폐수처리시설 사용료', null, '', ww.fac, ww.fac, ''], ['', '개선충당금', null, '', N(ww.imp), N(ww.imp), '']);
+      const top = R.filter(r => r[0]); R.push(['합계', '', null, '', sm(...top.map(r => r[4])), sm(...top.map(r => r[5])), st]);
+      return R;
+    }
     // 회계 가마감 탭 아래: 그동안 회계에 넣은 가마감 금액 (최근 달 위)
     function gmHistHtml() {
       const all = gmAll(), ks = Object.keys(all).sort().reverse(); if (!ks.length) return '<div class="hint no-print" style="margin-top:14px">지난 가마감 기록이 아직 없습니다 (47번 SQL을 실행하면 2025년 8월부터 들어옵니다).</div>';
       const v = x => x === null || x === undefined ? '' : f0(x);
-      let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
+      let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 회계 마감 탭에서 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">달</th><th>전기 당월요금계</th><th>전기 사용량 (kWh)</th><th>가스 비용 총계</th><th>가스 사용량 (MJ)</th><th>용수 40A+50A</th><th>용수 사용량 (㎥)</th><th>폐수</th><th>폐수 발생량 (㎥)</th><th class="l">출처</th></tr>`;
       ks.forEach(k => { const x = all[k], e = x.e || {}, g = x.g || {}, w4 = x.w40, w5 = x.w50, ww = x.ww || {}, wsum = (a, b) => (w4 || w5) ? ((w4 || {})[a] || 0) + ((w5 || {})[a] || 0) : null;
         h += `<tr><td class="l">${esc(ymLabel(k))}</td><td>${v(e.total)}</td><td>${v(e.kwh)}</td><td>${v(g.total)}</td><td>${v(g.mj)}</td><td>${v(wsum('total'))}</td><td>${v(wsum('usage'))}</td><td>${v(ww.total)}</td><td>${v(ww.usage)}</td><td class="l hint">${esc(x.src || '')}${x.savedAt ? ' ' + esc(x.savedAt.slice(0, 10)) : ''}</td></tr>`; });
@@ -5944,12 +5963,12 @@
     function renderReport() {
       if (!reportYm) reportYm = UT.prevYm(thisYm);
       document.getElementById('report-month').textContent = ymLabel(reportYm);
-      const fc = FC(reportYm);
+      const fc = gmAll()[reportYm] ? null : FC(reportYm);
       const s = fc || S(reportYm);
-      const PV = {}; { let gp = ''; reportRowsFor(S(UT.prevYm(reportYm))).forEach(r => { if (r[0]) gp = r[0]; PV[gp + '|' + r[1]] = r[4]; }); }
-      { let gp = ''; reportRows = reportRowsFor(s).map(r => { if (r[0]) gp = r[0]; const pv = PV[gp + '|' + r[1]]; return [r[0], r[1], r[2], r[3], pv === undefined ? null : pv, r[4], r[5], r[6]]; }); }
+      const PV = {}; { let gp = ''; gmRowsFor(UT.prevYm(reportYm)).forEach(r => { if (r[0]) gp = r[0]; PV[gp + '|' + r[1]] = r[4]; }); }
+      { let gp = ''; reportRows = gmRowsFor(reportYm).map(r => { if (r[0]) gp = r[0]; const pv = PV[gp + '|' + r[1]]; return [r[0], r[1], r[2], r[3], pv === undefined ? null : pv, r[4], r[5], r[6]]; }); }
       let h = (fc ? `<div class="fc-note no-print">🔮 아직 진행 중인 달이라 <b>${fc.forecast.asOf.slice(5).replace('-', '/')}까지 검침(${fc.forecast.days}일)으로 월말까지 추정한 예측값</b>입니다. 남은 날은 평일·주말 평균 사용량으로 채웠습니다.</div>` : '') +
-        `<h3>${ymLabel(reportYm)} 유틸리티 비용 ${fc ? '(월말 예측)' : s.status === '가마감' ? '(가마감 예상)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성일 ${todayStr}</span></h3>`;
+        `<h3>${ymLabel(reportYm)} 유틸리티 가마감 ${fc ? '(월말 예측)' : ''} <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성일 ${todayStr}</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t rep"><tr><th class="l">구분</th><th class="l">세부</th><th>사용량</th><th>단위</th><th>전월 공급가액<br><span class="hint">${ymLabel(UT.prevYm(reportYm))}</span></th><th class="key">공급가액 (VAT 별도)</th><th>금액 (VAT 포함)</th><th>상태</th></tr>`;
       let grp = '';
       const hasSub = {}; reportRows.forEach((r, i) => { if (r[0] && r[0] !== '합계' && reportRows[i + 1] && !reportRows[i + 1][0]) hasSub[r[0]] = true; });
@@ -5966,19 +5985,21 @@
       h += '</table></div>';
       h += `<div class="hint no-print" style="margin-top:6px"><span style="background:#fff1a8;padding:0 6px">노란 칸</span> = 회계에 넣는 예상 금액 (전기요금계·전력기금 / 가스) · 수도·폐수는 전월 고지서 금액을 이번 달 마감에 씀 · ▶ 구분(전기·가스·용수)을 누르면 세부가 펼쳐집니다 · <a href="#" onclick="repToggle('all');return false">모두 펼치기/접기</a></div>`;
       h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
+      { const gx = gmAll()[reportYm]; h += `<div class="hint" style="margin-top:6px">고지서 금액은 넣지 않고 <b>가마감 금액만</b> 보여 줍니다 · ${gx ? `이 달 값 = 가마감 기록 (${esc(gx.src || '')}${gx.savedAt ? ' ' + esc(gx.savedAt.slice(0, 10)) : ''})` : '이 달은 가마감 기록이 없어 지금 계산값 (회계 마감 탭에서 「마감 저장」 하면 기록됨)'}</div>`; }
+      h += gmHistHtml();
       document.getElementById('report-body').innerHTML = h;
     }
 
     async function downloadReport() {
       try {
         await ensureXLSX();
-        const aoa = [[`${ymLabel(reportYm)} 유틸리티 비용`], [], ['구분', '세부', '사용량', '단위', '전월 공급가액', '공급가액(VAT별도)', '금액(VAT포함)', '상태']];
+        const aoa = [[`${ymLabel(reportYm)} 유틸리티 가마감`], [], ['구분', '세부', '사용량', '단위', '전월 공급가액', '공급가액(VAT별도)', '금액(VAT포함)', '상태']];
         reportRows.forEach(r => aoa.push(r.map(v => typeof v === 'number' ? Math.round(v * 10) / 10 : (v ?? ''))));
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 6 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 8 }];
         XLSX.utils.book_append_sheet(wb, ws, reportYm);
-        XLSX.writeFile(wb, `유틸리티비용_${reportYm.replace('-', '')}.xlsx`);
+        XLSX.writeFile(wb, `유틸리티가마감_${reportYm.replace('-', '')}.xlsx`);
       } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
     }
 
@@ -5992,12 +6013,15 @@
     function shiftCloseMonth(d) { closeYm = d > 0 ? UT.nextYm(closeYm) : UT.prevYm(closeYm); CL = null; renderClose(); }
     function renderClose() {
       if (!closeYm) closeYm = UT.prevYm(thisYm);
-      document.getElementById('close-month').textContent = `${ymLabel(closeYm)} 가마감`;
+      document.getElementById('close-month').textContent = `${ymLabel(closeYm)} 마감`;
       const M = closeYm, P = UT.prevYm(M), mM = Number(M.slice(5)), mP = Number(P.slice(5)), yy = M.slice(2, 4);
       const acc = (MONTHLY[M] || {})._acc || {}, accP = (MONTHLY[P] || {})._acc || {};
       if (!CL) CL = { ov: { ...(acc.ov || {}) }, extra: (acc.extra || []).map(x => ({ ...x })) };
       const sP = S(P), sM = FC(M) || S(M), epP = elecParts(sP), epM = elecParts(sM);
-      const conf = (st) => st === '확정', estP = accP.est || {};
+      const conf = (st) => st === '확정', gP = gmAll()[P], gM = gmAll()[M], gv = (o, a, b) => o && o[a] && typeof o[a][b] === 'number' ? o[a][b] : undefined;
+      // 추정 빼기 = 전월 마감 때 저장한 추정 → 없으면 가마감 기록(엑셀) 값 / 이번 달 추정 = 가마감 기록(엑셀)이 있으면 그 값, 없으면 계산값
+      const estP = { e: gv(gP, 'e', 'sub'), f: gv(gP, 'e', 'fund'), g: gv(gP, 'g', 'exvat'), ...Object.fromEntries(Object.entries(accP.est || {}).filter(([, v]) => v !== null && v !== undefined)) };
+      const gmM = gM && !/^시스템/.test(gM.src || '') ? { e: gv(gM, 'e', 'sub'), f: gv(gM, 'e', 'fund'), g: gv(gM, 'g', 'exvat') } : {};
       const tag = st => st === '확정' ? '' : ` <span class="st st-가마감">${st ? '고지서 전' : '없음'}</span>`;
       // [키, 분류, 적요, 기본 금액, 부호, 내용, 사용기간, 줄 종류]
       const R = [
@@ -6006,8 +6030,8 @@
         ['f_act', '전기', '공통전력', epP ? epP.fund : null, 1, `${mP}월분 지결${tag(sP.elec.status)}`, '', 'act'],
         ['e_rev', '전기', '전기요금 추정', estP.e ?? null, -1, `${mP}월분 예상 (${mP}월 마감 때 잡은 값)`, '', 'rev'],
         ['f_rev', '전기', '공통전력 추정', estP.f ?? null, -1, `${mP}월분 예상 (${mP}월 마감 때 잡은 값)`, '', 'rev'],
-        ['e_est', '전기', '전기요금추정_회계', epM ? epM.sub : null, 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
-        ['f_est', '전기', '공통전력추정_회계', epM ? epM.fund : null, 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
+        ['e_est', '전기', '전기요금추정_회계', gmM.e ?? (epM ? epM.sub : null), 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
+        ['f_est', '전기', '공통전력추정_회계', gmM.f ?? (epM ? epM.fund : null), 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
         // 창고전기 = 1공장에 있는 2공장 원료 보관창고 전기요금 — 1공장에서 받은 금액을 직접 입력
         ['wh_act', '전기', '창고전기요금', null, 1, `${mP}월분 지결 (1공장에서 받은 금액 입력)`, '', 'act'],
         ['wh_rev', '전기', '창고전기요금 추정', null, -1, `${mP}월분 예상 (1공장 엑셀 값 입력)`, '', 'rev'],
@@ -6019,10 +6043,10 @@
         ['w50', '수도', `2공장 상하수도 사용료(50A)`, sP.water.w50cost, 1, `${mP}월분 지결${tag(sP.water.status)}`, '', 'wat'],
         ['ww_fac', '폐수', `공공폐수처리시설 사용료_${yy}년${pad2(mP)}월`, sP.ww.facility, 1, `${mP}월분 지결${tag(sP.ww.status)}`, `${mP}월 사용분`, 'ww'],
         ['ww_imp', '폐수', `공공폐수처리시설 개선충당금_${yy}년${pad2(mP)}월`, sP.ww.improve, 1, `${mP}월분 지결${tag(sP.ww.status)}`, '', 'ww'],
-        ['g_est', '가스', '도시가스사용요금추정_회계', sM.gas.exvat, 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
+        ['g_est', '가스', '도시가스사용요금추정_회계', gmM.g ?? sM.gas.exvat, 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
       ];
       const val = r => { const o = CL.ov[r[0]]; return o !== undefined && o !== null && o !== '' ? Number(o) : (r[3] === null || r[3] === undefined ? null : Math.round(r[3])); };
-      closeRows = []; let total = 0, h = `<h3>${ymLabel(M)} 가마감 — 회계 전표 <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || '')} · ${mP}월 고지서 실제 금액 − ${mP}월 추정 + ${mM}월 추정</span></h3>`;
+      closeRows = []; let total = 0, h = `<h3>${ymLabel(M)} 마감 — 회계 전표 <span class="sub">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || '')} · ${mP}월 고지서 실제 금액 − ${mP}월 추정 + ${mM}월 추정</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t cl"><tr><th class="l">적요</th><th>금액 (원, VAT 별도)</th><th class="l">내용</th><th class="l">사용기간</th></tr>`;
       R.forEach(r => {
         if (r[0] === 'sec') { h += `<tr class="sec"><td colspan="4">${r[1]}</td></tr>`; return; }
@@ -6040,7 +6064,6 @@
       const g = k => { const r = R.find(x => x[0] === k); return r ? val(r) : null; };
       h += `<table class="t" style="margin-top:10px;max-width:520px"><tr><td class="l">2공장 ${mM}월 예상 사용분 (전기요금 + 공통전력)</td><td>${f0((g('e_est') || 0) + (g('f_est') || 0))}</td></tr><tr><td class="l">창고 ${mM}월 예상 사용분</td><td>${f0(g('wh_est'))}</td></tr><tr><td class="l">가스 ${mM}월 예상 사용분</td><td>${f0(g('g_est'))}</td></tr><tr><td class="l">수도 (${mP}월 고지서)</td><td>${f0((g('w40') || 0) + (g('w50') || 0))}</td></tr><tr><td class="l">폐수 ${mP}월 사용분</td><td>${f0((g('ww_fac') || 0) + (g('ww_imp') || 0))}</td></tr></table>`;
       h += `<div class="hint" style="margin-top:10px">회색 = ${mP}월 고지서 실제 금액 (월간 입력의 고지서 금액) · 분홍 = ${mP}월 마감 때 잡은 추정을 빼는 줄 · 노랑 = ${mM}월 추정 (회계보고 가마감 값) · 금액 칸은 고칠 수 있음 (↺ = 자동 값으로).<br><b>「마감 저장」</b>을 누르면 ${mM}월 추정 금액이 저장되어 다음 달 마감 때 「추정」 빼는 줄에 자동으로 들어갑니다.${acc.savedAt ? ` · 마지막 저장 ${esc(acc.savedAt.slice(0, 16).replace('T', ' '))}` : ' · <b style="color:#b45309">아직 저장 안 함</b>'}</div>`;
-      h += gmHistHtml();
       document.getElementById('close-body').innerHTML = h;
       renderClose._est = { e: g('e_est'), f: g('f_est'), g: g('g_est'), wh: g('wh_est') };
     }
@@ -6070,10 +6093,10 @@
     async function downloadClose() {
       try {
         await ensureXLSX();
-        const aoa = [[`${ymLabel(closeYm)} 가마감`], [], ['적요', '금액', '내용', '사용기간'], ...closeRows.map(r => [r[0], r[1] ?? '', r[2], r[3]])];
+        const aoa = [[`${ymLabel(closeYm)} 마감`], [], ['적요', '금액', '내용', '사용기간'], ...closeRows.map(r => [r[0], r[1] ?? '', r[2], r[3]])];
         const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
         ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 30 }, { wch: 12 }];
-        XLSX.utils.book_append_sheet(wb, ws, closeYm); XLSX.writeFile(wb, `회계가마감_${closeYm.replace('-', '')}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, closeYm); XLSX.writeFile(wb, `회계마감_${closeYm.replace('-', '')}.xlsx`);
       } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
     }
 
