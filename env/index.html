@@ -236,7 +236,9 @@
       #print-area .wcs, #print-area .wcs * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       #print-area .wc-shot { display: none; }
     }
-</style>
+    table.wq td.ub-est, .ub-est { color: #888; font-style: italic; }
+    table.wq tr.ub td { background: #f6faf8; }
+  </style>
 </head>
 <body>
   <div id="app" hidden>
@@ -1053,9 +1055,27 @@
       for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`; if (ds >= last) break; const u = pair(ds, get).use; if (u === null || u < 0) continue; have++; tot += u; if (u > 0.5) { work++; wtot += u; } if (mx === null || u > mx) { mx = u; mxd = ds; } }
       return have < 5 ? null : { avg: tot / have, wavg: work ? wtot / work : null, max: mx, maxD: mxd, have, n };
     }
+    // 유틸리티 분석의 월 사용량 (고지서 확정 · 없으면 가마감) — utility/calc.js 의 같은 계산(UT.summary)을 그대로 씀
+    let UTB = null, UTB_ERR = '';
+    async function loadUtb() {
+      if (UTB || UTB_ERR || loadUtb._p) return loadUtb._p; loadUtb._p = (async () => { try {
+        if (!window.UT) await loadScript('../utility/calc.js?v=' + Date.now().toString(36).slice(0, 6));
+        const all = async (t, c, o) => { const out = []; for (let f = 0; ; f += 1000) { const { data, error } = await sb.from(t).select(c).order(o).range(f, f + 999); if (error) throw error; out.push(...data); if (data.length < 1000) break; } return out; };
+        const [m, d] = await Promise.all([all('ut_monthly', 'ym, data', 'ym'), all('ut_daily_v', 'd, elec_kwh, elec_peak_kw, gas_boiler, gas_rest, water_40a, water_50a, wastewater, ww_power, hvac_power', 'd')]);
+        const M = {}, D = {}; m.forEach(r => { if (!r.ym.endsWith('-00')) M[r.ym] = r.data || {}; }); d.forEach(r => { const { d: k, ...rest } = r; D[k] = rest; });
+        UTB = { M, D, c: {} };
+      } catch (e) { UTB_ERR = e.message || String(e); } })(); return loadUtb._p;
+    }
+    function utbMonth(ym, key) { // { v: ㎥, st: '고지서' | '가마감' }
+      if (!UTB || !window.UT) return null; let s; try { s = UT.summary(ym, UTB.M, UTB.D, UTB.c); } catch (e) { return null; }
+      const raw = UTB.M[ym] || {}, ent = k => raw[k] !== undefined && raw[k] !== null && raw[k] !== ''; // 칸에 직접 넣은 값 = 고지서 값
+      const x = key === 'qww' ? { v: s.ww && s.ww.flow, ok: (s.ww && s.ww.status === '확정') || ent('ww_flow') } : { v: s.water && s.water.usage, ok: (s.water && s.water.status === '확정') || ent('w40_usage') || ent('w50_usage') };
+      return x.v === null || x.v === undefined || isNaN(x.v) ? null : { v: Number(x.v), st: x.ok ? '고지서' : '가마감' };
+    }
     function wqQtyChart(key) {
       const Q = QTY[key], permit = wqPermit(key), ms = []; { const d = new Date(); d.setDate(1); for (let i = 11; i >= 0; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); ms.push(`${x.getFullYear()}-${pad2(x.getMonth() + 1)}`); } }
-      const rows = ms.map(ym => ({ ym, q: wqQtyMonth(ym, key) })), W = 1040, H = 240, L = 50, B = 28, T = 16, Rt = 20;
+      if (!UTB && !UTB_ERR) loadUtb().then(() => { if (QTY[wqItem]) renderWq(); });
+      const rows = ms.map(ym => ({ ym, q: wqQtyMonth(ym, key), u: utbMonth(ym, key) })), W = 1040, H = 240, L = 50, B = 28, T = 16, Rt = 20;
       const vals = rows.flatMap(r => r.q ? [r.q.wavg, r.q.max] : []).filter(v => v !== null), mx = Math.max(1, ...vals, permit || 0) * 1.12;
       const bw = (W - L - Rt) / ms.length, xs = i => L + bw * i + bw / 2, ys = v => T + (H - T - B) * (1 - v / mx);
       let s = `<svg viewBox="0 0 ${W} ${H}" class="wq-svg">`;
@@ -1069,7 +1089,10 @@
       const tbl = `<div class="tbl-x"><table class="wq sm"><tr><th>월</th>${rows.map(r => `<th>${Number(r.ym.slice(5))}월</th>`).join('')}</tr>
         <tr><td class="l">일한 날 하루 평균</td>${rows.map(r => `<td>${r.q && r.q.wavg !== null ? nf(r.q.wavg, 1) : '-'}</td>`).join('')}</tr>
         <tr><td class="l">가장 많은 날</td>${rows.map(r => `<td class="${r.q && permit && r.q.max > permit ? 'wq-hi' : ''}">${r.q && r.q.max !== null ? nf(r.q.max, 1) : '-'}</td>`).join('')}</tr>
-        <tr><td class="l">인허가 대비 (평균)</td>${rows.map(r => { const v = r.q && r.q.wavg !== null && permit ? r.q.wavg / permit * 100 : null; return `<td class="${v > 100 ? 'wq-hi' : v > 80 ? 'wq-mid' : ''}">${v === null ? '-' : nf(v, 0) + '%'}</td>`; }).join('')}</tr></table></div>`;
+        <tr><td class="l">인허가 대비 (평균)</td>${rows.map(r => { const v = r.q && r.q.wavg !== null && permit ? r.q.wavg / permit * 100 : null; return `<td class="${v > 100 ? 'wq-hi' : v > 80 ? 'wq-mid' : ''}">${v === null ? '-' : nf(v, 0) + '%'}</td>`; }).join('')}</tr>
+        <tr class="ub"><td class="l">월 합계 <span class="hint">(고지서·가마감)</span></td>${rows.map(r => { const u = r.u; return `<td${u && u.st === '가마감' ? ' class="ub-est" title="가마감 (고지서 전 자체 계측 기준)"' : u ? ' title="고지서 기준"' : ''}>${u ? nf(u.v, 0) : UTB ? '-' : '…'}</td>`; }).join('')}</tr>
+        <tr class="ub"><td class="l">하루 평균 <span class="hint">(월 합계÷날짜 수)</span></td>${rows.map(r => { const u = r.u, n = new Date(Number(r.ym.slice(0, 4)), Number(r.ym.slice(5)), 0).getDate(); return `<td${u && u.st === '가마감' ? ' class="ub-est"' : ''}>${u ? nf(u.v / n, 1) : UTB ? '-' : '…'}</td>`; }).join('')}</tr></table></div>
+        <div class="hint">· 월 합계 = 유틸리티 분석의 ${key === 'qww' ? '2공장 폐수 발생량' : '용수 사용량(40A + 50A)'} — 고지서 값, 고지서가 아직 없으면 <span class="ub-est">가마감(회색 기울임)</span> 값${key === 'qwater' ? ' · 용수 고지서는 전월 검침일~이달 검침일 기간이라 달력 한 달과 조금 다름' : ''}${UTB_ERR ? ` · <b>유틸리티 자료를 읽지 못했습니다: ${esc(UTB_ERR)}</b>` : ''}</div>`;
       const ed = isAdmin() ? `<span class="hint" style="margin-left:8px">인허가 ${Q.n} <input id="pm-${key}" type="number" step="0.1" style="width:80px" value="${permit ?? ''}"> ㎥/일 <button class="mini" onclick="wqPermitSave('${key}')">저장</button></span>` : '';
       return `<div class="hint" style="margin:4px 0"><b>${Q.n}</b> (㎥/일) — 막대: 일한 날(하루 0.5㎥ 넘게 쓴 날) 하루 평균 · <span style="color:#e0482b">○</span> 그 달 가장 많은 날 · <span style="color:#c62828">빨간 점선</span>: 인허가 ${permit ? nf(permit, 1) + '㎥/일' : '(값을 넣어 주세요)'} · 설비검침 ${key === 'qww' ? '폐수방류량' : '상수도 40A + 50A'} 하루 사용량 기준${ed}</div>${s}${tbl}`;
     }
