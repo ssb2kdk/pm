@@ -1596,6 +1596,23 @@
         ] }, options: (() => { const o = baseOpts(''); o.plugins.legend.display = true; o.plugins.legend.labels = { boxWidth: 10, font: { size: 10 } }; o.scales.x.ticks.font = { size: 10 }; o.scales.y.ticks.font = { size: 10 };
           o.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label}: ${c.raw === null ? '-' : Number(c.raw).toFixed(dg)}`; o.layout = { padding: { top: 12 } }; return clipAxis(o, a, b); })() }); });
     }
+    // 월간보고서 → 그림으로 클립보드 복사 (안 되면 PNG 파일로 받기) — 인쇄 모양처럼 입력칸·버튼은 빼고 의견은 글로
+    async function briefShot(btn) {
+      const el = document.getElementById('brief-sheet'); if (!el) return;
+      try { if (!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
+      catch (e) { alert('그림 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const o = btn ? btn.textContent : ''; if (btn) { btn.textContent = '만드는 중...'; btn.disabled = true; }
+      const done = m => { if (!btn) return; btn.textContent = m; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 2500); };
+      try {
+        const canvas = await html2canvas(el, { scale: 2, logging: false, backgroundColor: '#ffffff',
+          ignoreElements: x => x.classList && (x.classList.contains('no-print') || x.classList.contains('br-comment')),
+          onclone: d => { const c = d.getElementById('brief-sheet'); if (!c) return; c.style.boxShadow = 'none'; c.style.minHeight = '0';
+            const pp = d.getElementById('br-comment-print'); if (pp) { pp.style.display = 'block'; pp.style.whiteSpace = 'pre-wrap'; pp.style.minHeight = '40px'; } } });
+        const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); done('✓ 복사됨 — Ctrl+V'); }
+        catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `월간보고서_${brYm}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); done('✓ 그림 파일로 받음'); }
+      } catch (e) { done('복사 실패'); alert('그림을 만들지 못했습니다: ' + (e.message || e)); }
+    }
     async function saveBriefComment() {
       const y = Number(brYm.slice(0, 4));
       try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [brYm]: document.getElementById('br-comment').value } }); document.getElementById('br-cmt-st').textContent = '저장됨 ✓'; }
