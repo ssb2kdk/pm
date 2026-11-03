@@ -202,6 +202,20 @@
     async function delRec() { if (!confirm(`${draft.d} 기록을 지울까요?`)) return; const { error } = await sb.from('elec_logs').delete().eq('id', draft.id); if (error) { alert('삭제 실패: ' + errMsg(error)); return; } LOGS = LOGS.filter(x => x.id !== draft.id); sel[tab] = null; draft = null; render(); }
     function toast(t) { const e = document.createElement('div'); e.className = 'toast-x'; e.textContent = t; e.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;z-index:99'; document.body.appendChild(e); setTimeout(() => e.remove(), 1600); }
     // 값 넣기: path = 'a.b.c'
+    // 월차 점검 유효전력량·최대전력·역률 = 전기 고지서 값 → 유틸리티 분석 월간 입력(ut_monthly)에 이미 넣은 값을 가져옴 (점검일 전월 고지서, 없으면 그 전 달)
+    async function fillFromBill() {
+      const d = draft.d || new Date().toISOString().slice(0, 10), [y, m] = d.split('-').map(Number), ym = k => { const x = new Date(y, m - 1 - k, 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`; };
+      const { data, error } = await sb.from('ut_monthly').select('ym, data').in('ym', [ym(1), ym(2)]); if (error) { alert('불러오기 실패: ' + errMsg(error)); return; }
+      const N = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+      const pick = (data || []).sort((a, b) => a.ym < b.ym ? 1 : -1).find(r => r.data && ['elec_kwh_light', 'elec_kwh_mid', 'elec_kwh_peak', 'elec_max_kw'].some(k => N(r.data[k]) !== null));
+      if (!pick) { alert(`${ym(1)} 전기 고지서 값이 유틸리티 분석 월간 입력에 아직 없습니다. 고지서를 먼저 넣어 주세요.`); return; }
+      const x = pick.data, kwh = ['elec_kwh_light', 'elec_kwh_mid', 'elec_kwh_peak', 'elec_kwh_light2', 'elec_kwh_mid2', 'elec_kwh_peak2'].reduce((s, k) => s + (N(x[k]) || 0), 0);
+      const msg = [`${pick.ym} 고지서 값`];
+      if (kwh) { setv('kwh', String(Math.round(kwh * 100) / 100)); msg.push(`유효전력량 ${kwh.toLocaleString('ko-KR')} kWh`); }
+      if (N(x.elec_max_kw) !== null) { setv('maxkw', String(N(x.elec_max_kw))); msg.push(`최대전력 ${N(x.elec_max_kw)} kW`); }
+      if (N(x.elec_pf) !== null && !(draft.data.pf_day)) { setv('pf_day', String(Math.round(N(x.elec_pf) * 1000) / 10)); msg.push(`역률(주간) ${Math.round(N(x.elec_pf) * 1000) / 10}%`); }
+      render(); alert(msg.join(' · ') + ' 을(를) 넣었습니다. 저장을 눌러 주세요.');
+    }
     function setv(path, v, re) { let o = draft.data; const p = path.split('.'); p.slice(0, -1).forEach(k => { if (o[k] === undefined || o[k] === null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }); o[p[p.length - 1]] = v; dirty(); if (re) render(); }
     const gv = path => path.split('.').reduce((o, k) => o && o[k] !== undefined ? o[k] : undefined, draft.data);
     const inp = (path, cls = 'n', ph = '') => `<input class="${cls}" value="${esc(gv(path) ?? '')}" placeholder="${ph}" oninput="setv('${path}',this.value)">`;
@@ -218,7 +232,7 @@
         <div><div class="bar"><b>특고(고압) 설비</b> ${allOk('hv')}</div><div class="tw"><table class="t">${head('특고(고압)설비')}${items('hv', MON_HV)}</table></div></div></div>
         <div class="bar" style="margin-top:12px"><b>측정</b> <span class="hint">측정개소마다 A·B·C·N 상 전압·전류·누설전류</span></div>
         <div class="tw"><table class="t"><tr><th>측정개소</th><th>상</th><th>전압(V)</th><th>전류(A)</th><th>누설전류(㎃)</th></tr>${(D.meas || []).map((m, i) => ['A', 'B', 'C', 'N'].map((ph, j) => `<tr>${j === 0 ? `<td rowspan="4">${inp(`meas.${i}.loc`, '', '측정개소')}</td>` : ''}<td>${ph}</td><td>${inp(`meas.${i}.${ph}.v`)}</td><td>${inp(`meas.${i}.${ph}.a`)}</td><td>${inp(`meas.${i}.${ph}.ma`)}</td></tr>`).join('')).join('')}</table></div>
-        <div class="bar" style="margin-top:10px">역률(%) 주간 ${inp('pf_day')} 심야 ${inp('pf_night')} · 유효전력량(kWh) ${inp('kwh', 'n', '지침')} · 무효전력량(kVar) ${inp('kvarh', 'n', '지침')} · 최대전력(kW) ${inp('maxkw')} · 배율 ${inp('mult', 's')}</div>
+        <div class="bar" style="margin-top:10px">역률(%) 주간 ${inp('pf_day')} 심야 ${inp('pf_night')} · 유효전력량(kWh) ${inp('kwh', 'n', '지침')} · 무효전력량(kVar) ${inp('kvarh', 'n', '지침')} · 최대전력(kW) ${inp('maxkw')} · 배율 ${inp('mult', 's')} <button class="chip" onclick="fillFromBill()" title="유틸리티 분석 월간 입력(고지서)에 넣은 전월 값으로 채움">⚡ 고지서 값 넣기</button></div>
         <div><b>종합의견</b><br><textarea style="width:100%;min-height:70px" oninput="setv('opinion',this.value)">${esc(D.opinion || '')}</textarea></div>
         <div class="bar" style="margin-top:8px">점검확인자 ${inp('checker', '', '이름')} 점검담당자 ${inp('staff', '', '이름')}</div>`;
     }
