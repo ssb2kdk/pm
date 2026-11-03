@@ -189,8 +189,10 @@
     const auto = (k, v) => { if (raw._imported) return; if (!has(m[k]) && v !== null && v !== undefined && !isNaN(v)) { m[k] = v; src[k] = '자동'; } };
 
     // 가스 지침
-    auto('gas_boiler_cur', UT.readingOnOrBefore(daily, lastDay, 'gas_boiler'));
-    auto('gas_rest_cur', UT.readingOnOrBefore(daily, lastDay, 'gas_rest'));
+    // 고지서 지침은 소수점 없이 반올림 → 자체 검침값도 정수로 반올림해서 씀
+    const rint = v => v === null || v === undefined || isNaN(v) ? v : Math.round(Number(v));
+    auto('gas_boiler_cur', rint(UT.readingOnOrBefore(daily, lastDay, 'gas_boiler')));
+    auto('gas_rest_cur', rint(UT.readingOnOrBefore(daily, lastDay, 'gas_rest')));
     const hasPrevData = Object.keys(monthly).some(k => k < ym) || Object.keys(daily).some(k => k < ym + '-01');
     if (!has(m.gas_boiler_prev) || !has(m.gas_rest_prev)) {
       const pe = hasPrevData ? UT.effective(prevYm, monthly, daily, _cache) : {};
@@ -322,7 +324,7 @@
       if (!has(cur) || !has(prev)) return null;
       const m3 = (Number(cur) - Number(prev)) * (has(corr) ? Number(corr) : 1);
       const mj = rd4(m3 * (num(heat) || 0));
-      const cost = Math.floor(mj * (num(m.gas_price) || 0));
+      const cost = Math.floor(mj * (num(m.gas_price) || 0) / 10) * 10; // 가스사용료 원단위 절사
       const f = num(fee) || 0;
       const vat = Math.floor((cost + f) * 0.1);
       return { m3, mj, cost, fee: f, vat, total: cost + vat + f };
