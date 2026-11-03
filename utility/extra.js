@@ -2433,13 +2433,10 @@
         r('폐수 발생량', s => s.ww.flow, fxd(1), { sum: true }), r('오수량', s => s.ww.sewage, fxd(1), { sum: true }),
         ...prodRows];
     }
-    function renderUDet() {
-      const y = udYear, ms = yearMonths(y), cs = ms.map(S), U = UT.UTILS.find(u => u.k === udUtil) || { name: (UD_SUM.find(x => x[0] === udUtil) || [])[1] };
-      document.getElementById('udet-title').textContent = `${U.name} 상세 내역 · ${y}년`;
-      document.getElementById('udet-utils').innerHTML = UD_SUM.map(([k, n]) => `<button class="chip ${k === udUtil ? 'on' : ''}" onclick="udUtil='${k}';renderUDet()">${n}</button>`).join('') + '<span style="width:8px"></span>' +
-        UT.UTILS.map(u => `<button class="chip ${u.k === udUtil ? 'on' : ''}" onclick="udUtil='${u.k}';renderUDet()">${u.name}</button>`).join('');
-      document.getElementById('udet-cmp').innerHTML = cmpChips();
-      const spec = udSpec(udUtil), rows = [];
+    // 상세 표 줄 만들기 (화면·엑셀 공용)
+    function udBuild(uk, y) {
+      const ms = yearMonths(y), cs = ms.map(S);
+      const spec = udSpec(uk), rows = [];
       const sumOf = a => a.some(v => v !== null && v !== undefined) ? a.reduce((x, v) => x + (v || 0), 0) : null;
       const avgOf = a => { const v = a.filter(x => x !== null && x !== undefined && !isNaN(x)); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
       spec.forEach(sp => {
@@ -2456,6 +2453,15 @@
           rows.push({ label: nm, cmp: true, vals: d, pct: p, fmt: sp.fmt });
         });
       });
+      return rows;
+    }
+    function renderUDet() {
+      const y = udYear, ms = yearMonths(y), cs = ms.map(S), U = UT.UTILS.find(u => u.k === udUtil) || { name: (UD_SUM.find(x => x[0] === udUtil) || [])[1] };
+      document.getElementById('udet-title').textContent = `${U.name} 상세 내역 · ${y}년`;
+      document.getElementById('udet-utils').innerHTML = UD_SUM.map(([k, n]) => `<button class="chip ${k === udUtil ? 'on' : ''}" onclick="udUtil='${k}';renderUDet()">${n}</button>`).join('') + '<span style="width:8px"></span>' +
+        UT.UTILS.map(u => `<button class="chip ${u.k === udUtil ? 'on' : ''}" onclick="udUtil='${u.k}';renderUDet()">${u.name}</button>`).join('');
+      document.getElementById('udet-cmp').innerHTML = cmpChips();
+      const rows = udBuild(udUtil, y);
       udRows = rows;
       let h = `<table class="t ud"><tr><th class="l">구분</th>${monthLabels.map(m => `<th>${m}</th>`).join('')}<th>합계</th><th>평균</th></tr>`;
       rows.forEach(r => {
@@ -2465,6 +2471,24 @@
           `<td>${r.sum === null ? '' : r.fmt(r.sum)}</td><td>${r.avg === null ? '' : r.fmt(r.avg)}</td></tr>`;
       });
       document.getElementById('udet-table').innerHTML = h + '</table>';
+    }
+    // 상세 내역 전체 (유틸리티 총비용·원육 투입량·원육 kg당 비용·전기·가스·용수·폐수 → 시트 7개, 선택한 해, 켜 둔 전월·전년 대비 줄 포함)
+    async function downloadUDetAll() {
+      try {
+        await ensureXLSX();
+        const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 10000) / 10000 : v), wb = XLSX.utils.book_new();
+        [...UD_SUM.map(([k, n]) => [k, n]), ...UT.UTILS.map(u => [u.k, u.name])].forEach(([k, n]) => {
+          const aoa = [[`${n} 상세 내역 · ${udYear}년`], ['구분', ...monthLabels, '합계', '평균']];
+          udBuild(k, udYear).forEach(r => {
+            if (r.grp) { aoa.push([r.grp]); return; }
+            if (r.cmp) { aoa.push([`${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
+            aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), clean(r.avg)]);
+          });
+          const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{ wch: 30 }, ...Array.from({ length: 14 }, () => ({ wch: 13 }))];
+          XLSX.utils.book_append_sheet(wb, ws, n.replace(/[\\/?*\[\]:]/g, '').slice(0, 31));
+        });
+        XLSX.writeFile(wb, `유틸리티_상세내역_전체_${udYear}.xlsx`);
+      } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
     }
     async function downloadUDet() {
       try {
