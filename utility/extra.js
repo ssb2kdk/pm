@@ -1614,7 +1614,7 @@
       } catch (e) { done('복사 실패'); alert('그림을 만들지 못했습니다: ' + (e.message || e)); }
     }
     // 회계 마감·회계보고 표 → 그림으로 복사: 입력칸은 적힌 값만 글자로, 버튼·안내는 뺌
-    function closeShot(btn) { return cardShot('close-body', `회계마감_${closeYm || ''}`, btn); }
+    function closeShot(btn) { return cardShot('close-body', `회계가마감_${closeYm || ''}`, btn); }
     function reportShot(btn) { return cardShot('report-body', `회계보고_${reportYm || ''}`, btn); }
     async function cardShot(id, fname, btn) {
       const el = document.getElementById(id); if (!el) return;
@@ -1768,6 +1768,101 @@
 
       XLSX.writeFile(wb, `유틸리티_가마감근거_${ym.replace('-', '')}.xlsx`);
     }
+    // =====================================================================
+    // 회계 가마감 — 달마다 회계에 넣은 가마감(예상) 금액·사용량 기록 (YEARDATA[9999].gm = { 'YYYY-MM': {e,g,w40,w50,ww,src,savedAt} })
+    //  지난 기록은 사용자 엑셀(47번 SQL), 이후는 「마감 저장」 때 그 달 가마감 계산값을 그대로 남김
+    //  「가마감 내역 엑셀」 = 사용자 엑셀 「○○상세」 시트 모양 (전월·전년 대비 줄은 뺌)
+    // =====================================================================
+    const GM_LAYOUT = [
+      ['e', '전기상세', '※ 전력비용 가마감 내역', [
+        ['1). 비용'], ['기본요금', 'base', 's'], ['전력량요금', 'energy', 's'], ['기후환경요금', 'climate', 's'], ['연료비조정액', 'fuel', 's'], ['지상역률료', 'pf', 's'], ['진상역률료', 'lead', 's'], ['정산요금', 'settle', 's'],
+        ['전기요금계', 'sub', 's'], ['부가가치세', 'vat', 's'], ['연체료', 'late', 's'], ['전력기금', 'fund', 's'], ['원단위 절사', 'cut', 's'], ['당월요금계', 'total', 's'], ['부가세 별도', 'exvat', 's'],
+        ['kWh당 전기요금', x => x.total && x.kwh ? x.total / x.kwh : null, 'a', '0.00'],
+        [], ['2). 사용량'], ['기본 단가', 'base_rate', 'a'], ['요금적용 전력 (kW)', 'contract_kw', 'a'], ['최대 전력 (kW)', 'max_kw', 'a', '#,##0.00'],
+        ['사용량 (kWh)', 'kwh', 's', '#,##0.00'], ['  경부하', 'kwh_l', 's', '#,##0.00'], ['  중부하', 'kwh_m', 's', '#,##0.00'], ['  최대부하', 'kwh_p', 's', '#,##0.00'], ['  주말 경부하 할인', 'wkd_l', 's', '#,##0.00'], ['  주말 중간부하 할인', 'wkd_m', 's', '#,##0.00'],
+        [], ['3). 단가'], ['단가 (평균)', x => [x.rate_l, x.rate_m, x.rate_p].every(v => typeof v === 'number') ? (x.rate_l + x.rate_m + x.rate_p) / 3 : null, 'a', '0.00'],
+        ['  경부하', 'rate_l', 'a', '0.0'], ['  중부하', 'rate_m', 'a', '0.0'], ['  최대부하', 'rate_p', 'a', '0.0'], ['  주말 경부하 할인', 'wkd_rate_l', 'a', '0.0'], ['  주말 중간부하 할인', 'wkd_rate_m', 'a', '0.0'],
+        ['계절', 'season', ''], ['지상역률', 'pf_v', 'a', '0.00'], ['진상역률', 'lead_v', 'a', '0.00']]],
+      ['g', '연료상세', '※ 연료(도시가스)비용 가마감 내역', [
+        ['1). 비용'], ['비용 총계 (VAT 포함)', 'total', 's'], ['공급가액 (VAT 별도)', 'exvat', 's'], ['  가스요금', 'cost', 's'], ['  부가세', 'vat', 's'], ['  보정기교체', 'fee', 's'], ['  원단위 절사', 'cut', 's'],
+        ['관류보일러', 'b_total', 's'], ['  비용', 'b_cost', 's'], ['  부가세', 'b_vat', 's'], ['  보정기교체', 'b_fee', 's'], ['식당', 'r_total', 's'], ['  비용', 'r_cost', 's'], ['  부가세', 'r_vat', 's'], ['  보정기교체', 'r_fee', 's'],
+        ['실행 단가 (원/MJ)', x => x.total && x.mj ? x.total / x.mj : null, 'a', '0.00'],
+        [], ['2). 사용량'], ['사용량 (MJ)', 'mj', 's', '#,##0.0000'],
+        ['관류보일러'], ['  청구량 (MJ)', 'b_mj', 's', '#,##0.0000'], ['  사용량 (㎥)', 'b_m3', 's', '#,##0.0000'], ['  전월지침 (㎥)', 'b_prev', ''], ['  당월지침 (㎥)', 'b_cur', ''], ['  보정계수', 'b_corr', 'a', '0.0000'], ['  열량계수', 'b_heat', 'a', '0.000'],
+        ['식당'], ['  청구량 (MJ)', 'r_mj', 's', '#,##0.0000'], ['  사용량 (㎥)', 'r_m3', 's', '#,##0.0000'], ['  전월지침 (㎥)', 'r_prev', ''], ['  당월지침 (㎥)', 'r_cur', ''], ['  보정계수', 'r_corr', 'a', '0.0000'], ['  열량계수', 'r_heat', 'a', '0.000'],
+        [], ['3). 단가'], ['단가 (원/MJ)', 'price', 'a', '0.0000']]],
+      ...['40A', '50A'].map(n => ['w' + n.slice(0, 2), '용수상세' + n, `※ 용수(${n}) 비용 가마감 내역`, [
+        ['1). 비용'], ['비용 총계 (VAT 없음)', 'total', 's'], ['상수도', 'water', 's'], ['  감면금액', 'reduce', 's'], ['  금월사용료', 'use_fee', 's'], ['  구경별요금', 'base_fee', 's'],
+        ['물이용', 'wu', 's'], ['  감면금액', 'wu_reduce', 's'], ['  금월사용료', 'wu_fee', 's'], ['기타', 'etc', 's'],
+        ['실행 단가 (원/㎥)', x => x.total && x.usage ? x.total / x.usage : null, 'a', '#,##0.00'],
+        [], ['2). 사용량'], ['사용량 (㎥)', 'usage', 's'], ['  1㎥ ~50', 't1', 's'], ['  51㎥ ~100', 't2', 's'], ['  101㎥ ~300', 't3', 's'], ['  301㎥ ~1000', 't4', 's'], ['  1001㎥ ~', 't5', 's'],
+        [], ['3). 단가'], ['  1㎥ ~50', 'r1', 'a'], ['  51㎥ ~100', 'r2', 'a'], ['  101㎥ ~300', 'r3', 'a'], ['  301㎥ ~1000', 'r4', 'a'], ['  1001㎥ ~', 'r5', 'a'], ['물이용부담금', 'wu_rate', 'a']]]),
+      ['ww', '폐수상세', '※ 폐수비용 가마감 내역', [
+        ['1). 비용'], ['비용 총계 (VAT 없음)', 'total', 's'], ['  공공폐수처리시설 사용료', 'fac', 's'], ['  개선충당금', 'imp', 's'],
+        ['실행 단가 (원/㎥)', x => x.total && x.usage ? x.total / x.usage : null, 'a', '#,##0.00'],
+        [], ['2). 발생량'], ['폐수발생량 (㎥)', 'usage', 's', '#,##0.0'], ['  2공장 (폐수)', 'flow', 's', '#,##0.0'], ['  2공장 (오수)', 'sewage', 's', '#,##0.0'],
+        [], ['3). 단가'], ['단가 (원/㎥)', 'price', 'a', '#,##0.00']]]
+    ];
+    const gmAll = () => ((YEARDATA[9999] || {}).gm) || {};
+    // 지금 계산된 그 달 가마감 값 → 기록 모양으로
+    function gmSnap(ym) {
+      const s = FC(ym) || S(ym), m = s.m || S(ym).m || {}, N = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v), o = {};
+      const e = s.elec.calc;
+      if (e) { const v = k => N(m[k]) || 0;
+        o.e = { base: e.base, energy: e.energy, climate: e.climate, fuel: e.fuel, pf: e.pfFee, lead: e.leadFee, settle: e.settlement, sub: e.subtotal, vat: e.vat, late: e.late, fund: e.fund,
+          cut: e.total - (e.subtotal + e.vat + e.late + e.fund), total: e.total, exvat: e.exvat, base_rate: N(m.elec_base_rate), contract_kw: N(m.elec_contract_kw), max_kw: N(m.elec_max_kw), kwh: e.kwh,
+          kwh_l: v('elec_kwh_light') + v('elec_kwh_light2'), kwh_m: v('elec_kwh_mid') + v('elec_kwh_mid2'), kwh_p: v('elec_kwh_peak') + v('elec_kwh_peak2'), wkd_l: N(m.elec_wkd_kwh_light), wkd_m: N(m.elec_wkd_kwh_mid),
+          rate_l: N(m.elec_rate_light), rate_m: N(m.elec_rate_mid), rate_p: N(m.elec_rate_peak), wkd_rate_l: N(m.elec_wkd_rate_light), wkd_rate_m: N(m.elec_wkd_rate_mid), season: m.elec_season || null, pf_v: N(m.elec_pf), lead_v: N(m.elec_pf_lead) }; }
+      const g = s.gas.calc;
+      if (g) { const B = g.boiler || {}, R = g.rest || {}, sm = k => (B[k] || 0) + (R[k] || 0), bt = B.total || 0, rt = R.total || 0;
+        o.g = { total: g.total, exvat: g.exvat, cost: sm('cost'), vat: sm('vat'), fee: sm('fee'), cut: g.total - bt - rt, b_total: g.boiler ? bt : null, b_cost: B.cost, b_vat: B.vat, b_fee: B.fee, r_total: g.rest ? rt : null, r_cost: R.cost, r_vat: R.vat, r_fee: R.fee,
+          mj: g.mj, b_mj: B.mj, b_m3: B.m3, b_prev: N(m.gas_boiler_prev), b_cur: N(m.gas_boiler_cur), b_corr: N(m.gas_boiler_corr) ?? 1, b_heat: N(m.gas_heat),
+          r_mj: R.mj, r_m3: R.m3, r_prev: N(m.gas_rest_prev), r_cur: N(m.gas_rest_cur), r_corr: N(m.gas_rest_corr) ?? 1, r_heat: N(m.gas_rest_heat) ?? N(m.gas_heat), price: N(m.gas_price) }; }
+      [['w40', s.water.w40], ['w50', s.water.w50]].forEach(([k, w]) => { if (!w) return; const u = w.usage, t1 = Math.min(u, 50), t2 = Math.min(Math.max(0, u - 50), 50), t3 = Math.min(Math.max(0, u - 100), 200), t4 = Math.min(Math.max(0, u - 300), 700), t5 = Math.max(0, u - 1000);
+        o[k] = { total: w.total, water: w.useFee + w.reduce + w.baseFee, reduce: w.reduce, use_fee: w.useFee, base_fee: w.baseFee, wu: w.waterUse + w.reduce2, wu_reduce: w.reduce2, wu_fee: w.waterUse, etc: 0, usage: u, t1, t2, t3, t4, t5,
+          r1: N(m.w_rate1), r2: N(m.w_rate2), r3: N(m.w_rate3), r4: N(m.w_rate4), r5: N(m.w_rate5), wu_rate: N(m.w_use_rate) }; });
+      const ww = s.ww; if (ww && ww.usage !== null) o.ww = { total: ww.cost, fac: ww.facility, imp: ww.improve, usage: ww.usage, flow: ww.flow, sewage: ww.sewage, price: ww.cost && ww.usage ? ww.cost / ww.usage : null };
+      return o;
+    }
+    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
+    async function downloadGm() {
+      try { await ensureXLSX(); } catch (e) { alert(errMsg(e)); return; }
+      const all = { ...gmAll() }, live = [];
+      if (closeYm && !all[closeYm]) { all[closeYm] = gmSnap(closeYm); live.push(closeYm); } // 아직 저장 안 한 이번 마감 달은 지금 계산값
+      const years = [...new Set(Object.keys(all).map(k => Number(k.slice(0, 4))))].sort((a, b) => b - a);
+      if (!years.length) { alert('가마감 기록이 없습니다.'); return; }
+      const wb = XLSX.utils.book_new(), W = 16; // 한 해 블록: 구분 · 합계 · 평균 · 1~12월 + 빈 칸
+      GM_LAYOUT.forEach(([k, sheet, title, rows]) => {
+        const ws = {}, put = (r, c, v, z) => { if (v === null || v === undefined || v === '') return; const a = XLSX.utils.encode_cell({ r, c }); ws[a] = typeof v === 'number' ? { t: 'n', v, z: z || '#,##0' } : { t: 's', v: String(v) }; };
+        put(0, 0, title); put(1, 0, `만든 날 ${todayStr} · 금액 단위 원 · 회계에 넣었던 가마감(고지서 전 예상) 금액·사용량${live.length ? ` · ${live.map(x => Number(x.slice(5)) + '월').join('·')}은 마감 저장 전 지금 계산값` : ''}`);
+        years.forEach((y, bi) => { const c0 = bi * W, R0 = 3;
+          put(R0, c0, `${y}년`); put(R0 + 1, c0, '구분'); put(R0 + 1, c0 + 1, '합계'); put(R0 + 1, c0 + 2, '평균');
+          for (let mo = 1; mo <= 12; mo++) { const ym = `${y}-${pad2(mo)}`; put(R0 + 1, c0 + 2 + mo, `${mo}월`); if (all[ym] && all[ym][k]) put(R0, c0 + 2 + mo, live.includes(ym) ? '저장 전' : '가마감'); }
+          rows.forEach((row, ri) => { const r = R0 + 2 + ri; if (!row.length) return; put(r, c0, row[0]); if (row.length < 2) return;
+            const [, key, agg, z] = row, vals = [];
+            for (let mo = 1; mo <= 12; mo++) { const x = (all[`${y}-${pad2(mo)}`] || {})[k]; if (!x) continue; const v = typeof key === 'function' ? key(x) : x[key];
+              put(r, c0 + 2 + mo, typeof v === 'number' && !isFinite(v) ? null : v, z); if (typeof v === 'number' && isFinite(v)) vals.push(v); }
+            if (vals.length && agg === 's') put(r, c0 + 1, vals.reduce((a, b) => a + b, 0), z);
+            if (vals.length && (agg === 's' || agg === 'a')) put(r, c0 + 2, vals.reduce((a, b) => a + b, 0) / vals.length, z); });
+        });
+        ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length + 6, c: years.length * W } });
+        ws['!cols'] = Array.from({ length: years.length * W }, (_, c) => ({ wch: c % W === 0 ? 24 : c % W === W - 1 ? 3 : 13 }));
+        ws['!freeze'] = { xSplit: 1, ySplit: 5 };
+        XLSX.utils.book_append_sheet(wb, ws, sheet);
+      });
+      XLSX.writeFile(wb, `유틸리티_가마감내역_${todayStr.replace(/-/g, '')}.xlsx`);
+    }
+    // 회계 가마감 탭 아래: 그동안 회계에 넣은 가마감 금액 (최근 달 위)
+    function gmHistHtml() {
+      const all = gmAll(), ks = Object.keys(all).sort().reverse(); if (!ks.length) return '<div class="hint no-print" style="margin-top:14px">지난 가마감 기록이 아직 없습니다 (47번 SQL을 실행하면 2025년 8월부터 들어옵니다).</div>';
+      const v = x => x === null || x === undefined ? '' : f0(x);
+      let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
+      h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">달</th><th>전기 당월요금계</th><th>전기 사용량 (kWh)</th><th>가스 비용 총계</th><th>가스 사용량 (MJ)</th><th>용수 40A+50A</th><th>용수 사용량 (㎥)</th><th>폐수</th><th>폐수 발생량 (㎥)</th><th class="l">출처</th></tr>`;
+      ks.forEach(k => { const x = all[k], e = x.e || {}, g = x.g || {}, w4 = x.w40, w5 = x.w50, ww = x.ww || {}, wsum = (a, b) => (w4 || w5) ? ((w4 || {})[a] || 0) + ((w5 || {})[a] || 0) : null;
+        h += `<tr><td class="l">${esc(ymLabel(k))}</td><td>${v(e.total)}</td><td>${v(e.kwh)}</td><td>${v(g.total)}</td><td>${v(g.mj)}</td><td>${v(wsum('total'))}</td><td>${v(wsum('usage'))}</td><td>${v(ww.total)}</td><td>${v(ww.usage)}</td><td class="l hint">${esc(x.src || '')}${x.savedAt ? ' ' + esc(x.savedAt.slice(0, 10)) : ''}</td></tr>`; });
+      return h + '</table></div></div>';
+    }
+
     async function saveBriefComment() {
       const y = Number(brYm.slice(0, 4));
       try { await saveYear(y, { comments: { ...(yd(y).comments || {}), [brYm]: document.getElementById('br-comment').value } }); document.getElementById('br-cmt-st').textContent = '저장됨 ✓'; }
