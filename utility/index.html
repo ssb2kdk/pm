@@ -529,6 +529,7 @@
         <div class="toolbar no-print">
           <div class="month-nav"><button onclick="shiftReportMonth(-1)">◀</button><span id="report-month"></span><button onclick="shiftReportMonth(1)">▶</button></div>
           <button class="btn" onclick="downloadReport()">📥 엑셀 다운로드</button>
+          <button class="btn" onclick="downloadBasis()">📑 가마감 근거 엑셀</button>
           <button class="btn secondary" onclick="window.print()">🖨 인쇄</button>
           <button class="btn secondary" onclick="reportShot(this)">📷 이미지 복사</button>
         </div>
@@ -2910,6 +2911,141 @@
         try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); done('✓ 복사됨 — Ctrl+V'); }
         catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); done('✓ 그림 파일로 받음'); }
       } catch (e) { done('복사 실패'); alert('그림을 만들지 못했습니다: ' + (e.message || e)); }
+    }
+    // =====================================================================
+    // 가마감 근거 엑셀 (회계 제출용) — 회계보고에서 고른 달의 가마감 금액이 어떻게 나왔는지
+    //  요약 + 전기·가스·용수·폐수 시트: 들어간 값(어디서 왔는지) → 계산 과정 → 금액
+    // =====================================================================
+    async function downloadBasis() {
+      try { await ensureXLSX(); } catch (e) { alert(errMsg(e)); return; }
+      const ym = reportYm, fc = FC(ym), s = fc || S(ym), m = s.m || S(ym).m || {}, src = m._src || {}, note = m._note || {};
+      const P = UT.prevYm(ym), sP = S(P), mm = Number(ym.slice(5)), mP = Number(P.slice(5));
+      const N = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+      const R0 = v => v === null ? null : Math.round(v), R2 = v => v === null ? null : Math.round(v * 100) / 100, R4 = v => v === null ? null : Math.round(v * 10000) / 10000;
+      const SRC = { '입력': '직접 입력', '전월': '전월 값 이어받음', '자동': '자동 계산 (자체 검침·전월 기록)', '기본값': '기본값', '클러스터 검침': '클러스터 검침' };
+      const srcOf = k => (SRC[src[k]] || src[k] || '') + (note[k] ? ` · ${note[k]}` : '');
+      const stTxt = st => st === '확정' ? '고지서 확정' : st ? '가마감 (고지서 전 예상)' : '자료 없음';
+      const wb = XLSX.utils.book_new();
+      const add = (name, aoa, cols, merges) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = cols.map(w => ({ wch: w })); if (merges) ws['!merges'] = merges; XLSX.utils.book_append_sheet(wb, ws, name); };
+      const SKIP = ['elec_ww_kwh', 'elec_ww_ct', 'elec_hvac_kwh']; // 요금 계산에 안 쓰는 값
+      const fieldRows = groups => UT.FIELDS.filter(f => groups.includes(f.g) && !SKIP.includes(f.k)).filter(f => m[f.k] !== undefined && m[f.k] !== null && m[f.k] !== '')
+        .map(f => [f.label, f.text ? String(m[f.k]) : (N(m[f.k]) ?? String(m[f.k])), f.unit || '', srcOf(f.k)]);
+      const head = (t, st) => [[`${ymLabel(ym)} ${t} 가마감 근거`], [`상태: ${stTxt(st)}${fc ? ' · 진행 중인 달이라 월말 예측값' : ''} · 만든 날 ${todayStr}`], []];
+
+      // ---- 요약 ----
+      const BASIS = {
+        '전기': '시간대별 사용량(파워플래너 발췌) × 한전 요금 단가 → 전기요금계 + 부가세 + 전력기금',
+        '가스': '말일 자체 검침 지침 − 전월 지침 → × 보정계수 × 열량계수 = 청구량(MJ) × 전월 단가',
+        '용수': '이달 11일 자체 검침 − 전월 고지서 당월지침 → 수도 요금표(구간 단가·구경별 요금·물이용부담금)',
+        '폐수': '(폐수 발생량 + 오수량) × 전월 실행단가(전월 고지서 금액 ÷ 전월 사용량)'
+      };
+      { const aoa = [[`${ymLabel(ym)} 유틸리티 가마감 비용 근거`], [`만든 날 ${todayStr} · 금액 단위 원`], [], ['구분', '세부', '사용량', '단위', '전월 공급가액', '공급가액(VAT별도)', '금액(VAT포함)', '상태', '계산 근거']];
+        reportRows.forEach(r => { const row = r.map(v => typeof v === 'number' ? Math.round(v * 10) / 10 : (v ?? '')); row.push(r[0] && BASIS[r[0]] ? BASIS[r[0]] : ''); aoa.push(row); });
+        aoa.push([], ['※ 시트별로 들어간 값·출처·계산 과정이 있습니다 (전기 · 가스 · 용수 · 폐수).']);
+        add('요약', aoa, [10, 22, 12, 6, 16, 18, 16, 14, 70]); }
+
+      // ---- 전기 ----
+      { const e = s.elec.calc, aoa = head('전기', s.elec.status);
+        aoa.push(['1. 들어간 값'], ['항목', '값', '단위', '출처']);
+        fieldRows(['전기', '전기 단가', '전기 주말 할인', '전기 (요금 바뀐 달만)']).forEach(r => aoa.push(r));
+        aoa.push([], ['2. 계산'], ['항목', '계산식', '금액(원)']);
+        if (!e) aoa.push(['시간대별 사용량이 없어 계산 못 함']);
+        else {
+          const v = k => N(m[k]) || 0, fl = (a, b) => Math.floor(a * b);
+          aoa.push(['기본요금', `기본요금 단가 ${v('elec_base_rate')} × 요금적용 전력 ${v('elec_contract_kw')}kW`, R0(e.base)]);
+          [['경부하', 'light'], ['중간부하', 'mid'], ['최대부하', 'peak']].forEach(([n, k]) => {
+            aoa.push([`전력량요금 (${n})`, `${v('elec_kwh_' + k).toLocaleString('ko-KR')}kWh × ${v('elec_rate_' + k)}원 (원 미만 버림)`, fl(v('elec_kwh_' + k), v('elec_rate_' + k))]);
+            if (v('elec_kwh_' + k + '2')) aoa.push([`전력량요금 (${n}, 변경 후)`, `${v('elec_kwh_' + k + '2')}kWh × ${v('elec_rate_' + k + '2')}원`, fl(v('elec_kwh_' + k + '2'), v('elec_rate_' + k + '2'))]); });
+          if (v('elec_wkd_kwh_light')) aoa.push(['주말 경부하 할인', `${v('elec_wkd_kwh_light')}kWh × ${v('elec_wkd_rate_light')}원`, -fl(v('elec_wkd_kwh_light'), v('elec_wkd_rate_light'))]);
+          if (v('elec_wkd_kwh_mid')) aoa.push(['주말 중간부하 할인', `${v('elec_wkd_kwh_mid')}kWh × ${v('elec_wkd_rate_mid')}원`, -fl(v('elec_wkd_kwh_mid'), v('elec_wkd_rate_mid'))]);
+          aoa.push(['전력량요금 계', '', R0(e.energy)]);
+          aoa.push(['기후환경요금', `${R2(e.kwh).toLocaleString('ko-KR')}kWh × ${N(m.elec_climate_rate) ?? 9}원`, R0(e.climate)]);
+          aoa.push(['연료비조정요금', `${R2(e.kwh).toLocaleString('ko-KR')}kWh × ${N(m.elec_fuel_rate) ?? 5}원`, R0(e.fuel)]);
+          if (e.pfFee) aoa.push(['지상역률 요금', `역률 ${m.elec_pf}`, R0(e.pfFee)]);
+          if (e.leadFee) aoa.push(['진상역률 요금', `역률 ${m.elec_pf_lead}`, R0(e.leadFee)]);
+          if (e.settlement) aoa.push(['정산 요금', '', R0(e.settlement)]);
+          aoa.push(['전기요금계 (부가세 제외)', '위 금액 합', R0(e.subtotal)]);
+          aoa.push(['부가가치세', '전기요금계 × 10% (반올림)', R0(e.vat)]);
+          aoa.push(['전력산업기반기금', '전기요금계 × 2.7% (10원 미만 버림)', R0(e.fund)]);
+          if (e.late) aoa.push(['연체료', '', R0(e.late)]);
+          aoa.push(['청구금액', '합계 (10원 미만 버림)', R0(e.total)]);
+          aoa.push(['공급가액 (VAT 별도)', '전기요금계 + 전력기금 + 연체료', R0(e.exvat)]);
+        }
+        add('전기', aoa, [26, 46, 16, 60]); }
+
+      // ---- 가스 ----
+      { const g = s.gas.calc, aoa = head('가스', s.gas.status);
+        aoa.push(['1. 들어간 값'], ['항목', '값', '단위', '출처']);
+        fieldRows(['가스']).forEach(r => aoa.push(r));
+        aoa.push([], ['2. 계산'], ['항목', '보일러', '식당', '합계', '계산식']);
+        if (!g) aoa.push(['지침이 없어 계산 못 함']);
+        else {
+          const B = g.boiler, Rr = g.rest, cell = (o, f) => o ? f(o) : null, sum = f => (B ? f(B) || 0 : 0) + (Rr ? f(Rr) || 0 : 0);
+          const corrB = N(m.gas_boiler_corr) ?? 1, corrR = N(m.gas_rest_corr) ?? 1, heatB = N(m.gas_heat), heatR = N(m.gas_rest_heat) ?? heatB;
+          aoa.push(['전월 지침', N(m.gas_boiler_prev), N(m.gas_rest_prev), null, '']);
+          aoa.push(['당월 지침', N(m.gas_boiler_cur), N(m.gas_rest_cur), null, '말일 자체 검침 (정수 반올림)']);
+          aoa.push(['사용량 (㎥)', B ? R4(N(m.gas_boiler_cur) - N(m.gas_boiler_prev)) : null, Rr ? R4(N(m.gas_rest_cur) - N(m.gas_rest_prev)) : null, null, '당월 지침 − 전월 지침']);
+          aoa.push(['보정계수', B ? corrB : null, Rr ? corrR : null, null, '']);
+          aoa.push(['보정 사용량 (㎥)', cell(B, o => R4(o.m3)), cell(Rr, o => R4(o.m3)), R4(g.m3), '사용량 × 보정계수']);
+          aoa.push(['열량계수 (MJ/㎥)', B ? heatB : null, Rr ? heatR : null, null, '']);
+          aoa.push(['청구량 (MJ)', cell(B, o => R4(o.mj)), cell(Rr, o => R4(o.mj)), R4(g.mj), '보정 사용량 × 열량계수']);
+          aoa.push(['단가 (원/MJ)', N(m.gas_price), N(m.gas_price), null, '전월 단가']);
+          aoa.push(['가스사용료', cell(B, o => o.cost), cell(Rr, o => o.cost), sum(o => o.cost), '청구량 × 단가 (원 미만 버림)']);
+          aoa.push(['보정기교체비', cell(B, o => o.fee), cell(Rr, o => o.fee), sum(o => o.fee), '']);
+          aoa.push(['부가가치세', cell(B, o => o.vat), cell(Rr, o => o.vat), sum(o => o.vat), '(사용료 + 보정기교체비) × 10% (원 미만 버림)']);
+          aoa.push(['소계', cell(B, o => o.total), cell(Rr, o => o.total), sum(o => o.total), '']);
+          aoa.push(['원단위 절사', null, null, g.total - sum(o => o.total), '맨 끝 청구금액에서 10원 미만 버림']);
+          aoa.push(['청구금액', null, null, g.total, '']);
+          aoa.push(['공급가액 (VAT 별도)', null, null, g.exvat, '사용료 + 보정기교체비']);
+        }
+        add('가스', aoa, [22, 16, 16, 16, 44]); }
+
+      // ---- 용수 ----
+      { const W = s.water, aoa = head('용수', W.status);
+        aoa.push(['1. 들어간 값'], ['항목', '값', '단위', '출처']);
+        fieldRows(['용수', '용수 단가']).forEach(r => aoa.push(r));
+        aoa.push([], ['2. 사용량 근거 (자체 검침)'], ['계량기', `${mm}월 11일 자체 검침`, `시작 지침 (${mP}월 고지서 당월지침)`, '사용량 (㎥)']);
+        [['40A', 'water_40a', 'w40_reading'], ['50A', 'water_50a', 'w50_reading']].forEach(([n, key, rk]) => {
+          const a = UT.readingOnOrBefore(DAILY, UT.dateStr(ym, 11), key, 3), pb = N((MONTHLY[P] || {})[rk]), b = pb !== null ? pb : UT.readingOnOrBefore(DAILY, UT.dateStr(P, 11), key, 3);
+          aoa.push([n, a, b === null ? null : b + (pb === null ? ' (전월 11일 자체 검침)' : ''), a !== null && b !== null ? R2(a - b) : null]); });
+        if (m.w_combined === '합산') aoa.push(['※ 고지서가 40A로 합산되어 나와 40A 사용량 = 40A + 50A']);
+        aoa.push([], ['3. 계산'], ['항목', '40A', '50A', '합계', '계산식']);
+        const a4 = W.w40, a5 = W.w50, c = (o, f) => o ? f(o) : null, sm = f => (a4 ? f(a4) : 0) + (a5 ? f(a5) : 0);
+        aoa.push(['사용량 (㎥)', c(a4, o => o.usage), c(a5, o => o.usage), sm(o => o.usage), '']);
+        aoa.push(['상수도 사용요금', c(a4, o => R0(o.useFee)), c(a5, o => R0(o.useFee)), R0(sm(o => o.useFee)), '구간별 사용량 × 구간 단가 (1~50 / 51~100 / 101~300 / 301~1000 / 1001~)']);
+        aoa.push(['사용요금 감면', c(a4, o => o.reduce), c(a5, o => o.reduce), sm(o => o.reduce), '−1% (10원 미만 버림, 최대 5,000원)']);
+        aoa.push(['구경별 요금', c(a4, o => o.baseFee), c(a5, o => o.baseFee), sm(o => o.baseFee), '']);
+        aoa.push(['물이용부담금', c(a4, o => R0(o.waterUse)), c(a5, o => R0(o.waterUse)), R0(sm(o => o.waterUse)), '사용량 × 물이용부담금 단가']);
+        aoa.push(['물이용부담금 감면', c(a4, o => o.reduce2), c(a5, o => o.reduce2), sm(o => o.reduce2), '−1% (10원 미만 버림)']);
+        aoa.push(['청구금액', R0(W.w40cost), R0(W.w50cost), R0(W.cost), '부가세 없음 (공급가액 = 금액)']);
+        add('용수', aoa, [22, 18, 26, 14, 56]); }
+
+      // ---- 폐수 ----
+      { const ww = s.ww, aoa = head('폐수', ww.status), cu = UT.clusterUse(ym, MONTHLY), r = MONTHLY[ym] || {}, rp = MONTHLY[P] || {};
+        aoa.push(['1. 들어간 값'], ['항목', '값', '단위', '출처']);
+        fieldRows(['폐수']).forEach(x => aoa.push(x));
+        aoa.push([], ['2. 사용량 근거 (클러스터 검침 — 협력업체가 보내 주는 지침)'], ['항목', `${mm}월 검침`, `${mP}월 검침`, '차이 (㎥)']);
+        const cw = o => N(o.cluster_w40_reading) !== null && N(o.cluster_w50_reading) !== null ? N(o.cluster_w40_reading) + N(o.cluster_w50_reading) : N(o.cluster_water_reading);
+        aoa.push(['폐수방류 지침', N(r.cluster_ww_reading), N(rp.cluster_ww_reading), cu.ww]);
+        aoa.push(['상수도 40A + 50A 지침', cw(r), cw(rp), cu.water]);
+        aoa.push(['폐수 발생량', null, null, ww.flow, srcOf('ww_flow')]);
+        aoa.push(['오수량', null, null, ww.sewage, `(상수도 사용량 − 폐수 발생량) × 0.8 · ${srcOf('ww_sewage')}`]);
+        aoa.push([], ['3. 계산'], ['항목', '값', '계산식']);
+        const pu = sP.ww && sP.ww.cost && sP.ww.usage ? sP.ww.cost / sP.ww.usage : null;
+        aoa.push(['사용량 합계 (㎥)', R2(ww.usage), '폐수 발생량 + 오수량']);
+        if (ww.status === '확정') aoa.push(['고지서 금액', R0(ww.cost), '공공폐수처리시설 사용료 + 개선충당금 (고지서)']);
+        else {
+          aoa.push([`${mP}월 고지서 금액`, R0(sP.ww && sP.ww.cost), '']);
+          aoa.push([`${mP}월 사용량 (㎥)`, R2(sP.ww && sP.ww.usage), '']);
+          aoa.push(['전월 실행단가 (원/㎥)', pu === null ? null : R4(pu), '전월 고지서 금액 ÷ 전월 사용량']);
+          aoa.push(['가마감 금액', R0(ww.cost), '사용량 합계 × 전월 실행단가']);
+          if (sP.ww && sP.ww.facility !== null && sP.ww.cost) aoa.push(['나누는 비율 (사용료)', R4(sP.ww.facility / sP.ww.cost), `${mP}월 고지서의 사용료 ÷ 합계`]);
+        }
+        aoa.push(['공공폐수처리시설 사용료', R0(ww.facility), ww.status === '확정' ? '고지서' : '가마감 금액 × 전월 비율']);
+        aoa.push(['개선충당금', R0(ww.improve), ww.status === '확정' ? '고지서' : '가마감 금액 − 사용료']);
+        add('폐수', aoa, [26, 18, 18, 16, 50]); }
+
+      XLSX.writeFile(wb, `유틸리티_가마감근거_${ym.replace('-', '')}.xlsx`);
     }
     async function saveBriefComment() {
       const y = Number(brYm.slice(0, 4));
