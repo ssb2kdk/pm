@@ -1904,17 +1904,17 @@
       const D = wcP2Data(end), R = wcP2Rows(D), f = (v, dg) => v === null || v === undefined || isNaN(v) ? '' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg });
       const head = `<tr><th>구분</th><th>항목</th><th class="g1">SUM</th><th class="g1">AVER</th>${D.map(x => `<th class="g1">${ymHead(x.ym)}</th>`).join('')}</tr>`;
       const body = grp => R.filter(r => r.grp === grp).map((r, i, a) => `<tr>${i ? '' : `<th rowspan="${a.length}" class="g2">2공장</th>`}<td class="l">${r.n}</td><td>${f(r.sum, r.dg)}</td><td>${f(r.aver, r.dg)}</td>${D.map(x => `<td${r.k === 'flow' && x.flowSrc === '검침' ? ' class="wq-mid" title="청구 배출량이 없어 설비검침 값"' : ''}>${f(x[r.k], r.dg)}</td>`).join('')}</tr>`).join('');
-      return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출처리시설 폐수발생량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
+      return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
         <div style="font-weight:600;margin-top:8px">1. 폐수 배출량</div><div class="tbl-x"><table class="wq sm">${head}${body('폐수배출량')}</table></div>
         <div style="font-weight:600;margin-top:8px">2. 슬러지 발생량</div><div class="tbl-x"><table class="wq sm">${head}${body('슬러지')}</table></div>
-        <div class="hint wc-noshot" style="margin-top:6px">폐수배출량 = 위탁 청구 배출량(2공장 칸) · 없는 달은 설비검침 폐수방류량(노란 칸) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
+        <div class="hint wc-noshot" style="margin-top:6px">배출량 = 폐수만 (오수 제외, 발생량은 폐수 + 오수) · 폐수배출량 = 위탁 청구 배출량(2공장 칸) · 없는 달은 설비검침 폐수방류량(노란 칸) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
     }
     async function wcP2Xlsx() {
       try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
       catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
       const D = wcP2Data(wcYm), R = wcP2Rows(D), v = x => x === null || x === undefined || isNaN(x) ? '' : Math.round(x * 100) / 100, hd = ['구분', '항목', 'SUM', 'AVER', ...D.map(x => ymHead(x.ym))];
       const sec = grp => R.filter(r => r.grp === grp).map((r, i) => [i ? '' : '2공장', r.n, v(r.sum), v(r.aver), ...D.map(x => v(x[r.k]))]);
-      const aoa = [['※ 2공장 폐수배출처리시설 폐수발생량 및 슬러지배출량'], [], ['1. 폐수 배출량'], hd, ...sec('폐수배출량'), [], ['2. 슬러지 발생량'], hd, ...sec('슬러지')];
+      const aoa = [['※ 2공장 폐수배출량 및 슬러지배출량'], [], ['1. 폐수 배출량'], hd, ...sec('폐수배출량'), [], ['2. 슬러지 발생량'], hd, ...sec('슬러지')];
       const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{ wch: 8 }, { wch: 24 }, ...hd.slice(2).map(() => ({ wch: 12 }))];
       XLSX.utils.book_append_sheet(wb, ws, '2공장'); XLSX.writeFile(wb, `2공장_폐수배출량_슬러지_${wcYm.replace('-', '')}.xlsx`);
     }
