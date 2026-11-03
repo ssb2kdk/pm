@@ -1315,13 +1315,13 @@
         if (r[0]) grp = r[0];
         if (isSub && !REP_OPEN.has(grp)) return;   // 세부는 누르면 펼침
         const tg = hasSub[r[0]] ? `<span class="tg">${REP_OPEN.has(r[0]) ? '▼' : '▶'}</span>` : (r[0] && !isSum ? '<span class="tg"></span>' : '');
-        const accR = (grp === '전기' && isSub && /전기요금계|전력기금/.test(r[1])) || (r[0] === '가스') || (grp === '용수' && isSub) || (grp === '폐수' && isSub); // 회계 전표에 올리는 금액
+        const accR = (grp === '전기' && isSub && /전기요금계|전력기금/.test(r[1])) || (r[0] === '가스'); // 회계에 넣는 예상 금액 (수도·폐수는 전월 고지서 금액을 이번 달 마감에 씀)
         h += `<tr class="${accR ? 'accrow' : ''} ${isSum ? 'sum' : ''} ${isSub ? 'subrow' : ''} ${hasSub[r[0]] ? 'rgrp' : ''}" ${hasSub[r[0]] ? `onclick="repToggle('${r[0]}')" title="눌러서 세부 ${REP_OPEN.has(r[0]) ? '접기' : '보기'}"` : ''}><td class="l">${tg}${esc(r[0])}</td><td class="l">${esc(r[1])}</td><td>${r[2] === null ? '' : f1(r[2])}</td><td>${esc(r[3])}</td>
           <td class="pvc">${r[4] === null ? '' : f0(r[4])}</td><td class="key">${r[5] === null ? '' : f0(r[5])}</td><td>${r[6] === null ? '' : f0(r[6])}</td>
           <td>${r[7] ? `<span class="st st-${r[7]}">${r[7]}</span>` : ''}</td></tr>`;
       });
       h += '</table></div>';
-      h += `<div class="hint no-print" style="margin-top:6px"><span style="background:#fff1a8;padding:0 6px">노란 칸</span> = 회계 전표에 올리는 금액 (전기요금계·전력기금 / 가스 / 40A·50A / 폐수 사용료·개선충당금) · ▶ 구분(전기·가스·용수)을 누르면 세부가 펼쳐집니다 · <a href="#" onclick="repToggle('all');return false">모두 펼치기/접기</a></div>`;
+      h += `<div class="hint no-print" style="margin-top:6px"><span style="background:#fff1a8;padding:0 6px">노란 칸</span> = 회계에 넣는 예상 금액 (전기요금계·전력기금 / 가스) · 수도·폐수는 전월 고지서 금액을 이번 달 마감에 씀 · ▶ 구분(전기·가스·용수)을 누르면 세부가 펼쳐집니다 · <a href="#" onclick="repToggle('all');return false">모두 펼치기/접기</a></div>`;
       h += `<div style="margin-top:14px;" class="hint">가마감 = 고지서 전 자체 검침값 × 단가로 계산한 예상 금액 (전기: 시간대별 사용량·역률, 가스: 말일 지침 × 전월 단가, 용수: 11일 지침 차이, 폐수: 발생량 × 전월 단가). 용수·폐수는 부가세가 없어 공급가액과 금액이 같습니다.</div>`;
       document.getElementById('report-body').innerHTML = h;
     }
