@@ -2797,21 +2797,27 @@
       const yt = ytd(y, brYm);
       const uc = x => ratio(x.total, x.production);
       const tile = (lab, val, sub) => `<div class="br-kpi"><div class="l">${lab}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
-      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : prov ? ' · <b style="color:#8a5300">가마감 기준 (고지서 전 예상값)</b>' : ''}</div></div>
-        <table class="br-sign"><tr><td>작성</td><td>검토</td><td>승인</td></tr><tr><td></td><td></td><td></td></tr></table></div>`;
+      let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : prov ? ' · <b style="color:#8a5300">가마감 기준 (고지서 전 예상값)</b>' : ''}</div></div></div>`;
       if (prov || fc || s._prodEst) h += `<div class="br-prov">${fc ? '<b>월말 예측</b> — 어제까지 검침 + 남은 날은 평일·주말 평균으로 추정한 값입니다.' : `<b>가마감 보고</b> — 고지서가 오기 전 자체 검침으로 계산한 예상값입니다. 고지서 확정(지출결의) 후 금액이 조금 바뀔 수 있습니다.`}
-        <span>${UT.UTILS.filter(u => s[u.k].status !== '확정').map(u => `${u.name}: ${{ elec: '파워플래너 사용량 × 요금표', gas: '보일러·식당 검침 × 단가·열량계수', water: '검침 기간 사용량 × 상수도 요금표', ww: '폐수 발생량 × 전월 단가' }[u.k]}`).join(' · ')}${s._prodEst ? ' · 원육 투입량: 생산 대시보드 일별 원육 합 (잠정 — 월 원육 투입량 입력 전)' : ''}</span></div>`;
+        <span>${(() => { const nc = UT.UTILS.filter(u => s[u.k].status !== '확정'), L = []; // 가마감 근거 (사용자 요청 문구)
+          if (nc.some(u => u.k === 'elec')) L.push('전기 : 파워플래너 발췌');
+          const o = nc.filter(u => u.k !== 'elec'); if (o.length) L.push(`${o.map(u => u.name).join(', ')} : 자체 계측량 × 전월 단가`);
+          if (s._prodEst) L.push('원육 투입량 : 생산 대시보드 일별 원육 합 (잠정 — 월 원육 투입량 입력 전)');
+          return L.join('<br>'); })()}</span></div>`;
       h += `<div class="br-kpis">` +
         tile('유틸리티 총비용', man(s.total), `전월 ${pctTxt(s.total, prev.total)} · 전년 ${pctTxt(s.total, ly.total)}`) +
         tile('원육 투입량', `${f0(s.production)} kg${s._prodEst ? ' <small style="font-size:11px;color:#8a5300">잠정</small>' : ''}`, `전월 ${pctTxt(s.production, prev.production)} · 전년 ${pctTxt(s.production, ly.production)}`) +
         tile('원육 kg당 비용', `${f0(uc(s))} 원/kg`, `전월 ${pctTxt(uc(s), uc(prev))} · 전년 ${pctTxt(uc(s), uc(ly))}`) +
         tile(`${y}년 누적 (1~${m}월)`, man(yt.total), `원단위 ${f0(ratio(yt.total, yt.production))} 원/kg`) +
         `</div>`;
-      h += `<table class="t br-t"><tr><th class="l">항목</th><th>사용량</th><th>비용 (원)</th><th>원단위</th><th>전월 대비<br><span class="hint">원단위</span></th><th>전년 동월 대비<br><span class="hint">원단위</span></th><th>예상 사용량<br><span class="hint">원육·설비 부하 반영</span></th><th>예상 대비<br><span class="hint">목표 절감률</span></th><th>상태</th></tr>` +
-        UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production), e = fc ? null : evalFor(brYm, u.k);
-          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${f0(s[u.k].cost)}</td><td>${fU(un, u.k)} <span class="hint">${u.unit}/kg</span></td>
-            <td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${e ? f0(e.exp) : '-'}</td><td>${e ? saveTxt(e.save) + (e.rate !== null ? `<br><span class="hint">목표 ${e.rate}%</span> ${judge(e)}` : '') : '-'}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
-        `<tr class="sum"><td class="l">합계</td><td></td><td>${f0(s.total)}</td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td>${pctTxt(uc(s), uc(prev))}</td><td>${pctTxt(uc(s), uc(ly))}</td><td></td><td></td><td></td></tr></table>`;
+      // 표: 비용을 앞으로, 전월·전년 대비는 사용량·원단위 둘 다 (예상 사용량·예상 대비 칸은 사용자 요청으로 뺌)
+      const pu = (a, k, base) => pctTxt(a, base[k].usage);
+      h += `<table class="t br-t"><tr><th class="l" rowspan="2">항목</th><th rowspan="2">비용 (원)</th><th rowspan="2">사용량</th><th rowspan="2">원단위</th><th colspan="2">전월 대비</th><th colspan="2">전년 동월 대비</th><th rowspan="2">상태</th></tr>
+        <tr><th>사용량</th><th>원단위</th><th>사용량</th><th>원단위</th></tr>` +
+        UT.UTILS.map(u => { const un = ratio(s[u.k].usage, s.production);
+          return `<tr><td class="l"><i class="dot" style="background:${u.color}"></i><b>${u.name}</b></td><td>${f0(s[u.k].cost)}</td><td>${f0(s[u.k].usage)} ${u.unit}</td><td>${fU(un, u.k)} <span class="hint">${u.unit}/kg</span></td>
+            <td>${pu(s[u.k].usage, u.k, prev)}</td><td>${pctTxt(un, ratio(prev[u.k].usage, prev.production))}</td><td>${pu(s[u.k].usage, u.k, ly)}</td><td>${pctTxt(un, ratio(ly[u.k].usage, ly.production))}</td><td>${s[u.k].status ? `<span class="st st-${s[u.k].status}">${s[u.k].status}</span>` : ''}</td></tr>`; }).join('') +
+        `<tr class="sum"><td class="l">합계</td><td>${f0(s.total)}</td><td></td><td>${f0(uc(s))} <span class="hint">원/kg</span></td><td></td><td>${pctTxt(uc(s), uc(prev))}</td><td></td><td>${pctTxt(uc(s), uc(ly))}</td><td></td></tr></table>`;
       h += `<div class="br-charts"><div><div class="br-ct">월별 비용 (천원)</div><div class="br-box"><canvas id="br-cost"></canvas></div></div><div><div class="br-ct">원육 kg당 비용 (원/kg) · 전년 비교</div><div class="br-box"><canvas id="br-unit"></canvas></div></div></div>`;
       h += `<div class="br-charts"><div><div class="br-ct">전기 원단위 (kWh/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-eunit"></canvas></div></div><div><div class="br-ct">가스 원단위 (MJ/원육 kg) · 전년 비교</div><div class="br-box"><canvas id="br-gunit"></canvas></div></div></div>`;
       const cmt = (yd(y).comments || {})[brYm] || '';
