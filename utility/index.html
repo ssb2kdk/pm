@@ -73,7 +73,7 @@
     #zoom[hidden] { display: none !important; }
     #udet { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
     #udet[hidden] { display: none !important; }
-    #udet .zoom-hd { flex-wrap: wrap; }
+    #udet .zoom-hd { flex-wrap: wrap; row-gap: 8px; } #udet .zoom-hd .hint { flex: 1 1 100%; order: 9; white-space: nowrap; } #udet .zoom-hd button { white-space: nowrap; }
     .kpi.clickable { cursor: pointer; transition: box-shadow .15s; } .kpi.clickable:hover { box-shadow: 0 3px 10px rgba(0,0,0,.15); }
     table.ud tr.cmp td { font-size: 11px; color: #8a8f98; background: #fbfcfd; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
     table.ud tr.cmp td.l { padding-left: 16px; } table.ud tr.cmp td.up { color: #d93025; } table.ud tr.cmp td.down { color: #1565c0; } table.ud tr.cmp .pc { font-size: 10px; opacity: .85; }
@@ -5608,14 +5608,58 @@
       document.getElementById('year-table').innerHTML = h + '</table>';
     }
 
+    // 엑셀 받기: 서식(선·머리글 색·숫자 쉼표)이 들어가는 xlsx-js-style 사용 → 모든 엑셀 받기에 자동 적용 (xlsxPretty)
     async function ensureXLSX() {
-      if (window.XLSX) return;
-      await new Promise((res, rej) => {
+      if (window.XLSX && window.XLSX.__pretty) return;
+      if (!window.XLSX || !window.XLSX.__style) await new Promise((res, rej) => {
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = res; s.onerror = () => rej(new Error('엑셀 변환 도구를 불러오지 못했습니다.'));
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+        s.onload = () => { if (window.XLSX) window.XLSX.__style = true; res(); }; s.onerror = () => rej(new Error('엑셀 변환 도구를 불러오지 못했습니다.'));
         document.head.appendChild(s);
       });
+      const wf = XLSX.writeFile.bind(XLSX);
+      XLSX.writeFile = (wb, name, o) => { try { wb.SheetNames.forEach(n => xlsxPretty(wb.Sheets[n])); } catch (e) { console.warn('엑셀 서식 실패', e); } return wf(wb, name, o); };
+      XLSX.__pretty = true;
+    }
+    // 시트 안 표를 찾아 서식: 값이 2칸 이상인 줄이 이어지는 곳 = 표 (빈 줄로 끊김, 모든 줄이 빈 칸인 열로 좌우 나눔)
+    //  표 첫 줄(글자만) = 머리글(연한 파랑·굵게·가운데) · 표 안 한 칸짜리 줄 = 묶음 줄(연회색·굵게) · 표 밖 한 칸 줄 = 제목(굵게) · 숫자 = 쉼표
+    function xlsxPretty(ws) {
+      if (!ws || !ws['!ref']) return;
+      const rg = XLSX.utils.decode_range(ws['!ref']), A = (r, c) => XLSX.utils.encode_cell({ r, c });
+      const has = (r, c) => { const x = ws[A(r, c)]; return x && x.v !== undefined && x.v !== null && x.v !== ''; };
+      const cnt = r => { let n = 0; for (let c = rg.s.c; c <= rg.e.c; c++) if (has(r, c)) n++; return n; };
+      const thin = { style: 'thin', color: { rgb: 'BFBFBF' } }, BD = { top: thin, bottom: thin, left: thin, right: thin };
+      const N = rg.e.r - rg.s.r + 1, n = Array.from({ length: N }, (_, i) => cnt(rg.s.r + i)), inT = new Array(N).fill(false);
+      const st = (r, c, s) => { const a = A(r, c); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = Object.assign({}, ws[a].s || {}, s); return ws[a]; };
+      let i = 0;
+      while (i < N) {
+        if (n[i] < 2) { i++; continue; }
+        let j = i; while (j + 1 < N && (n[j + 1] >= 2 || (n[j + 1] === 1 && j + 2 < N && n[j + 2] >= 2))) j++;
+        const r0 = rg.s.r + i, r1 = rg.s.r + j;
+        const used = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let u = false; for (let r = r0; r <= r1 && !u; r++) u = has(r, c); used.push(u); }
+        const segs = []; let a = null; used.forEach((u, k) => { const c = rg.s.c + k; if (u && a === null) a = c; if (!u && a !== null) { segs.push([a, c - 1]); a = null; } }); if (a !== null) segs.push([a, rg.e.c]);
+        const allStr = r => { let ok = true, any = false; for (let c = rg.s.c; c <= rg.e.c; c++) if (has(r, c)) { any = true; if (ws[A(r, c)].t === 'n') ok = false; } return any && ok; };
+        const heads = allStr(r0) ? (n[i + 1] > n[i] && allStr(r0 + 1) ? 2 : 1) : 0;
+        segs.forEach(([c0, c1]) => {
+          for (let r = r0; r <= r1; r++) {
+            const k = r - rg.s.r, isHead = r < r0 + heads, isGrp = !isHead && n[k] === 1, lab = ws[A(r, c0)] && String(ws[A(r, c0)].v || ''), isCmp = /차이$|증감률|대비/.test(lab || '') && !isHead;
+            for (let c = c0; c <= c1; c++) {
+              const x = ws[A(r, c)], s = { border: BD, font: { name: '맑은 고딕', sz: 10 }, alignment: { vertical: 'center' } };
+              if (isHead) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: 'DCE6F1' } }, font: { name: '맑은 고딕', sz: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
+              else if (isGrp) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } }, font: { name: '맑은 고딕', sz: 10, bold: true } });
+              else if (isCmp) s.font = { name: '맑은 고딕', sz: 9, color: { rgb: '666666' } };
+              if (c === c0 && !isHead) s.alignment = { horizontal: 'left', vertical: 'center' };
+              const cell = st(r, c, s);
+              if (x && x.t === 'n' && !x.z) cell.z = Number.isInteger(x.v) ? '#,##0' : (Math.abs(x.v) < 1 ? '0.0###' : '#,##0.0#');
+            }
+          }
+        });
+        for (let k = i; k <= j; k++) inT[k] = true;
+        i = j + 1;
+      }
+      // 표 밖 글자 줄 = 제목 (맨 첫 줄은 크게)
+      for (let k = 0; k < N; k++) if (!inT[k] && n[k]) for (let c = rg.s.c; c <= rg.e.c; c++) if (has(rg.s.r + k, c)) { const x = ws[A(rg.s.r + k, c)]; if (x.t === 's') x.s = { font: { name: '맑은 고딕', bold: k === 0 || /^\d+[.)]/.test(String(x.v)) || /^※/.test(String(x.v)), sz: k === 0 ? 13 : 10, color: k === 1 && n[0] ? { rgb: '666666' } : undefined } }; }
+      if (!ws['!cols']) { const w = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let m = 6; for (let r = rg.s.r; r <= rg.e.r; r++) if (has(r, c) && ws[A(r, c)].t === 's' && !(n[r - rg.s.r] === 1)) m = Math.max(m, [...String(ws[A(r, c)].v)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2); w.push({ wch: Math.min(Math.max(m, c === rg.s.c ? 14 : 11), 50) }); } ws['!cols'] = w; }
     }
 
     async function downloadYearTable() {
