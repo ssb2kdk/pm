@@ -327,6 +327,7 @@
       let amtN = a1 || a2;
       if (v1 != null && v2 != null && v1 !== v2) warn.push(`납기내 금액 ${v1.toLocaleString()} 과 총납부금액 ${v2.toLocaleString()} 이 다르게 읽혔습니다. 확인하세요.`);
       const info = `${prev ?? '?'} → ${cur ?? '?'}`;
+      if (size && cur != null) out.push({ k: `w${size}_reading`, label: `${size}A 고지서 당월지침`, v: cur, raw: String((curN || {}).raw ?? cur), box: curN ? box(curN) : null });
       if (size === '50') {
         F(out, 'w50_bill', '용수 50A 청구액', amtN, 0);
         if (use == null || use === 0) {

@@ -620,8 +620,10 @@
     { g: '가스', k: 'gas_rest_corrector_fee', label: '보정기교체비 (식당)', unit: '원' },
 
     { g: '용수', k: 'w_combined', label: '고지서 방식', unit: '', carry: true, text: true, options: ['따로', '합산'], def: '따로', hint: '합산 = 40A 고지서에 50A 사용량까지 포함 (50A는 구경별 요금만)' },
-    { g: '용수', k: 'w40_usage', label: '40A 고지서 사용량', unit: '㎥', hint: '비우면 11일 지침 − 전월 11일 지침' },
-    { g: '용수', k: 'w50_usage', label: '50A 고지서 사용량', unit: '㎥', hint: '비우면 11일 지침 − 전월 11일 지침' },
+    { g: '용수', k: 'w40_usage', label: '40A 고지서 사용량', unit: '㎥', hint: '비우면 이달 11일 자체 검침 − 전월 고지서 당월지침 (없으면 전월 11일 검침)' },
+    { g: '용수', k: 'w50_usage', label: '50A 고지서 사용량', unit: '㎥', hint: '비우면 이달 11일 자체 검침 − 전월 고지서 당월지침 (없으면 전월 11일 검침)' },
+    { g: '용수', k: 'w40_reading', label: '40A 고지서 당월지침', unit: '㎥', hint: '고지서의 당월지침 → 다음 달 가마감 사용량의 시작 지침' },
+    { g: '용수', k: 'w50_reading', label: '50A 고지서 당월지침', unit: '㎥', hint: '고지서의 당월지침 → 다음 달 가마감 사용량의 시작 지침' },
     { g: '용수 단가', k: 'w40_base_fee', label: '40A 구경별 요금', unit: '원', carry: true, def: 9000 },
     { g: '용수 단가', k: 'w50_base_fee', label: '50A 구경별 요금', unit: '원', carry: true, def: 15000 },
     { g: '용수 단가', k: 'w_rate1', label: '1~50㎥ 단가', unit: '원/㎥', carry: true },
@@ -763,21 +765,22 @@
       auto('gas_boiler_prev', num(pe.gas_boiler_cur));
       auto('gas_rest_prev', num(pe.gas_rest_cur));
     }
-    // 용수: 11일 지침 차이
-    const r11 = key => {
+    // 용수: 이달 11일 자체 검침 − 시작 지침 (전월 고지서 당월지침, 없으면 전월 11일 자체 검침) — 사용자 방식
+    const r11 = (key, rk) => {
       const a = UT.readingOnOrBefore(daily, UT.dateStr(ym, 11), key, 3);
-      const b = UT.readingOnOrBefore(daily, UT.dateStr(prevYm, 11), key, 3);
-      return (a !== null && b !== null) ? Math.max(0, a - b) : null;
+      const pb = num((monthly[prevYm] || {})[rk]);
+      const b = pb !== null ? pb : UT.readingOnOrBefore(daily, UT.dateStr(prevYm, 11), key, 3);
+      return (a !== null && b !== null) ? Math.max(0, Math.round((a - b) * 100) / 100) : null;
     };
     if (m.w_combined === '합산') {
-      const a = r11('water_40a'), b = r11('water_50a');
+      const a = r11('water_40a', 'w40_reading'), b = r11('water_50a', 'w50_reading');
       if (a !== null || b !== null) {
         auto('w40_usage', (a || 0) + (b || 0));
         auto('w50_usage', 0);
       }
     } else {
-      auto('w40_usage', r11('water_40a'));
-      auto('w50_usage', r11('water_50a'));
+      auto('w40_usage', r11('water_40a', 'w40_reading'));
+      auto('w50_usage', r11('water_50a', 'w50_reading'));
     }
     // 폐수: 클러스터 검침(협력업체가 월말 즈음 보내는 상수도 40A·50A·폐수방류 지침)으로 가마감
     //  발생량 = 폐수방류 이번 − 전월 · 오수량 = (상수도 40A+50A 사용량 − 폐수 발생량) × 0.8 — 본마감 때 고지서와 다르면 칸에 직접 넣으면 그 값이 우선
@@ -4443,6 +4446,7 @@
       let amtN = a1 || a2;
       if (v1 != null && v2 != null && v1 !== v2) warn.push(`납기내 금액 ${v1.toLocaleString()} 과 총납부금액 ${v2.toLocaleString()} 이 다르게 읽혔습니다. 확인하세요.`);
       const info = `${prev ?? '?'} → ${cur ?? '?'}`;
+      if (size && cur != null) out.push({ k: `w${size}_reading`, label: `${size}A 고지서 당월지침`, v: cur, raw: String((curN || {}).raw ?? cur), box: curN ? box(curN) : null });
       if (size === '50') {
         F(out, 'w50_bill', '용수 50A 청구액', amtN, 0);
         if (use == null || use === 0) {
