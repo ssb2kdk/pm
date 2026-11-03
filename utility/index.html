@@ -5740,7 +5740,7 @@
         ['f_est', '전기', '공통전력추정_회계', epM ? epM.fund : null, 1, `${mM}월분 예상`, `${mM}월 사용분`, 'est'],
         // 창고전기 = 1공장에 있는 2공장 원료 보관창고 전기요금 — 1공장에서 받은 금액을 직접 입력
         ['wh_act', '전기', '창고전기요금', null, 1, `${mP}월분 지결 (1공장에서 받은 금액 입력)`, '', 'act'],
-        ['wh_rev', '전기', '창고전기요금 추정', estP.wh ?? null, -1, `${mP}월분 예상 (${mP}월 마감 때 잡은 값)`, '', 'rev'],
+        ['wh_rev', '전기', '창고전기요금 추정', null, -1, `${mP}월분 예상 (1공장 엑셀 값 입력)`, '', 'rev'],
         ['wh_est', '전기', '창고전기요금_추정', null, 1, `${mM}월분 예상 (1공장에서 받은 금액 입력)`, `${mM}월 사용분`, 'est'],
         ['sec', '가스 · 수도 · 폐수'],
         ['g_act', '가스', `2공장 가스 사용요금_${yy}년${pad2(mP)}월`, sP.gas.exvat, 1, `${mP}월분 지결${tag(sP.gas.status)}`, `${mP}월 사용분`, 'act'],
@@ -5758,7 +5758,7 @@
         if (r[0] === 'sec') { h += `<tr class="sec"><td colspan="4">${r[1]}</td></tr>`; return; }
         const v = val(r), sv = v === null ? null : v * r[4], ov = CL.ov[r[0]] !== undefined && CL.ov[r[0]] !== '' && CL.ov[r[0]] !== null;
         if (sv !== null) total += sv; closeRows.push([r[2], sv, r[5].replace(/<[^>]+>/g, ''), r[6]]);
-        h += `<tr class="${r[7]}"><td class="l">${esc(r[2])}</td><td class="amt ${sv < 0 ? 'neg' : ''}">${r[4] < 0 ? '− ' : ''}<input inputmode="numeric" value="${v === null ? '' : f0(v)}" placeholder="${r[7] === 'rev' || r[3] === null ? '직접 입력' : '-'}" onchange="closeOv('${r[0]}', this.value)">${ov ? `<span class="ov" title="자동 값: ${r[3] === null ? '없음' : f0(r[3])}">수정함 <a href="#" onclick="closeOv('${r[0]}','');return false">↺</a></span>` : ''}</td><td class="l">${r[5]}${r[7] === 'rev' && estP[{ e_rev: 'e', f_rev: 'f', g_rev: 'g', wh_rev: 'wh' }[r[0]]] === undefined && !ov ? ' <span class="hint">· 저장된 값 없음 → 직접 입력</span>' : ''}</td><td class="l">${esc(r[6])}</td></tr>`;
+        h += `<tr class="${r[7]}"><td class="l">${esc(r[2])}</td><td class="amt ${sv < 0 ? 'neg' : ''}">${r[4] < 0 ? '− ' : ''}<input inputmode="numeric" value="${v === null ? '' : f0(v)}" placeholder="${r[7] === 'rev' || r[3] === null ? '직접 입력' : '-'}" onchange="closeOv('${r[0]}', this.value)">${ov ? `<span class="ov" title="자동 값: ${r[3] === null ? '없음' : f0(r[3])}">수정함 <a href="#" onclick="closeOv('${r[0]}','');return false">↺</a></span>` : ''}</td><td class="l">${r[5]}${r[7] === 'rev' && r[0] !== 'wh_rev' && estP[{ e_rev: 'e', f_rev: 'f', g_rev: 'g' }[r[0]]] === undefined && !ov ? ' <span class="hint">· 저장된 값 없음 → 직접 입력</span>' : ''}</td><td class="l">${esc(r[6])}</td></tr>`;
       });
       CL.extra.forEach((x, i) => {
         const v = x.amt === '' || x.amt === null || x.amt === undefined ? null : Number(x.amt); if (v !== null && !isNaN(v)) total += v; closeRows.push([x.name, v, x.note || '', '']);
