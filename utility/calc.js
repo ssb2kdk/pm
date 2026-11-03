@@ -418,14 +418,17 @@
     const flow = num(m.ww_flow), sew = num(m.ww_sewage);
     const wwM3 = (flow === null && sew === null) ? null : (flow || 0) + (sew || 0);
     const fees = has(raw.ww_facility_fee) || has(raw.ww_improve_fee);
-    let wwCost = null, wwStatus = null;
-    if (fees) { wwCost = (num(raw.ww_facility_fee) || 0) + (num(raw.ww_improve_fee) || 0); wwStatus = '확정'; }
+    let wwCost = null, wwStatus = null, wwFac = null, wwImp = null;
+    if (fees) { wwFac = num(raw.ww_facility_fee) || 0; wwImp = num(raw.ww_improve_fee) || 0; wwCost = wwFac + wwImp; wwStatus = '확정'; }
     else if (wwM3) {
-      // 고지서 전: 발생량 × 전월 실행단가
+      // 고지서 전: 발생량 × 전월 실행단가 · 사용료/개선부담금은 전월 비율로 나눔
       const p = UT.summary(UT.prevYm(ym), monthly, daily, cache);
-      if (p.ww && p.ww.cost && p.ww.usage) { wwCost = wwM3 * (p.ww.cost / p.ww.usage); wwStatus = '가마감'; }
+      if (p.ww && p.ww.cost && p.ww.usage) {
+        wwCost = wwM3 * (p.ww.cost / p.ww.usage); wwStatus = '가마감';
+        if (p.ww.facility !== null && p.ww.facility !== undefined && p.ww.cost) { wwFac = Math.round(wwCost * p.ww.facility / p.ww.cost); wwImp = wwCost - wwFac; }
+      }
     }
-    out.ww = { usage: wwM3, flow, sewage: sew, cost: wwCost, exvat: wwCost, status: wwStatus,
+    out.ww = { usage: wwM3, flow, sewage: sew, cost: wwCost, exvat: wwCost, status: wwStatus, facility: wwFac, improve: wwImp,
       outsource: num(m.ww_outsource_fee), sludge: num(m.ww_sludge_fee) };
 
     const parts = UT.UTILS.map(u => out[u.k]);
