@@ -1906,6 +1906,10 @@
       return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
         <div style="font-weight:600;margin-top:8px">1. 폐수 배출량</div><div class="tbl-x"><table class="wq sm">${head}${body('폐수배출량')}</table></div>
         <div style="font-weight:600;margin-top:8px">2. 슬러지 발생량</div><div class="tbl-x"><table class="wq sm">${head}${body('슬러지')}</table></div>
+        <div class="wc-noshot" style="margin-top:10px"><div style="font-weight:600">참고: 위탁 청구 배출량과 비교 <span class="hint" style="font-weight:normal">(이미지·엑셀에는 안 들어감)</span></div><div class="tbl-x"><table class="wq sm"><tr><th colspan="2">구분</th>${D.map(x => `<th>${ymHead(x.ym)}</th>`).join('')}</tr>
+          <tr><td class="l" colspan="2">설비검침 (일지 1일~말일 합)</td>${D.map(x => `<td>${f(x.flow, 1)}</td>`).join('')}</tr>
+          <tr><td class="l" colspan="2">위탁 청구 배출량 (위탁비용 배분 2공장 칸)</td>${D.map(x => { const t = WC[x.ym] ? num(WC[x.ym].t2) : null; return `<td>${t === null ? '-' : f(t, 1)}</td>`; }).join('')}</tr>
+          <tr><td class="l" colspan="2">차이 (설비검침 − 청구)</td>${D.map(x => { const t = WC[x.ym] ? num(WC[x.ym].t2) : null; if (t === null || x.flow === null) return '<td>-</td>'; const d = x.flow - t, p = t ? d / t * 100 : null; return `<td class="${Math.abs(d) >= 1 ? 'wq-mid' : ''}">${d > 0 ? '+' : ''}${f(d, 1)}${p === null || Math.abs(d) < 1 ? '' : `<br><span class="hint">${p > 0 ? '+' : ''}${f(p, 1)}%</span>`}</td>`; }).join('')}</tr></table></div></div>
         <div class="hint wc-noshot" style="margin-top:6px">배출량 = 폐수만 (오수 제외, 발생량은 폐수 + 오수) · 폐수배출량 = 폐수일지 하루 방류량을 1일~말일 더한 값 (노란 칸 = 빠진 날이 있는 달) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
     }
     async function wcP2Xlsx() {
