@@ -1824,7 +1824,7 @@
       const ww = s.ww; if (ww && ww.usage !== null) o.ww = { total: ww.cost, fac: ww.facility, imp: ww.improve, usage: ww.usage, flow: ww.flow, sewage: ww.sewage, price: ww.cost && ww.usage ? ww.cost / ww.usage : null };
       return o;
     }
-    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
+    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; if (all[ym] && !/^시스템/.test(all[ym].src || '')) return; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
     async function downloadGm() {
       try { await ensureXLSX(); } catch (e) { alert(errMsg(e)); return; }
       const all = { ...gmAll() }, live = [];
@@ -1852,11 +1852,30 @@
       });
       XLSX.writeFile(wb, `유틸리티_가마감내역_${todayStr.replace(/-/g, '')}.xlsx`);
     }
+    // 회계 가마감 (예전 「회계보고」): 고지서 금액 없이 가마감 금액만 — 그 달 가마감 기록(gm, 엑셀·마감 저장) 우선, 없으면 지금 계산값
+    const gmOf = ym => { const x = gmAll()[ym]; return x ? { x, live: false } : { x: gmSnap(ym), live: true }; };
+    // 열: 구분, 세부, 사용량, 단위, 공급가액(VAT 별도), 금액(VAT 포함), 상태
+    function gmRowsFor(ym) {
+      const { x, live } = gmOf(ym), e = x.e, g = x.g, w4 = x.w40, w5 = x.w50, ww = x.ww, st = live && FC(ym) ? '예측' : '가마감', N = v => typeof v === 'number' && isFinite(v) ? v : null;
+      const R = [], sm = (...a) => a.some(v => N(v) !== null) ? a.reduce((s, v) => s + (N(v) || 0), 0) : null;
+      if (e) { R.push(['전기', '', N(e.kwh), 'kWh', N(e.exvat), N(e.total), st], ['', '전기요금계 (부가세 제외)', null, '', N(e.sub), sm(e.sub, e.vat), ''], ['', '전력기금', null, '', N(e.fund), N(e.fund), '']); if (e.late) R.push(['', '연체료', null, '', e.late, e.late, '']); }
+      else R.push(['전기', '', null, 'kWh', null, null, '']);
+      if (g) { R.push(['가스', '', sm(g.b_m3, g.r_m3), '㎥', N(g.exvat), N(g.total), st]);
+        if (g.b_total !== null && g.b_total !== undefined) R.push(['', '보일러', N(g.b_m3), '㎥', sm(g.b_cost, g.b_fee), N(g.b_total), '']);
+        if (g.r_total !== null && g.r_total !== undefined) R.push(['', '식당', N(g.r_m3), '㎥', sm(g.r_cost, g.r_fee), N(g.r_total), '']); }
+      else R.push(['가스', '', null, '㎥', null, null, '']);
+      const wt = sm(w4 && w4.total, w5 && w5.total);
+      R.push(['용수', '', sm(w4 && w4.usage, w5 && w5.usage), '㎥', wt, wt, wt === null ? '' : st], ['', '40A', w4 ? N(w4.usage) : null, '㎥', w4 ? N(w4.total) : null, w4 ? N(w4.total) : null, ''], ['', '50A', w5 ? N(w5.usage) : null, '㎥', w5 ? N(w5.total) : null, w5 ? N(w5.total) : null, '']);
+      R.push(['폐수', '', ww ? N(ww.usage) : null, '㎥', ww ? N(ww.total) : null, ww ? N(ww.total) : null, ww ? st : '']);
+      if (ww && N(ww.fac) !== null) R.push(['', '공공폐수처리시설 사용료', null, '', ww.fac, ww.fac, ''], ['', '개선충당금', null, '', N(ww.imp), N(ww.imp), '']);
+      const top = R.filter(r => r[0]); R.push(['합계', '', null, '', sm(...top.map(r => r[4])), sm(...top.map(r => r[5])), st]);
+      return R;
+    }
     // 회계 가마감 탭 아래: 그동안 회계에 넣은 가마감 금액 (최근 달 위)
     function gmHistHtml() {
       const all = gmAll(), ks = Object.keys(all).sort().reverse(); if (!ks.length) return '<div class="hint no-print" style="margin-top:14px">지난 가마감 기록이 아직 없습니다 (47번 SQL을 실행하면 2025년 8월부터 들어옵니다).</div>';
       const v = x => x === null || x === undefined ? '' : f0(x);
-      let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
+      let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 회계 마감 탭에서 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
       h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">달</th><th>전기 당월요금계</th><th>전기 사용량 (kWh)</th><th>가스 비용 총계</th><th>가스 사용량 (MJ)</th><th>용수 40A+50A</th><th>용수 사용량 (㎥)</th><th>폐수</th><th>폐수 발생량 (㎥)</th><th class="l">출처</th></tr>`;
       ks.forEach(k => { const x = all[k], e = x.e || {}, g = x.g || {}, w4 = x.w40, w5 = x.w50, ww = x.ww || {}, wsum = (a, b) => (w4 || w5) ? ((w4 || {})[a] || 0) + ((w5 || {})[a] || 0) : null;
         h += `<tr><td class="l">${esc(ymLabel(k))}</td><td>${v(e.total)}</td><td>${v(e.kwh)}</td><td>${v(g.total)}</td><td>${v(g.mj)}</td><td>${v(wsum('total'))}</td><td>${v(wsum('usage'))}</td><td>${v(ww.total)}</td><td>${v(ww.usage)}</td><td class="l hint">${esc(x.src || '')}${x.savedAt ? ' ' + esc(x.savedAt.slice(0, 10)) : ''}</td></tr>`; });
