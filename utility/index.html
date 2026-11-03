@@ -616,7 +616,7 @@
     { g: '가스', k: 'gas_price', label: '단가', unit: '원/MJ', carry: true },
     { g: '가스', k: 'gas_boiler_corr', label: '보정계수 (보일러)', unit: '', carry: true, def: 1 },
     { g: '가스', k: 'gas_rest_corr', label: '보정계수 (식당)', unit: '', carry: true, def: 0.992 },
-    { g: '가스', k: 'gas_corrector_fee', label: '보정기교체비 (보일러)', unit: '원' },
+    { g: '가스', k: 'gas_corrector_fee', label: '보정기교체비 (보일러)', unit: '원', carry: true, hint: '매달 같은 금액이면 한 번만 넣으면 다음 달로 이어짐 · 끝나면 0' },
     { g: '가스', k: 'gas_rest_corrector_fee', label: '보정기교체비 (식당)', unit: '원' },
 
     { g: '용수', k: 'w_combined', label: '고지서 방식', unit: '', carry: true, text: true, options: ['따로', '합산'], def: '따로', hint: '합산 = 40A 고지서에 50A 사용량까지 포함 (50A는 구경별 요금만)' },
@@ -888,7 +888,7 @@
       if (!has(cur) || !has(prev)) return null;
       const m3 = (Number(cur) - Number(prev)) * (has(corr) ? Number(corr) : 1);
       const mj = rd4(m3 * (num(heat) || 0));
-      const cost = Math.floor(mj * (num(m.gas_price) || 0) / 10) * 10; // 가스사용료 원단위 절사
+      const cost = Math.floor(mj * (num(m.gas_price) || 0)); // 원 미만 버림 (원단위 절사는 맨 끝 청구금액에서)
       const f = num(fee) || 0;
       const vat = Math.floor((cost + f) * 0.1);
       return { m3, mj, cost, fee: f, vat, total: cost + vat + f };
