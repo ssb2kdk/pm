@@ -563,7 +563,7 @@
     <div class="zoom-box">
       <div class="zoom-hd"><b id="udet-title"></b><span id="udet-utils" class="chips"></span><span id="udet-cmp"></span>
         <span class="hint">엑셀 각 상세 탭과 같은 구성 · 노란 칸 = 가마감 · Esc 닫기</span>
-        <button onclick="udYear--;renderUDet()">◀ 전년</button><button onclick="udYear++;renderUDet()">다음 해 ▶</button><button onclick="downloadUDet()">📥 엑셀</button><button onclick="closeUDet()">✕ 닫기</button></div>
+        <button onclick="udYear--;renderUDet()">◀ 전년</button><button onclick="udYear++;renderUDet()">다음 해 ▶</button><button onclick="downloadUDet()" title="지금 보이는 표만">📥 엑셀</button><button onclick="downloadUDetAll()" title="유틸리티 총비용·원육 투입량·원육 kg당 비용·전기·가스·용수·폐수 7개 시트">📥 전체 엑셀</button><button onclick="closeUDet()">✕ 닫기</button></div>
       <div class="tbl-wrap" id="udet-table" style="flex:1;overflow:auto"></div>
     </div>
   </div>
