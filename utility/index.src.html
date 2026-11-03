@@ -653,7 +653,23 @@
       m.forEach(r => { if (r.ym.endsWith('-00')) YEARDATA[Number(r.ym.slice(0, 4))] = r.data || {}; else MONTHLY[r.ym] = r.data || {}; });
       DAILY = {};
       d.forEach(r => { const { d: k, ...rest } = r; DAILY[k] = rest; });
+      try { await loadWcFee(); } catch (e) { }
       resetCache();
+    }
+    // 환경일지 「위탁비용 배분」(ww_contract, 관리자만 읽힘) → 달마다 2공장 배분 금액 = 위탁처리비 자동값 (env 의 wcCalc 와 같은 계산)
+    //  2공장 % = 반올림(2공장 ÷ 합계 × 100) · 항목 금액 = 그 달 값 → 없으면 그 전 가장 가까운 달 값 → 기본값 · 2공장 금액 = Σ 반올림(항목 × %) + 2공장 추가 비용
+    async function loadWcFee() {
+      const { data, error } = await sb.from('ww_contract').select('*').order('ym'); if (error) throw error;
+      const W = {}; (data || []).forEach(r => { W[r.ym] = r; });
+      const IT = [['labor', 'holiday', 4780000], ['chem', 'chem_add', 3670000], ['anal', 'anal_add', 670000], ['fee', 'maint', 880000]];
+      const N = v => v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v);
+      const amt = (ym, k, d) => { for (const x of Object.keys(W).filter(x => x <= ym).sort().reverse()) { const v = N(W[x][k]); if (v !== null) return v; } return d; };
+      const out = {};
+      Object.keys(W).forEach(ym => { const r = W[ym], t1 = N(r.t1), t2 = N(r.t2); if (t2 === null) return;
+        const solo = t2 === 0; if (!solo && (t1 === null || t1 + t2 <= 0)) return;
+        const p2 = solo ? 0 : Math.round(t2 / (t1 + t2) * 100);
+        out[ym] = IT.reduce((s, [k, ek, d]) => s + Math.round(amt(ym, k, d) * p2 / 100) + (N(r['p2_' + ek]) || 0), 0); });
+      UT.EXT = Object.assign(UT.EXT || {}, { ww_outsource_fee: out });
     }
     const S = ym => UT.summary(ym, MONTHLY, DAILY, cache);
 

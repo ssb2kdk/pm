@@ -71,8 +71,8 @@
 
     { g: '폐수', k: 'ww_flow', label: '2공장 폐수 발생량', unit: '㎥', hint: '비우면 클러스터 폐수방류 검침 − 전월 검침 (없으면 우리 유량계 말일 지침 차이) · 고지서와 다르면 고지서 값' },
     { g: '폐수', k: 'ww_sewage', label: '2공장 오수량', unit: '㎥', hint: '비우면 (클러스터 상수도 40A+50A 사용량 − 폐수 발생량) × 0.8 · 고지서와 다르면 고지서 값' },
-    { g: '폐수', k: 'ww_outsource_fee', label: '위탁처리비', unit: '원' },
-    { g: '폐수', k: 'ww_sludge_fee', label: '슬러지처리비', unit: '원' },
+    { g: '폐수', k: 'ww_outsource_fee', label: '위탁처리비', unit: '원', hint: '비우면 환경일지 「위탁비용 배분」의 2공장 배분 금액 (그 탭에서 입력·저장)' },
+    { g: '폐수', k: 'ww_sludge_fee', label: '슬러지처리비', unit: '원', hint: '여기에만 입력 (다른 화면에는 없음)' },
     { g: '폐수', k: 'cluster_w40_reading', label: '클러스터 상수도 40A 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
     { g: '폐수', k: 'cluster_w50_reading', label: '클러스터 상수도 50A 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
     { g: '폐수', k: 'cluster_ww_reading', label: '클러스터 폐수방류 검침값', unit: '㎥', hint: '협력업체가 보내 주는 값 그대로' },
@@ -283,6 +283,8 @@
       auto('elec_hvac_kwh', h === null ? null : Math.round(h * 10) / 10);
       if (!has(raw.elec_hvac_kwh) && notes.length) m._note.elec_hvac_kwh = notes.join(' / ');
     }
+    // 위탁처리비: 비우면 환경일지 「위탁비용 배분」의 2공장 배분 금액 (UT.EXT 에 화면이 넣어 둠 — 관리자만 읽힘)
+    { const x = ((UT.EXT || {}).ww_outsource_fee || {})[ym]; if (!has(m.ww_outsource_fee) && x !== null && x !== undefined) { m.ww_outsource_fee = x; src.ww_outsource_fee = '위탁비용 배분'; } }
     m._src = src;
     _cache[ym] = m;
     return m;
