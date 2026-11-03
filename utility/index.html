@@ -3364,8 +3364,8 @@
         return [{ grp: '1) 비용' },
           r('비용 총계 (VAT 포함)', s => s.gas.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.gas.status === '가마감' }),
           r('공급가액 (VAT 별도)', s => s.gas.exvat, f0, { sum: true }),
-          r('부가세', s => s.gas.cost === null || s.gas.exvat === null ? null : s.gas.cost - s.gas.exvat, f0, { sum: true }),
-          r('원단위 절사', s => { const g = G(s); return g && s.gas.status === '확정' ? s.gas.cost - (((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) : null; }, f0, { sum: true }),
+          r('부가세', s => { const g = G(s); if (g && s.gas.status === '가마감') return ((g.boiler || {}).vat || 0) + ((g.rest || {}).vat || 0); return s.gas.cost === null || s.gas.exvat === null ? null : s.gas.cost - s.gas.exvat; }, f0, { sum: true }), // 가마감: 엑셀처럼 부가세는 보일러+식당 부가세, 끝자리는 원단위 절사 줄로
+          r('원단위 절사', s => { const g = G(s); return g ? s.gas.cost - (((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) : null; }, f0, { sum: true }),
           r('실행 단가 (원/MJ)', s => ratio(s.gas.exvat, s.gas.usage), fxd(2), { cmp: true }),
           { grp: '2) 사용량' }, r('사용량 (MJ)', s => s.gas.usage, f0, { sum: true, b: true, cmp: true }), r('사용량 (㎥)', s => s.gas.m3, fxd(1), { sum: true, cmp: true }),
           ...part('관류보일러', 'boiler', 'gas_heat', 'gas_boiler_corr'), ...part('식당', 'rest', 'gas_rest_heat', 'gas_rest_corr'),
@@ -5518,6 +5518,8 @@
         });
         h += row('합계 청구량', `${Number(g.mj).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} MJ`) + sub('합계 사용량', `${Number(g.m3).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ㎥`);
         h += row('<b>공급가액 합</b>', `<b>${won(g.exvat)}</b>`) + (has(raw.gas_bill_exvat) ? (() => { const d = Number(raw.gas_bill_exvat) - g.exvat; return row('고지서 공급가액', `${won(Number(raw.gas_bill_exvat))} ${Math.abs(d) < 1 ? '<span class="pv-ok">✓ 일치</span>' : `<span class="pv-ng">✗ ${d > 0 ? '+' : ''}${f0(d)}원</span>`}`); })() : '');
+        { const gs = ((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0); // 보일러 소계 + 식당 소계
+          h += row('소계 합 (부가세 포함)', won(gs)) + row('원단위절사', won(g.total - gs)); }
         h += chk('청구금액 (10원 미만 절사)', g.total, 'gas_bill_total');
       } else h += row('입력 없음', '');
       // ---- 용수 (상수도 고지서 순서, 계량기별) ----
