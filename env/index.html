@@ -1877,19 +1877,18 @@
         `4. 1공장 위탁 비용 : ${wcWon(c.total)}원 × ${c.p1}% = ${wcWon(c.P1.base)}원${add(c.P1)}`].join('\n');
     }
     // 공장별 폐수 배출량·슬러지 (1공장 폐수 위탁 계약 지출결의 첨부용 — 2공장 줄만, 선택 달까지 12개월)
-    //  폐수배출량(㎥/월) = 위탁 청구 배출량(2공장 칸) · 없으면 설비검침 폐수방류량
+    //  폐수배출량(㎥/월) = 폐수일지 하루 방류량(설비검침 폐수방류량 하루 사용량)을 1일~말일 더한 값 (1공장 집계 방식)
     //  MAX·AVERAGE·MIN(㎥/일) = 설비검침 폐수방류량 하루 사용량 중 방류한 날(0.5㎥ 넘는 날)만
     //  슬러지발생량(ton/월) = 폐수일지 슬러지 발생량(kg) 합 ÷ 1000 · 압롤 배출 수량(회/월) = 슬러지 처리량이 있는 날 수
     function wcP2Data(end) {
       const ms = Array.from({ length: 12 }, (_, i) => ymShift(end, i - 11)), get = g('폐수방류량');
       return ms.map(ym => {
         const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), us = [];
-        let sg = 0, sgN = 0, out = 0;
+        let sg = 0, sgN = 0, out = 0, ft = 0, fn = 0;
         for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`;
-          if (ds < todayStr) { const u = pair(ds, get).use; if (u !== null && u > 0.5) us.push(u); }
+          if (ds < todayStr) { const u = pair(ds, get).use; if (u !== null && u >= 0) { ft += u; fn++; } if (u !== null && u > 0.5) us.push(u); }
           const w = WW[ds]; if (w) { const a = num(w.sludge_gen), b = num(w.sludge_out); if (a !== null) { sg += a; sgN++; } if (b) out++; } }
-        const c = WC[ym], t2 = c && num(c.t2) !== null ? num(c.t2) : null, mf = t2 === null ? wcMeterFlow(ym) : null;
-        return { ym, flow: t2 ?? mf, flowSrc: t2 !== null ? '청구' : mf !== null ? '검침' : '', max: us.length ? Math.max(...us) : null, avg: us.length ? us.reduce((a, b) => a + b, 0) / us.length : null, min: us.length ? Math.min(...us) : null, days: us.length,
+        return { ym, flow: fn ? Math.round(ft * 100) / 100 : null, flowDays: fn, flowDim: n, max: us.length ? Math.max(...us) : null, avg: us.length ? us.reduce((a, b) => a + b, 0) / us.length : null, min: us.length ? Math.min(...us) : null, days: us.length,
           sludge: sgN ? sg / 1000 : null, out: sgN || out ? out : null };
       });
     }
@@ -1903,11 +1902,11 @@
     function wcP2Card(end) {
       const D = wcP2Data(end), R = wcP2Rows(D), f = (v, dg) => v === null || v === undefined || isNaN(v) ? '' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg });
       const head = `<tr><th>구분</th><th>항목</th><th class="g1">SUM</th><th class="g1">AVER</th>${D.map(x => `<th class="g1">${ymHead(x.ym)}</th>`).join('')}</tr>`;
-      const body = grp => R.filter(r => r.grp === grp).map((r, i, a) => `<tr>${i ? '' : `<th rowspan="${a.length}" class="g2">2공장</th>`}<td class="l">${r.n}</td><td>${f(r.sum, r.dg)}</td><td>${f(r.aver, r.dg)}</td>${D.map(x => `<td${r.k === 'flow' && x.flowSrc === '검침' ? ' class="wq-mid" title="청구 배출량이 없어 설비검침 값"' : ''}>${f(x[r.k], r.dg)}</td>`).join('')}</tr>`).join('');
+      const body = grp => R.filter(r => r.grp === grp).map((r, i, a) => `<tr>${i ? '' : `<th rowspan="${a.length}" class="g2">2공장</th>`}<td class="l">${r.n}</td><td>${f(r.sum, r.dg)}</td><td>${f(r.aver, r.dg)}</td>${D.map(x => `<td${r.k === 'flow' && x.flowDays && x.flowDays < x.flowDim ? ' class="wq-mid" title="' + x.flowDays + '일치만 합산 (진행 중이거나 검침 빠진 날 있음)"' : ''}>${f(x[r.k], r.dg)}</td>`).join('')}</tr>`).join('');
       return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
         <div style="font-weight:600;margin-top:8px">1. 폐수 배출량</div><div class="tbl-x"><table class="wq sm">${head}${body('폐수배출량')}</table></div>
         <div style="font-weight:600;margin-top:8px">2. 슬러지 발생량</div><div class="tbl-x"><table class="wq sm">${head}${body('슬러지')}</table></div>
-        <div class="hint wc-noshot" style="margin-top:6px">배출량 = 폐수만 (오수 제외, 발생량은 폐수 + 오수) · 폐수배출량 = 위탁 청구 배출량(2공장 칸) · 없는 달은 설비검침 폐수방류량(노란 칸) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
+        <div class="hint wc-noshot" style="margin-top:6px">배출량 = 폐수만 (오수 제외, 발생량은 폐수 + 오수) · 폐수배출량 = 폐수일지 하루 방류량을 1일~말일 더한 값 (노란 칸 = 빠진 날이 있는 달) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
     }
     async function wcP2Xlsx() {
       try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
