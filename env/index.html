@@ -1760,7 +1760,7 @@
       const el = document.getElementById('wc-body');
       try { await loadWc(); } catch (e) { el.innerHTML = `<div class="loading">불러오기 실패: ${esc(errMsg(e))}<br>Supabase에 44번 SQL(44_ww_contract.sql)을 실행해 주세요.</div>`; return; }
       if (!wcYm) { const last = Object.keys(WC).sort().pop(), pm = ymShift(todayStr.slice(0, 7), -1); wcYm = last && last > pm ? last : pm; }
-      try { await loadMeter(`${wcYm}-01`, `${ymShift(wcYm, 1)}-01`); } catch (e) { }
+      try { await loadMeter(`${ymShift(wcYm, -11)}-01`, `${ymShift(wcYm, 1)}-01`); } catch (e) { } // 12개월 (2공장 폐수·슬러지 표)
       wcDirty = false;
       const r = WC[wcYm] || {}, mf = wcMeterFlow(wcYm), inp = (id, v, ph) => `<input type="number" step="any" id="${id}" value="${v ?? ''}" placeholder="${ph ?? ''}">`;
       el.innerHTML = `<div class="toolbar">
@@ -1787,7 +1787,8 @@
             <div class="hint" style="margin-top:6px">배분 비율: 2공장 % = 반올림(2공장 ÷ 합계 × 100), 1공장 % = 100 − 2공장 %<br>공장별 항목 금액 = 계약 항목 금액 × 공장 % (+ 추가 비용)</div>
           </div>
           <div id="wcs-all" class="wcs"></div>
-        </div>`;
+        </div>
+        <div class="card" style="margin-top:14px">${wcP2Card(wcYm)}</div>`;
       el.querySelectorAll('.wc-in input').forEach(x => x.addEventListener('input', wcInput));
       wcInput(true); wcSegs();
     }
@@ -1875,6 +1876,48 @@
         `3. 2공장 위탁 비용 : ${wcWon(c.total)}원 × ${c.p2}% = ${wcWon(c.P2.base)}원${add(c.P2)}`,
         `4. 1공장 위탁 비용 : ${wcWon(c.total)}원 × ${c.p1}% = ${wcWon(c.P1.base)}원${add(c.P1)}`].join('\n');
     }
+    // 공장별 폐수 배출량·슬러지 (1공장 폐수 위탁 계약 지출결의 첨부용 — 2공장 줄만, 선택 달까지 12개월)
+    //  폐수배출량(㎥/월) = 위탁 청구 배출량(2공장 칸) · 없으면 설비검침 폐수방류량
+    //  MAX·AVERAGE·MIN(㎥/일) = 설비검침 폐수방류량 하루 사용량 중 방류한 날(0.5㎥ 넘는 날)만
+    //  슬러지발생량(ton/월) = 폐수일지 슬러지 발생량(kg) 합 ÷ 1000 · 압롤 배출 수량(회/월) = 슬러지 처리량이 있는 날 수
+    function wcP2Data(end) {
+      const ms = Array.from({ length: 12 }, (_, i) => ymShift(end, i - 11)), get = g('폐수방류량');
+      return ms.map(ym => {
+        const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), us = [];
+        let sg = 0, sgN = 0, out = 0;
+        for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`;
+          if (ds < todayStr) { const u = pair(ds, get).use; if (u !== null && u > 0.5) us.push(u); }
+          const w = WW[ds]; if (w) { const a = num(w.sludge_gen), b = num(w.sludge_out); if (a !== null) { sg += a; sgN++; } if (b) out++; } }
+        const c = WC[ym], t2 = c && num(c.t2) !== null ? num(c.t2) : null, mf = t2 === null ? wcMeterFlow(ym) : null;
+        return { ym, flow: t2 ?? mf, flowSrc: t2 !== null ? '청구' : mf !== null ? '검침' : '', max: us.length ? Math.max(...us) : null, avg: us.length ? us.reduce((a, b) => a + b, 0) / us.length : null, min: us.length ? Math.min(...us) : null, days: us.length,
+          sludge: sgN ? sg / 1000 : null, out: sgN || out ? out : null };
+      });
+    }
+    function wcP2Rows(D) {
+      const vs = k => D.map(x => x[k]).filter(v => v !== null && v !== undefined), avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+      const sum = a => a.length ? a.reduce((s, v) => s + v, 0) : null;
+      // [구분, 항목, 키, SUM 칸, 소수 자리]
+      return [['폐수배출량', '폐수배출량 (㎥/월)', 'flow', sum(vs('flow')), 1], ['폐수배출량', 'MAX (㎥/일)', 'max', vs('max').length ? Math.max(...vs('max')) : null, 1], ['폐수배출량', 'AVERAGE (㎥/일)', 'avg', null, 1], ['폐수배출량', 'MIN (㎥/일)', 'min', vs('min').length ? Math.min(...vs('min')) : null, 1],
+        ['슬러지', '슬러지발생량 (ton/월)', 'sludge', sum(vs('sludge')), 2], ['슬러지', '압롤 배출 수량 (회/월)', 'out', sum(vs('out')), 0]].map(r => ({ grp: r[0], n: r[1], k: r[2], sum: r[3], aver: avg(vs(r[2])), dg: r[4] }));
+    }
+    function wcP2Card(end) {
+      const D = wcP2Data(end), R = wcP2Rows(D), f = (v, dg) => v === null || v === undefined || isNaN(v) ? '' : Number(v).toLocaleString('ko-KR', { minimumFractionDigits: dg, maximumFractionDigits: dg });
+      const head = `<tr><th>구분</th><th>항목</th><th class="g1">SUM</th><th class="g1">AVER</th>${D.map(x => `<th class="g1">${ymHead(x.ym)}</th>`).join('')}</tr>`;
+      const body = grp => R.filter(r => r.grp === grp).map((r, i, a) => `<tr>${i ? '' : `<th rowspan="${a.length}" class="g2">2공장</th>`}<td class="l">${r.n}</td><td>${f(r.sum, r.dg)}</td><td>${f(r.aver, r.dg)}</td>${D.map(x => `<td${r.k === 'flow' && x.flowSrc === '검침' ? ' class="wq-mid" title="청구 배출량이 없어 설비검침 값"' : ''}>${f(x[r.k], r.dg)}</td>`).join('')}</tr>`).join('');
+      return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출처리시설 폐수발생량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
+        <div style="font-weight:600;margin-top:8px">1. 폐수 배출량</div><div class="tbl-x"><table class="wq sm">${head}${body('폐수배출량')}</table></div>
+        <div style="font-weight:600;margin-top:8px">2. 슬러지 발생량</div><div class="tbl-x"><table class="wq sm">${head}${body('슬러지')}</table></div>
+        <div class="hint wc-noshot" style="margin-top:6px">폐수배출량 = 위탁 청구 배출량(2공장 칸) · 없는 달은 설비검침 폐수방류량(노란 칸) · MAX·AVERAGE·MIN = 설비검침 하루 방류량 중 방류한 날만 · 슬러지 = 폐수일지 발생량(kg) ÷ 1000 · 압롤 배출 수량 = 폐수일지에 슬러지 처리량이 있는 날 수 · SUM 칸: MAX는 가장 큰 값, MIN은 가장 작은 값</div></div>`;
+    }
+    async function wcP2Xlsx() {
+      try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
+      catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const D = wcP2Data(wcYm), R = wcP2Rows(D), v = x => x === null || x === undefined || isNaN(x) ? '' : Math.round(x * 100) / 100, hd = ['구분', '항목', 'SUM', 'AVER', ...D.map(x => ymHead(x.ym))];
+      const sec = grp => R.filter(r => r.grp === grp).map((r, i) => [i ? '' : '2공장', r.n, v(r.sum), v(r.aver), ...D.map(x => v(x[r.k]))]);
+      const aoa = [['※ 2공장 폐수배출처리시설 폐수발생량 및 슬러지배출량'], [], ['1. 폐수 배출량'], hd, ...sec('폐수배출량'), [], ['2. 슬러지 발생량'], hd, ...sec('슬러지')];
+      const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{ wch: 8 }, { wch: 24 }, ...hd.slice(2).map(() => ({ wch: 12 }))];
+      XLSX.utils.book_append_sheet(wb, ws, '2공장'); XLSX.writeFile(wb, `2공장_폐수배출량_슬러지_${wcYm.replace('-', '')}.xlsx`);
+    }
     async function wcCopyText(btn) {
       const t = wcText(); if (!t) return alert('배출량을 먼저 넣어 주세요.');
       try { await navigator.clipboard.writeText(t); wcFlash(btn, '✓ 복사됨 — 지출결의에 Ctrl+V'); }
@@ -1887,8 +1930,8 @@
       try { if (!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
       catch (e) { alert('그림 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
       // 그림은 폭을 좁게(3개월: 900px) 고정 → 지출결의에 붙였을 때 거의 줄지 않아 글씨가 잘 보임
-      const capW = wcView === '12' ? null : 900;
-      const canvas = await html2canvas(el, { scale: 2, logging: false, backgroundColor: '#ffffff', ignoreElements: x => x.classList && x.classList.contains('wc-shot'),
+      const capW = wcView === '12' || id === 'wc-p2' ? null : 900;
+      const canvas = await html2canvas(el, { scale: 2, logging: false, backgroundColor: '#ffffff', ignoreElements: x => x.classList && (x.classList.contains('wc-shot') || x.classList.contains('wc-noshot')),
         onclone: d => { const c = d.getElementById(id); if (!c) return; c.classList.add('wc-cap'); c.querySelectorAll('.wcs-sec').forEach(x => x.classList.add('wc-cap')); c.style.width = capW ? capW + 'px' : 'max-content'; } });
       const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
       try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); wcFlash(btn, '✓ 복사됨 — Ctrl+V'); }
