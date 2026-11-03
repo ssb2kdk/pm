@@ -2824,7 +2824,7 @@
       const uc = x => ratio(x.total, x.production);
       const tile = (lab, val, sub) => `<div class="br-kpi"><div class="l">${lab}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
       let h = `<div class="br-head"><div><div class="br-title">${y}년 ${m}월 유틸리티 사용 현황</div><div class="hint">${esc(Portal.config.PLANT_NAME)} ${esc(Portal.config.TEAM_NAME || "")} · 작성 ${todayStr}${fc ? ' · <b>월말 예측값</b>' : prov ? ' · <b style="color:#8a5300">가마감 기준 (고지서 전 예상값)</b>' : ''}</div></div></div>`;
-      if (prov || fc || s._prodEst) h += `<div class="br-prov">${fc ? '<b>월말 예측</b> — 어제까지 검침 + 남은 날은 평일·주말 평균으로 추정한 값입니다.' : `<b>가마감 보고</b> — 고지서가 오기 전 자체 검침으로 계산한 예상값입니다. 고지서 확정(지출결의) 후 금액이 조금 바뀔 수 있습니다.`}
+      if (prov || fc || s._prodEst) h += `<div class="br-prov">${fc ? '<b>월말 예측</b> — 어제까지 검침 + 남은 날은 평일·주말 평균으로 추정한 값입니다.' : `<b>가마감 보고</b> — 고지서가 오기 전 자체 검침으로 계산한 예상값입니다. 고지서 확정(지출결의)후 금액 변경됩니다.`}
         <span>${(() => { const nc = UT.UTILS.filter(u => s[u.k].status !== '확정'), L = []; // 가마감 근거 (사용자 요청 문구)
           if (nc.some(u => u.k === 'elec')) L.push('전기 : 파워플래너 발췌');
           const o = nc.filter(u => u.k !== 'elec'); if (o.length) L.push(`${o.map(u => u.name).join(', ')} : 자체 계측량 × 전월 단가`);
