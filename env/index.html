@@ -1884,11 +1884,12 @@
       const ms = Array.from({ length: 12 }, (_, i) => ymShift(end, i - 11)), get = g('폐수방류량');
       return ms.map(ym => {
         const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate(), us = [];
-        let sg = 0, sgN = 0, out = 0, ft = 0, fn = 0;
+        let sg = 0, sgN = 0, out = 0, ft = 0, fn = 0; const bad = [];
         for (let d = 1; d <= n; d++) { const ds = `${ym}-${pad2(d)}`;
-          if (ds < todayStr) { const u = pair(ds, get).use; if (u !== null && u >= 0) { ft += u; fn++; } if (u !== null && u > 0.5) us.push(u); }
+          if (ds < todayStr) { const u = pair(ds, get).use; if (u !== null && u >= 0) { ft += u; fn++; } else { const a = firstOnAfter(ds, get, false), b = firstOnAfter(ds, get, true);
+            bad.push({ d: ds, why: !a ? '그날부터 10일 안에 폐수방류량 검침 없음' : !b ? `다음 검침 없음 (${a.d.slice(5)} 지침 ${nf(a.v, 1)} 뒤 10일 안에 검침 없음)` : `지침이 줄어듦: ${a.d.slice(5)} ${nf(a.v, 1)} → ${b.d.slice(5)} ${nf(b.v, 1)} (계량기 교체·입력 실수 확인)` }); } if (u !== null && u > 0.5) us.push(u); }
           const w = WW[ds]; if (w) { const a = num(w.sludge_gen), b = num(w.sludge_out); if (a !== null) { sg += a; sgN++; } if (b) out++; } }
-        return { ym, flow: fn ? Math.round(ft * 100) / 100 : null, flowDays: fn, flowDim: n, max: us.length ? Math.max(...us) : null, avg: us.length ? us.reduce((a, b) => a + b, 0) / us.length : null, min: us.length ? Math.min(...us) : null, days: us.length,
+        return { ym, flow: fn ? Math.round(ft * 100) / 100 : null, flowDays: fn, flowDim: n, bad, max: us.length ? Math.max(...us) : null, avg: us.length ? us.reduce((a, b) => a + b, 0) / us.length : null, min: us.length ? Math.min(...us) : null, days: us.length,
           sludge: sgN ? sg / 1000 : null, out: sgN || out ? out : null };
       });
     }
@@ -1906,6 +1907,7 @@
       return `<div id="wc-p2" style="padding:4px;background:#fff"><h3 style="margin:0 0 4px">※ 2공장 폐수배출량 및 슬러지배출량 <button class="wc-shot" onclick="wcShot('wc-p2', this)">📷 이미지 복사</button> <button class="wc-shot" onclick="wcP2Xlsx()">⬇ 엑셀</button></h3>
         <div style="font-weight:600;margin-top:8px">1. 폐수 배출량</div><div class="tbl-x"><table class="wq sm">${head}${body('폐수배출량')}</table></div>
         <div style="font-weight:600;margin-top:8px">2. 슬러지 발생량</div><div class="tbl-x"><table class="wq sm">${head}${body('슬러지')}</table></div>
+        ${(() => { const B = D.flatMap(x => x.bad.map(b => ({ ...b, ym: x.ym }))); return B.length ? `<div class="wc-noshot" style="margin-top:10px"><div style="font-weight:600;color:#b26a00">⚠ 노란 칸 — 하루 방류량을 못 구한 날 (${B.length}일, 이 날은 합계에서 빠짐)</div><div class="tbl-x"><table class="wq sm"><tr><th>날짜</th><th>이유</th></tr>${B.map(b => `<tr><td>${b.d}</td><td class="l">${esc(b.why)}</td></tr>`).join('')}</table></div><div class="hint">설비검침에서 그 날짜 전후 폐수방류량 지침을 확인·수정하면 바로 반영됩니다. (아직 진행 중인 이번 달은 오늘 전날까지만 더함)</div></div>` : ''; })()}
         <div class="wc-noshot" style="margin-top:10px"><div style="font-weight:600">참고: 위탁 청구 배출량과 비교 <span class="hint" style="font-weight:normal">(이미지·엑셀에는 안 들어감)</span></div><div class="tbl-x"><table class="wq sm"><tr><th colspan="2">구분</th>${D.map(x => `<th>${ymHead(x.ym)}</th>`).join('')}</tr>
           <tr><td class="l" colspan="2">설비검침 (일지 1일~말일 합)</td>${D.map(x => `<td>${f(x.flow, 1)}</td>`).join('')}</tr>
           <tr><td class="l" colspan="2">위탁 청구 배출량 (위탁비용 배분 2공장 칸)</td>${D.map(x => { const t = WC[x.ym] ? num(WC[x.ym].t2) : null; return `<td>${t === null ? '-' : f(t, 1)}</td>`; }).join('')}</tr>
