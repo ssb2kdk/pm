@@ -951,7 +951,7 @@
         document.head.appendChild(s);
       });
       const wf = XLSX.writeFile.bind(XLSX);
-      XLSX.writeFile = (wb, name, o) => { try { wb.SheetNames.forEach(n => xlsxPretty(wb.Sheets[n])); } catch (e) { console.warn('엑셀 서식 실패', e); } return wf(wb, name, o); };
+      XLSX.writeFile = (wb, name, o) => { try { wb.SheetNames.forEach(n => { if (!wb.Sheets[n]['!pretty']) xlsxPretty(wb.Sheets[n]); }); } catch (e) { console.warn('엑셀 서식 실패', e); } return wf(wb, name, o); };
       XLSX.__pretty = true;
     }
     // 시트 안 표를 찾아 서식: 값이 2칸 이상인 줄이 이어지는 곳 = 표 (빈 줄로 끊김, 모든 줄이 빈 칸인 열로 좌우 나눔)
@@ -999,20 +999,30 @@
       if (!ws['!cols']) { const w = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let m = 6; for (let r = rg.s.r + 2; r <= rg.e.r; r++) if (has(r, c) && ws[A(r, c)].t === 's') m = Math.max(m, [...String(ws[A(r, c)].v)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2); w.push({ wch: Math.min(Math.max(m, c === rg.s.c ? 14 : 11), 50) }); } ws['!cols'] = w; }
     }
 
+    // 월별 상세표 엑셀: 제목 + 표(서식) + 가마감 칸 노란색 (화면과 같은 구성)
     async function downloadYearTable() {
       try {
         await ensureXLSX();
         const { y, rows } = yearTableRows;
-        const aoa = [['구분', ...monthLabels, '합계', '평균']];
-        let grp = '';
+        const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 100) / 100 : v);
+        const aoa = [[`${y}년 유틸리티 월별 상세 (비용 · 사용량)`], [`노란 칸 = 가마감(고지서 전 자체 계산값) · 받은 날 ${new Date().toLocaleDateString('ko-KR')}`], [], ['구분', ...monthLabels, '합계', '평균']];
+        const H = aoa.length, provCells = [];
         rows.forEach(r => {
-          if (r.grp) { grp = r.grp; aoa.push([`[${r.grp}]`]); return; }
-          const clean = v => (v === null || v === undefined) ? '' : (typeof v === 'number' ? Math.round(v * 100) / 100 : v);
-          if (r.cmp) { aoa.push([`${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
+          if (r.grp) { aoa.push([r.grp]); return; }
+          if (r.cmp) { aoa.push([`└ ${r.label} 차이`, ...r.vals.map(clean)]); aoa.push([`└ ${r.label} 증감률(%)`, ...r.pct.map(v => v === null ? '' : Math.round(v * 10) / 10)]); return; }
+          if (r.prov) r.prov.forEach((p, i) => { if (p && r.vals[i] !== null) provCells.push([aoa.length, i + 1]); });
           aoa.push([r.label, ...r.vals.map(clean), clean(r.sum), r.label === '상태' ? '' : clean(r.avg)]);
         });
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        xlsxPretty(ws); ws['!pretty'] = true;
+        const A = (r, c) => XLSX.utils.encode_cell({ r, c });
+        // 상태 줄: 가마감 = 노랑, 확정 = 연파랑
+        aoa.forEach((row, r) => { if (row[0] !== '상태') return; row.forEach((v, c) => { if (c && ws[A(r, c)] && v) ws[A(r, c)].s = Object.assign({}, ws[A(r, c)].s, { fill: { patternType: 'solid', fgColor: { rgb: v === '가마감' ? 'FFF2CC' : v === '확정' ? 'DDEBF7' : 'F2F2F2' } }, alignment: { horizontal: 'center', vertical: 'center' } }); }); });
+        provCells.forEach(([r, c]) => { const x = ws[A(r, c)]; if (x) x.s = Object.assign({}, x.s, { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } } }); });
+        const cols = [{ wch: 42 }]; for (let i = 0; i < 14; i++) cols.push({ wch: 13 }); ws['!cols'] = cols;
+        ws['!rows'] = [{ hpt: 26 }];
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `${y}년`);
+        XLSX.utils.book_append_sheet(wb, ws, `${y}년`);
         XLSX.writeFile(wb, `유틸리티_월별상세_${y}.xlsx`);
       } catch (e) { alert('엑셀 만들기 실패: ' + errMsg(e)); }
     }
