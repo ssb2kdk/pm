@@ -1613,9 +1613,11 @@
         catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `월간보고서_${brYm}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); done('✓ 그림 파일로 받음'); }
       } catch (e) { done('복사 실패'); alert('그림을 만들지 못했습니다: ' + (e.message || e)); }
     }
-    // 회계 마감 표 → 그림으로 복사: 입력칸은 적힌 값만 글자로, 버튼·안내는 뺌
-    async function closeShot(btn) {
-      const el = document.getElementById('close-body'); if (!el) return;
+    // 회계 마감·회계보고 표 → 그림으로 복사: 입력칸은 적힌 값만 글자로, 버튼·안내는 뺌
+    function closeShot(btn) { return cardShot('close-body', `회계마감_${closeYm || ''}`, btn); }
+    function reportShot(btn) { return cardShot('report-body', `회계보고_${reportYm || ''}`, btn); }
+    async function cardShot(id, fname, btn) {
+      const el = document.getElementById(id); if (!el) return;
       try { if (!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
       catch (e) { alert('그림 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
       const o = btn ? btn.textContent : ''; if (btn) { btn.textContent = '만드는 중...'; btn.disabled = true; }
@@ -1623,12 +1625,12 @@
       try {
         const canvas = await html2canvas(el, { scale: 2, logging: false, backgroundColor: '#ffffff',
           ignoreElements: x => x.tagName === 'BUTTON' || (x.classList && x.classList.contains('no-print')),
-          onclone: d => { const c = d.getElementById('close-body'); if (!c) return; c.style.boxShadow = 'none'; c.style.width = 'max-content'; c.style.maxWidth = 'none';
+          onclone: d => { const c = d.getElementById(id); if (!c) return; c.style.boxShadow = 'none'; c.style.width = 'max-content'; c.style.maxWidth = 'none';
             c.querySelectorAll('.tbl-wrap').forEach(w => { w.style.overflow = 'visible'; });
             c.querySelectorAll('input, select, textarea').forEach(i => { const sp = d.createElement('span'); sp.textContent = i.tagName === 'SELECT' ? (i.options[i.selectedIndex] || {}).text || '' : i.value; i.replaceWith(sp); }); } });
         const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
         try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); done('✓ 복사됨 — Ctrl+V'); }
-        catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `회계마감_${typeof closeYm !== 'undefined' ? closeYm : ''}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); done('✓ 그림 파일로 받음'); }
+        catch (e) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.png`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); done('✓ 그림 파일로 받음'); }
       } catch (e) { done('복사 실패'); alert('그림을 만들지 못했습니다: ' + (e.message || e)); }
     }
     async function saveBriefComment() {
