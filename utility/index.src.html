@@ -939,44 +939,48 @@
       XLSX.__pretty = true;
     }
     // 시트 안 표를 찾아 서식: 값이 2칸 이상인 줄이 이어지는 곳 = 표 (빈 줄로 끊김, 모든 줄이 빈 칸인 열로 좌우 나눔)
-    //  표 첫 줄(글자만) = 머리글(연한 파랑·굵게·가운데) · 표 안 한 칸짜리 줄 = 묶음 줄(연회색·굵게) · 표 밖 한 칸 줄 = 제목(굵게) · 숫자 = 쉼표
+    //  사용자 엑셀(○○상세 시트) 모양: 머리글 = 연두(92D050)·굵게 · 합계·총계·당월요금계 = 연주황·굵게 · 요금계·공급가액·부가세 별도 = 회색 · 단가 줄 = 연녹색
+    //  표 안 한 칸짜리 줄 = 묶음 줄(연보라·굵게) · 표 밖 한 칸 줄 = 제목(첫 줄은 크게) · 숫자 = 쉼표, 음수 빨강
     function xlsxPretty(ws) {
       if (!ws || !ws['!ref']) return;
       const rg = XLSX.utils.decode_range(ws['!ref']), A = (r, c) => XLSX.utils.encode_cell({ r, c });
       const has = (r, c) => { const x = ws[A(r, c)]; return x && x.v !== undefined && x.v !== null && x.v !== ''; };
-      const cnt = r => { let n = 0; for (let c = rg.s.c; c <= rg.e.c; c++) if (has(r, c)) n++; return n; };
-      const thin = { style: 'thin', color: { rgb: 'BFBFBF' } }, BD = { top: thin, bottom: thin, left: thin, right: thin };
-      const N = rg.e.r - rg.s.r + 1, n = Array.from({ length: N }, (_, i) => cnt(rg.s.r + i)), inT = new Array(N).fill(false);
+      const thin = { style: 'thin', color: { rgb: '000000' } }, BD = { top: thin, bottom: thin, left: thin, right: thin }, F = (o = {}) => ({ name: '맑은 고딕', sz: 10, ...o });
       const st = (r, c, s) => { const a = A(r, c); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].s = Object.assign({}, ws[a].s || {}, s); return ws[a]; };
-      let i = 0;
-      while (i < N) {
-        if (n[i] < 2) { i++; continue; }
-        let j = i; while (j + 1 < N && (n[j + 1] >= 2 || (n[j + 1] === 1 && j + 2 < N && n[j + 2] >= 2))) j++;
-        const r0 = rg.s.r + i, r1 = rg.s.r + j;
-        const used = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let u = false; for (let r = r0; r <= r1 && !u; r++) u = has(r, c); used.push(u); }
-        const segs = []; let a = null; used.forEach((u, k) => { const c = rg.s.c + k; if (u && a === null) a = c; if (!u && a !== null) { segs.push([a, c - 1]); a = null; } }); if (a !== null) segs.push([a, rg.e.c]);
-        const allStr = r => { let ok = true, any = false; for (let c = rg.s.c; c <= rg.e.c; c++) if (has(r, c)) { any = true; if (ws[A(r, c)].t === 'n') ok = false; } return any && ok; };
-        const heads = allStr(r0) ? (n[i + 1] > n[i] && allStr(r0 + 1) ? 2 : 1) : 0;
-        segs.forEach(([c0, c1]) => {
+      const N = rg.e.r - rg.s.r + 1;
+      // 시트 전체에서 비어 있는 열로 좌우를 나눔 (예: 가마감 내역의 연도 블록)
+      const segs = []; { let a = null; for (let c = rg.s.c; c <= rg.e.c + 1; c++) { let u = false; if (c <= rg.e.c) for (let r = rg.s.r; r <= rg.e.r && !u; r++) u = has(r, c); if (u && a === null) a = c; if (!u && a !== null) { segs.push([a, c - 1]); a = null; } } }
+      segs.forEach(([S0, S1]) => {
+        const n = Array.from({ length: N }, (_, i) => { let k = 0; for (let c = S0; c <= S1; c++) if (has(rg.s.r + i, c)) k++; return k; }), inT = new Array(N).fill(false);
+        const allStr = r => { let ok = true, any = false; for (let c = S0; c <= S1; c++) if (has(r, c)) { any = true; if (ws[A(r, c)].t === 'n') ok = false; } return any && ok; };
+        let i = 0;
+        while (i < N) {
+          if (n[i] < 2) { i++; continue; }
+          let j = i; while (j + 1 < N && (n[j + 1] >= 2 || (n[j + 1] === 1 && j + 2 < N && n[j + 2] >= 2))) j++;
+          const r0 = rg.s.r + i, r1 = rg.s.r + j, heads = allStr(r0) ? (i + 1 <= j && n[i + 1] > n[i] && allStr(r0 + 1) ? 2 : 1) : 0;
+          let c1 = S0; for (let c = S0; c <= S1; c++) for (let r = r0; r <= r1; r++) if (has(r, c)) c1 = Math.max(c1, c);
+          const c0 = S0;
           for (let r = r0; r <= r1; r++) {
-            const k = r - rg.s.r, isHead = r < r0 + heads, isGrp = !isHead && n[k] === 1, lab = ws[A(r, c0)] && String(ws[A(r, c0)].v || ''), isCmp = /차이$|증감률|대비/.test(lab || '') && !isHead;
+            const k = r - rg.s.r, isHead = r < r0 + heads, isGrp = !isHead && n[k] === 1, lab = String((ws[A(r, c0)] && ws[A(r, c0)].v) || '').trim(), isCmp = /차이$|증감률|대비/.test(lab) && !isHead;
+            const key = !isHead && !isGrp && !isCmp ? (/^(합계|청구금액)|총계|당월요금계|^계$|합계 \(|사용량 합계|발생량 합계/.test(lab) ? 'FCE4D6' : /요금계|공급가액|부가세 별도|VAT 별도/.test(lab) ? 'D9D9D9' : /단가|당 |kg당/.test(lab) ? 'E2EFDA' : null) : null;
             for (let c = c0; c <= c1; c++) {
-              const x = ws[A(r, c)], s = { border: BD, font: { name: '맑은 고딕', sz: 10 }, alignment: { vertical: 'center' } };
-              if (isHead) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: 'DCE6F1' } }, font: { name: '맑은 고딕', sz: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
-              else if (isGrp) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } }, font: { name: '맑은 고딕', sz: 10, bold: true } });
-              else if (isCmp) s.font = { name: '맑은 고딕', sz: 9, color: { rgb: '666666' } };
+              const x = ws[A(r, c)], s = { border: BD, font: F(), alignment: { vertical: 'center' } };
+              if (isHead) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: '92D050' } }, font: F({ bold: true }), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
+              else if (isGrp) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: 'E4DFEC' } }, font: F({ bold: true }) });
+              else if (key) Object.assign(s, { fill: { patternType: 'solid', fgColor: { rgb: key } }, font: F({ bold: key !== 'E2EFDA' }) });
+              else if (isCmp) s.font = F({ sz: 9, color: { rgb: '666666' } });
               if (c === c0 && !isHead) s.alignment = { horizontal: 'left', vertical: 'center' };
               const cell = st(r, c, s);
-              if (x && x.t === 'n' && !x.z) cell.z = Number.isInteger(x.v) ? '#,##0' : (Math.abs(x.v) < 1 ? '0.0###' : '#,##0.0#');
+              if (x && x.t === 'n') { const z = x.z && x.z !== 'General' ? x.z : (Number.isInteger(x.v) ? '#,##0' : (Math.abs(x.v) < 1 ? '0.0###' : '#,##0.0#')); cell.z = /Red/.test(z) ? z : `${z}_ ;[Red]\\-${z}\\ `; }
             }
           }
-        });
-        for (let k = i; k <= j; k++) inT[k] = true;
-        i = j + 1;
-      }
-      // 표 밖 글자 줄 = 제목 (맨 첫 줄은 크게)
-      for (let k = 0; k < N; k++) if (!inT[k] && n[k]) for (let c = rg.s.c; c <= rg.e.c; c++) if (has(rg.s.r + k, c)) { const x = ws[A(rg.s.r + k, c)]; if (x.t === 's') x.s = { font: { name: '맑은 고딕', bold: k === 0 || /^\d+[.)]/.test(String(x.v)) || /^※/.test(String(x.v)), sz: k === 0 ? 13 : 10, color: k === 1 && n[0] ? { rgb: '666666' } : undefined } }; }
-      if (!ws['!cols']) { const w = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let m = 6; for (let r = rg.s.r; r <= rg.e.r; r++) if (has(r, c) && ws[A(r, c)].t === 's' && !(n[r - rg.s.r] === 1)) m = Math.max(m, [...String(ws[A(r, c)].v)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2); w.push({ wch: Math.min(Math.max(m, c === rg.s.c ? 14 : 11), 50) }); } ws['!cols'] = w; }
+          for (let k = i; k <= j; k++) inT[k] = true;
+          i = j + 1;
+        }
+        // 표 밖 글자 = 제목 (시트 첫 줄은 크게·밑줄, 「1).」「※」로 시작하면 굵게)
+        for (let k = 0; k < N; k++) if (!inT[k] && n[k]) for (let c = S0; c <= S1; c++) if (has(rg.s.r + k, c)) { const x = ws[A(rg.s.r + k, c)]; if (x.t === 's') { const big = k === 0, sec = /^\d+[.)]/.test(String(x.v)) || /^※/.test(String(x.v)); x.s = { font: F({ bold: big || sec, sz: big ? 16 : sec ? 12 : 10, underline: big, color: k === 1 ? { rgb: '666666' } : undefined }) }; } }
+      });
+      if (!ws['!cols']) { const w = []; for (let c = rg.s.c; c <= rg.e.c; c++) { let m = 6; for (let r = rg.s.r + 2; r <= rg.e.r; r++) if (has(r, c) && ws[A(r, c)].t === 's') m = Math.max(m, [...String(ws[A(r, c)].v)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2); w.push({ wch: Math.min(Math.max(m, c === rg.s.c ? 14 : 11), 50) }); } ws['!cols'] = w; }
     }
 
     async function downloadYearTable() {
