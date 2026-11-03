@@ -1083,7 +1083,7 @@
     }
     function wqTrendCard() {
       const R = WQ.records, segs = WQ_MAIN.map(i => [i.k, i.n]).concat([['qww', '폐수량'], ['qwater', '용수량']]);
-      const head = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${segs.map(([k, n]) => `<button class="${k === wqItem ? 'on' : ''}" onclick="wqItem='${k}';renderWq()">${n}</button>`).join('')}</span></div>`;
+      const head = `<div class="card"><div class="toolbar"><b>월별 추이</b><span class="seg">${segs.map(([k, n]) => `<button class="${k === wqItem ? 'on' : ''}" onclick="wqItem='${k}';renderWq()">${n}</button>`).join('')}</span><button class="btn small" style="margin-left:auto" onclick="wqXlsx()">⬇ 엑셀로 받기</button></div>`;
       if (QTY[wqItem]) return head + wqQtyChart(wqItem) + '</div>';
       const it = WQ_MAIN.find(i => i.k === wqItem) || WQ_MAIN[0];
       let h = head + `
@@ -1608,6 +1608,24 @@
       }
       const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `약품월별_${chemFrom}_${chemTo}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+    // 수질측정 월별 추이 표 → 엑셀 (화면 표와 같은 칸: 채취일 · 항목별 원수/방류, 최근 날짜가 위) + 설계·기준 줄
+    async function wqXlsx() {
+      try { if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'); }
+      catch (e) { alert('엑셀 만들기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'); return; }
+      const val = v => { if (v === null || v === undefined || String(v).trim() === '') return ''; const n = Number(String(v).replace(/,/g, '')); return isNaN(n) ? String(v) : n; };
+      const aoa = [['채취일'].concat(...WQ_MAIN.map(i => [i.n + ' (mg/L)', ''])), [''].concat(...WQ_MAIN.map(() => ['원수', '방류']))];
+      WQ.records.slice().reverse().forEach(r => aoa.push([r.s].concat(...WQ_MAIN.map(i => [val(r.raw[i.k]), val(r.eff[i.k])]))));
+      aoa.push([]);
+      aoa.push(['설계 처리전 (원수)'].concat(...WQ_MAIN.map(i => [i.dr, ''])));
+      aoa.push(['설계 처리후 (방류)'].concat(...WQ_MAIN.map(i => ['', i.de])));
+      aoa.push(['배출허용기준 (방류)'].concat(...WQ_MAIN.map(i => ['', i.lim])));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }].concat(WQ_MAIN.map((_, j) => ({ s: { r: 0, c: 1 + j * 2 }, e: { r: 0, c: 2 + j * 2 } })));
+      ws['!cols'] = aoa[1].map((_, j) => ({ wch: j === 0 ? 18 : 10 }));
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '수질측정');
+      const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `수질측정_${todayStr}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
     // 다온산업 장부 월 표 → 엑셀 (보이는 달, 화면과 같은 칸 순서 · 잔고·보관량·설비검침 값 포함)
     async function bookXlsx() {
