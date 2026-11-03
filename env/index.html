@@ -1115,7 +1115,19 @@
         <div><div class="hint"><b>방류수</b> (mg/L) — 빨간 점선: 설계 처리후 ${nf(it.de)}, 회색: 배출허용기준 ${nf(it.lim)}</div>${wqChart('eff', it)}</div></div>`;
       h += `<div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${WQ_MAIN.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${WQ_MAIN.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
       R.slice().reverse().forEach(r => { h += `<tr><td>${r.s}</td>${WQ_MAIN.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]); return `<td class="${a > i.dr ? 'wq-hi' : ''}">${wqShow(r.raw[i.k], 1)}</td><td class="${b > i.lim ? 'wq-hi' : b > i.de ? 'wq-mid' : ''}">${wqShow(r.eff[i.k], i.k === 'tp' ? 3 : 1)}</td>`; }).join('')}</tr>`; });
-      return h + `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div></div>`;
+      h += `</table></div><div class="hint">원수 <span class="wq-hi">빨강</span>: 설계 처리전 농도 초과 · 방류 <span class="wq-mid">노랑</span>: 설계 처리후 농도 초과, <span class="wq-hi">빨강</span>: 배출허용기준 초과</div>`;
+      // 특정물질 등 기타 항목 — 측정한 날만
+      const XI = WQ_ITEMS.filter(i => i.x), has = v => v !== undefined && v !== null && String(v).trim() !== '';
+      const XR = R.filter(r => XI.some(i => has(r.raw[i.k]) || has(r.eff[i.k]))).reverse();
+      if (XR.length) {
+        const num = v => typeof v === 'number' ? v : null;
+        h += `<div style="margin-top:14px"><b>특정물질 등 기타 항목</b> <span class="hint">(측정한 날만 · mg/L, pH 제외)</span></div>
+          <div class="tbl-x"><table class="wq sm"><tr><th>채취일</th>${XI.map(i => `<th colspan="2">${i.n}</th>`).join('')}</tr><tr><th></th>${XI.map(() => '<th class="g1">원수</th><th class="g2">방류</th>').join('')}</tr>`;
+        XR.forEach(r => { h += `<tr><td>${r.s}</td>${XI.map(i => { const a = wqNum(r.raw[i.k]), b = wqNum(r.eff[i.k]), dr = num(i.dr), de = num(i.de), lim = num(i.lim);
+          return `<td class="${dr !== null && a > dr ? 'wq-hi' : ''}">${has(r.raw[i.k]) ? esc(String(r.raw[i.k])) : '-'}</td><td class="${lim !== null && b > lim ? 'wq-hi' : de !== null && b > de ? 'wq-mid' : ''}">${has(r.eff[i.k]) ? esc(String(r.eff[i.k])) : '-'}</td>`; }).join('')}</tr>`; });
+        h += `<tr class="ub"><td class="l">배출허용기준</td>${XI.map(i => `<td></td><td>${i.lim ?? '-'}</td>`).join('')}</tr></table></div>`;
+      }
+      return h + '</div>';
     }
     // ---- 설계(인허가) vs 실제: 공정별 폐수·용수 ----
     //  증숙 배수 = 자숙 회차 × 1.33㎥ · 살균 냉각수 = 레토르트 배치 × 1.11㎥ (1차 945L + 2차 1톤/일 ÷ 6배치) · 세척·청소·기타 = 실제 폐수 − 두 몫
@@ -1648,6 +1660,13 @@
       ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }].concat(WQ_MAIN.map((_, j) => ({ s: { r: 0, c: 1 + j * 2 }, e: { r: 0, c: 2 + j * 2 } })));
       ws['!cols'] = aoa[1].map((_, j) => ({ wch: j === 0 ? 18 : 10 }));
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '수질측정');
+      { const XI = WQ_ITEMS.filter(i => i.x), hv = v => v !== undefined && v !== null && String(v).trim() !== '';
+        const XR = WQ.records.filter(r => XI.some(i => hv(r.raw[i.k]) || hv(r.eff[i.k]))).reverse();
+        if (XR.length) { const x = [['채취일'].concat(...XI.map(i => [i.n, ''])), [''].concat(...XI.map(() => ['원수', '방류']))];
+          XR.forEach(r => x.push([r.s].concat(...XI.map(i => [val(r.raw[i.k]), val(r.eff[i.k])]))));
+          x.push([]); x.push(['배출허용기준 (방류)'].concat(...XI.map(i => ['', i.lim ?? ''])));
+          const w2 = XLSX.utils.aoa_to_sheet(x); w2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }].concat(XI.map((_, j) => ({ s: { r: 0, c: 1 + j * 2 }, e: { r: 0, c: 2 + j * 2 } })));
+          w2['!cols'] = x[1].map((_, j) => ({ wch: j === 0 ? 18 : 9 })); XLSX.utils.book_append_sheet(wb, w2, '특정물질 등'); } }
       const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `수질측정_${todayStr}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
