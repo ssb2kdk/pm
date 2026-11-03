@@ -2113,8 +2113,8 @@
         return [{ grp: '1) 비용' },
           r('비용 총계 (VAT 포함)', s => s.gas.cost, f0, { sum: true, b: true, cmp: true, prov: s => s.gas.status === '가마감' }),
           r('공급가액 (VAT 별도)', s => s.gas.exvat, f0, { sum: true }),
-          r('부가세', s => s.gas.cost === null || s.gas.exvat === null ? null : s.gas.cost - s.gas.exvat, f0, { sum: true }),
-          r('원단위 절사', s => { const g = G(s); return g && s.gas.status === '확정' ? s.gas.cost - (((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) : null; }, f0, { sum: true }),
+          r('부가세', s => { const g = G(s); if (g && s.gas.status === '가마감') return ((g.boiler || {}).vat || 0) + ((g.rest || {}).vat || 0); return s.gas.cost === null || s.gas.exvat === null ? null : s.gas.cost - s.gas.exvat; }, f0, { sum: true }), // 가마감: 엑셀처럼 부가세는 보일러+식당 부가세, 끝자리는 원단위 절사 줄로
+          r('원단위 절사', s => { const g = G(s); return g ? s.gas.cost - (((g.boiler || {}).total || 0) + ((g.rest || {}).total || 0)) : null; }, f0, { sum: true }),
           r('실행 단가 (원/MJ)', s => ratio(s.gas.exvat, s.gas.usage), fxd(2), { cmp: true }),
           { grp: '2) 사용량' }, r('사용량 (MJ)', s => s.gas.usage, f0, { sum: true, b: true, cmp: true }), r('사용량 (㎥)', s => s.gas.m3, fxd(1), { sum: true, cmp: true }),
           ...part('관류보일러', 'boiler', 'gas_heat', 'gas_boiler_corr'), ...part('식당', 'rest', 'gas_rest_heat', 'gas_rest_corr'),
