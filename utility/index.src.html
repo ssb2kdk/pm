@@ -1077,7 +1077,7 @@
           const filled = v !== undefined && v !== null && v !== '';
           const effV = eff[f.k];
           const src = eff._src[f.k];
-          const ph = (!filled && effV !== undefined && effV !== null && effV !== '') ? (f.text ? effV : f2(Number(effV))) : '';
+          const ph = (!filled && effV !== undefined && effV !== null && effV !== '') ? (f.text ? effV : Number(effV).toLocaleString('ko-KR', { maximumFractionDigits: 4 })) : '';
           const srcTxt = !filled && ph !== '' ? `${src === '자동' ? '자동' : (src === '전월' ? '전월 값' : '기본값')}: ${esc(ph)}` : (f.hint ? esc(f.hint) : '');
           let input;
           if (f.options) {
