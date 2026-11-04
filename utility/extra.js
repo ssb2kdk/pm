@@ -1824,7 +1824,7 @@
       const ww = s.ww; if (ww && ww.usage !== null) o.ww = { total: ww.cost, fac: ww.facility, imp: ww.improve, usage: ww.usage, flow: ww.flow, sewage: ww.sewage, price: ww.cost && ww.usage ? ww.cost / ww.usage : null };
       return o;
     }
-    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; if (all[ym] && !/^시스템/.test(all[ym].src || '')) return; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
+    async function gmSave(ym) { const all = { ...((await freshYear(9999)).gm || {}) }; if (all[ym] && (all[ym].edited || !/^시스템/.test(all[ym].src || ''))) return; all[ym] = { ...gmSnap(ym), src: '시스템 (마감 저장)', savedAt: new Date().toISOString() }; await saveYear(9999, { gm: all }); }
     async function downloadGm() {
       try { await ensureXLSX(); } catch (e) { alert(errMsg(e)); return; }
       const all = { ...gmAll() }, live = [];
@@ -1876,10 +1876,63 @@
       const all = gmAll(), ks = Object.keys(all).sort().reverse(); if (!ks.length) return '<div class="hint no-print" style="margin-top:14px">지난 가마감 기록이 아직 없습니다 (47번 SQL을 실행하면 2025년 8월부터 들어옵니다).</div>';
       const v = x => x === null || x === undefined ? '' : f0(x);
       let h = `<div class="no-print"><h3 style="margin-top:18px">지난 가마감 기록 <span class="sub">회계에 넣었던 가마감(고지서 전 예상) 금액 · 회계 마감 탭에서 「마감 저장」 하면 그 달 값이 여기에 남음 · 「📥 가마감 내역 엑셀」로 항목별 전체 출력</span></h3>`;
-      h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">달</th><th>전기 당월요금계</th><th>전기 사용량 (kWh)</th><th>가스 비용 총계</th><th>가스 사용량 (MJ)</th><th>용수 40A+50A</th><th>용수 사용량 (㎥)</th><th>폐수</th><th>폐수 발생량 (㎥)</th><th class="l">출처</th></tr>`;
+      h += `<div class="tbl-wrap"><table class="t"><tr><th class="l">달</th><th>전기 당월요금계</th><th>전기 사용량 (kWh)</th><th>가스 비용 총계</th><th>가스 사용량 (MJ)</th><th>용수 40A+50A</th><th>용수 사용량 (㎥)</th><th>폐수</th><th>폐수 발생량 (㎥)</th><th class="l">출처</th>${canBill() ? '<th></th>' : ''}</tr>`;
       ks.forEach(k => { const x = all[k], e = x.e || {}, g = x.g || {}, w4 = x.w40, w5 = x.w50, ww = x.ww || {}, wsum = (a, b) => (w4 || w5) ? ((w4 || {})[a] || 0) + ((w5 || {})[a] || 0) : null;
-        h += `<tr><td class="l">${esc(ymLabel(k))}</td><td>${v(e.total)}</td><td>${v(e.kwh)}</td><td>${v(g.total)}</td><td>${v(g.mj)}</td><td>${v(wsum('total'))}</td><td>${v(wsum('usage'))}</td><td>${v(ww.total)}</td><td>${v(ww.usage)}</td><td class="l hint">${esc(x.src || '')}${x.savedAt ? ' ' + esc(x.savedAt.slice(0, 10)) : ''}</td></tr>`; });
-      return h + '</table></div></div>';
+        h += `<tr><td class="l">${esc(ymLabel(k))}</td><td>${v(e.total)}</td><td>${v(e.kwh)}</td><td>${v(g.total)}</td><td>${v(g.mj)}</td><td>${v(wsum('total'))}</td><td>${v(wsum('usage'))}</td><td>${v(ww.total)}</td><td>${v(ww.usage)}</td><td class="l hint">${esc(x.src || '')}${x.savedAt ? ' ' + esc(x.savedAt.slice(0, 10)) : ''}${x.edited ? ` · <b>수정 ${esc(String(x.editedAt || '').slice(0, 10))}${x.editedBy ? ' ' + esc(x.editedBy) : ''}</b>` : ''}</td>${canBill() ? `<td><button class="btn secondary" style="padding:3px 8px;font-size:12px" onclick="gmEditOpen('${k}')">✏️ 고치기</button></td>` : ''}</tr>`; });
+      h += '</table></div>';
+      if (canBill()) h += `<div class="hint" style="margin-top:6px">잘못 넣은 달은 「✏️ 고치기」로 항목별 금액을 고칠 수 있습니다 · <a href="#" onclick="gmEditOpen('');return false">+ 빠진 달 추가</a></div>`;
+      return h + '</div>';
+    }
+
+    // 지난 가마감 기록 고치기 (엑셀에서 잘못 넣은 값 등) — 항목별 칸, 저장하면 gm[달]을 바꾸고 「수정」 표시 (이후 마감 저장이 덮어쓰지 않음)
+    let GME = null;
+    function gmEditOpen(ym) {
+      const isNew = !ym; if (isNew) ym = reportYm;
+      const cur = JSON.parse(JSON.stringify(gmAll()[ym] || {}));
+      GME = { ym, isNew, d: cur };
+      let box = document.getElementById('gmedit');
+      if (!box) { box = document.createElement('div'); box.id = 'gmedit'; box.onclick = e => { if (e.target.id === 'gmedit') gmEditClose(); }; document.body.appendChild(box); }
+      box.hidden = false; gmEditRender();
+    }
+    function gmEditClose() { const b = document.getElementById('gmedit'); if (b) b.hidden = true; GME = null; }
+    function gmEditRender() {
+      const { ym, isNew, d } = GME, fmt = v => v === null || v === undefined || v === '' ? '' : (typeof v === 'number' ? v.toLocaleString('ko-KR', { maximumFractionDigits: 4 }) : String(v));
+      let h = `<div class="zoom-box" style="max-width:760px"><div class="zoom-hd"><b>✏️ 가마감 기록 고치기</b>
+        ${isNew ? `<span class="hint">달 <input type="month" id="gme-ym" value="${ym}" onchange="GME.ym=this.value;GME.d=JSON.parse(JSON.stringify(gmAll()[this.value]||{}));gmEditRender()"></span>` : `<span class="hint"><b>${esc(ymLabel(ym))}</b> · ${esc(d.src || '기록 없음')}</span>`}
+        <button class="btn" onclick="gmEditSave()">💾 저장</button><button onclick="gmEditClose()">✕ 닫기</button></div>
+        <div class="hint" style="margin:0 0 8px">엑셀 「○○상세」와 같은 줄입니다. 칸을 고치고 저장하세요 · <b>합계 칸(전기요금계·당월요금계·비용 총계 등)은 자동으로 다시 계산되지 않으니</b> 같이 고쳐 주세요 · 비우면 빈 값</div>
+        <div style="flex:1;overflow:auto">`;
+      GM_LAYOUT.forEach(([sk, nm, , rows]) => {
+        const x = d[sk] || {};
+        h += `<details ${Object.keys(x).length ? 'open' : ''} style="margin-bottom:8px"><summary><b>${esc(nm)}</b></summary><table class="t" style="margin-top:4px"><tr><th class="l">항목</th><th>값</th></tr>`;
+        rows.forEach(r => {
+          if (!r.length) return;
+          if (r.length === 1) { h += `<tr class="grp"><td colspan="2">${esc(r[0])}</td></tr>`; return; }
+          if (typeof r[1] !== 'string') return; // 계산 줄(단가 등)은 고칠 칸 없음
+          h += `<tr><td class="l">${esc(r[0])}</td><td><input data-s="${sk}" data-k="${r[1]}" style="width:160px;text-align:right" ${r[1] === 'season' ? '' : 'inputmode="decimal"'} value="${esc(fmt(x[r[1]]))}"></td></tr>`;
+        });
+        h += '</table></details>';
+      });
+      document.getElementById('gmedit').innerHTML = h + '</div></div>';
+    }
+    async function gmEditSave() {
+      const { ym, d } = GME; if (!/^\d{4}-\d{2}$/.test(ym)) return alert('달을 골라 주세요.');
+      const out = {};
+      GM_LAYOUT.forEach(([sk]) => { const o = { ...(d[sk] || {}) }; let any = false;
+        document.querySelectorAll(`#gmedit input[data-s="${sk}"]`).forEach(inp => { const k = inp.dataset.k, t = inp.value.trim();
+          if (t === '') { o[k] = null; return; }
+          if (k === 'season') { o[k] = t; any = true; return; }
+          const n = Number(t.replace(/,/g, '')); if (isNaN(n)) throw new Error(`숫자가 아닌 값: ${t}`); o[k] = n; any = true; });
+        if (any) out[sk] = o; });
+      try {
+        const all = { ...((await freshYear(9999)).gm || {}) }, prev = all[ym] || {};
+        if (!Object.keys(out).length && !confirm(`${ymLabel(ym)} 가마감 기록을 모두 지울까요?`)) return;
+        if (Object.keys(out).length) all[ym] = { ...out, src: prev.src || '직접 입력', savedAt: prev.savedAt || new Date().toISOString(), edited: true, editedAt: new Date().toISOString(), editedBy: (me && me.name) || '' };
+        else delete all[ym];
+        await saveYear(9999, { gm: all });
+        gmEditClose(); resetCache && resetCache(); renderReport();
+        alert(`${ymLabel(ym)} 가마감 기록을 저장했습니다.`);
+      } catch (e) { alert('저장 실패: ' + errMsg(e)); }
     }
 
     async function saveBriefComment() {
