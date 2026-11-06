@@ -333,6 +333,22 @@
       location.reload();
     });
   }
+
+  // ---------------- 2026-11-06: 새 서버로 옮긴 메뉴 안내 (빨간 띠) ----------------
+  //  옮긴 메뉴에서는 「이제 새 주소에서 입력하세요」 띠를 맨 위에 띄운다. 홈에서는 옮긴 메뉴 목록을 띄운다.
+  const NEW_SITE = 'https://ssbon-fp.dev/operations/facility/';
+  const MOVED = { pm: 'pm/', meter: 'meter/', insp: 'meter/', env: 'env/', utility: 'utility/', bill: 'utility/?bill', retort: 'retort.html', load: 'load/' };
+  function movedBanner() {
+    if (document.getElementById('pt-moved')) return;
+    const to = MOVED[opts.appId], bar = document.getElementById('pt-bar'); if (!bar) return;
+    let html;
+    if (to) html = `<b>이 메뉴는 새 사이트로 옮겼습니다.</b> 여기에 입력하면 새 사이트에 들어가지 않습니다. <a href="${NEW_SITE + to}" style="color:#fff;font-weight:700;text-decoration:underline">새 사이트에서 열기 →</a>`;
+    else if (opts.appId === 'home') html = `<b>예방정비 · 설비검침 · 환경일지 · 유틸리티 · 레토르트 · 부하 모니터링</b>은 새 사이트로 옮겼습니다. <a href="${NEW_SITE}" style="color:#fff;font-weight:700;text-decoration:underline">새 사이트 시설파트 →</a>`;
+    else return;
+    bar.insertAdjacentHTML('afterend', `<div id="pt-moved" style="position:sticky;top:0;z-index:70;background:#c62828;color:#fff;font-size:14px;line-height:1.5;padding:10px 16px;text-align:center">${html}</div>`);
+  }
+  const _renderBar = renderBar;
+  renderBar = function () { _renderBar(); movedBanner(); };
   Portal.renderBar = renderBar;
 
   // =====================================================================
