@@ -1,11 +1,11 @@
 // =====================================================================
-// 순수본 2공장 시설관리시스템 — 공통 기능 (로그인, 상단 메뉴, 비밀번호 변경)
+// 순수본 2공장 시설관리시스템 — 공통 기능 (상단 메뉴 · ⓘ 메모 · 검침 빈칸 채우기) — 2026-11-05 이 서버로 옮김: 로그인은 BP 시스템, 자료는 fsb.js
 // 모든 앱 페이지가 이 파일을 같이 씁니다. 보통은 고칠 일이 없습니다.
 // =====================================================================
 (function () {
   const CFG = window.APP_CONFIG || {};
   const ROOT = new URL('.', document.currentScript.src).href; // 사이트 맨 위 주소
-  const configured = !!(CFG.SUPABASE_KEY && !String(CFG.SUPABASE_KEY).startsWith('여기에'));
+  const configured = !!window.FSB; // 이 서버: fsb.js 가 Supabase 대신
 
   const SYS_NAME = CFG.SYSTEM_NAME || `${CFG.PLANT_NAME || ''} ${CFG.TEAM_NAME || ''}`.trim();
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -122,7 +122,7 @@
     isPartner: () => !!(Portal.me && Portal.me.role === 'partner'),
     isViewer: () => !!(Portal.me && Portal.me.role === 'viewer'),
     visibleApps: () => (CFG.APPS || []).filter(a => !a.hidden && !(a.noViewer && Portal.me && Portal.me.role === 'viewer') && (!(Portal.me && Portal.me.role === 'partner') || a.partner) && (!a.admin || (Portal.me && Portal.me.role === 'admin'))), // admin: true 인 앱은 관리자만 · hidden: true 는 메뉴·홈에서 숨김 (주소로는 열림)
-    appUrl: app => ROOT + app.path,
+    appUrl: app => /^https?:/.test(app.path) ? app.path : ROOT + app.path,
     start,
     callAdmin,
     FILL_METERS,
@@ -175,13 +175,9 @@
       document.getElementById('pt-login-btn').disabled = true;
       return;
     }
-    Portal.sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
-    Portal.sb.auth.onAuthStateChange(event => {
-      if (event === 'SIGNED_OUT' && Portal.me) location.reload();
-    });
-    Portal.sb.auth.getSession().then(({ data: { session } }) => session ? enter() : showLogin());
+    Portal.sb = window.FSB;
+    enter();
   }
-
   function appEl() { return document.getElementById(opts.appElementId || 'app'); }
 
   function showLogin(message) {
@@ -214,14 +210,14 @@
   let readyCalled = false;
   async function enter() {
     const sb = Portal.sb;
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) return showLogin();
-    const { data: prof, error } = await sb.from('profiles').select('id, username, name, role, active').eq('id', user.id).maybeSingle();
-    if (error || !prof) { await sb.auth.signOut(); return showLogin('계정 정보를 불러오지 못했습니다. 관리자에게 문의하세요.'); }
-    if (!prof.active) { await sb.auth.signOut(); return showLogin('사용 중지된 계정입니다. 관리자에게 문의하세요.'); }
+    // 로그인은 BP 시스템이 한다. 여기서는 시설 서버에 「나는 누구」만 묻는다.
+    let prof = null;
+    try { const r = await fetch(sb.API + 'me', { credentials: 'same-origin', cache: 'no-store' }); if (r.ok) prof = (await r.json()).me; } catch (e) { }
+    if (!prof) return showLogin('BP 시스템에 로그인한 뒤 다시 열어 주세요.');
+    prof.active = true;
     Portal.me = prof;
     document.body.classList.toggle('pt-admin', prof.role === 'admin'); // ⓘ 메모는 관리자만
-    if (prof.role === 'viewer') viewerGuard(sb); // 보기 전용: 저장·수정·삭제 요청은 보내지 않고 바로 오류 (DB에서도 24번 SQL로 막힘)
+    // 보기 전용 막기는 시설 서버가 한다 // 보기 전용: 저장·수정·삭제 요청은 보내지 않고 바로 오류 (DB에서도 24번 SQL로 막힘)
     // 협력업체 계정은 허용된 앱만
     if (opts.appId !== 'home' && !Portal.visibleApps().some(a => a.id === opts.appId) && (prof.role === 'partner' || (prof.role === 'viewer' && (CFG.APPS || []).some(a => a.id === opts.appId && a.noViewer)))) { // 보기 전용 계정: noViewer 앱(설비검침·자재 발주·현장 요청·후크메타)은 안 보임
       const first = Portal.visibleApps().find(a => a.ready);
@@ -233,8 +229,7 @@
     document.getElementById('pt-bar').hidden = false;
     const a = appEl(); if (a) a.hidden = false;
     if (!readyCalled && opts.onReady) { readyCalled = true; opts.onReady(Portal); }
-    if (prof.role !== 'partner' && (CFG.APPS || []).some(x => x.id === 'load' && x.ready)) loadAlarm(sb);
-    if (prof.role !== 'partner') navBadges(sb);
+    // 과부하 경보 · 메뉴 숫자는 부하 모니터링 · 자재 · 현장 요청을 옮긴 뒤 다시 켠다
   }
 
   // 위 메뉴 숫자 표시: 자재 발주 요청 처리 대기 건수 (2분마다)
@@ -318,20 +313,14 @@
       <a class="pt-home" href="${ROOT}">🏭 ${esc(SYS_NAME)}</a>
       <nav class="pt-apps">
         <a href="${ROOT}" class="${opts.appId === 'home' ? 'current' : ''}">🏠 홈</a>
-        ${apps.map(a => `<a href="${Portal.appUrl(a)}" class="${a.id === opts.appId ? 'current' : ''}">${a.icon} ${esc(a.name)}</a>`).join('')}
+        ${apps.map(a => `<a href="${Portal.appUrl(a)}" class="${a.id === opts.appId ? 'current' : ''}"${a.old ? ' target="_blank" rel="noopener" title="아직 예전 사이트에 있습니다"' : ''}>${a.icon} ${esc(a.name)}${a.old ? ' ↗' : ''}</a>`).join('')}
       </nav>
       <div class="pt-user">
         <span id="pt-user-label">${esc(me.name)}${me.role === 'admin' ? ' (관리자)' : me.role === 'partner' ? ' (협력업체)' : me.role === 'viewer' ? ' (보기 전용)' : ''}</span>
-        <button type="button" id="pt-pw-btn">비밀번호 변경</button>
-        <button type="button" id="pt-logout-btn">로그아웃</button>
+        <a href="${ROOT}" style="color:#fff;border:1px solid rgba(255,255,255,.35);padding:4px 9px;border-radius:5px;font-size:12px;text-decoration:none">← 시설파트</a>
       </div>`;
     if (me.role === 'viewer' && !document.getElementById('pt-viewer')) document.getElementById('pt-bar').insertAdjacentHTML('afterend', '<div id="pt-viewer" style="background:#fff4d6;color:#7a5200;text-align:center;font-size:13px;padding:5px 8px;border-bottom:1px solid #f0d58a">👁 보기 전용 계정입니다 — 화면에서 값을 바꿔도 저장되지 않습니다.</div>');
-    document.getElementById('pt-pw-btn').addEventListener('click', () => document.getElementById('pt-pw-modal').classList.add('active'));
-    document.getElementById('pt-logout-btn').addEventListener('click', async () => {
-      if (!confirm('로그아웃 하시겠습니까?')) return;
-      await Portal.sb.auth.signOut();
-      location.reload();
-    });
+
   }
   Portal.renderBar = renderBar;
 
@@ -557,7 +546,7 @@
     const a = document.getElementById('pt-pw-new').value, b = document.getElementById('pt-pw-new2').value;
     if (a.length < 6) return alert('비밀번호는 6자 이상이어야 합니다.');
     if (a !== b) return alert('두 비밀번호가 서로 다릅니다.');
-    const { error } = await Portal.sb.auth.updateUser({ password: a });
+    const error = { message: '비밀번호는 BP 시스템 첫 화면 「비밀번호 바꾸기」에서 바꿉니다' };
     if (error) return alert('변경 실패: ' + error.message);
     document.getElementById('pt-pw-new').value = ''; document.getElementById('pt-pw-new2').value = '';
     document.getElementById('pt-pw-modal').classList.remove('active');
